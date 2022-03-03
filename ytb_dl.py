@@ -15,10 +15,10 @@ def ytb_get_info(ytb_url):
         info_dict = ydl.extract_info(ytb_url, download=False)
 
     if "_type" not in info_dict:
-        return "single", info_dict
+        return "ytb_single", info_dict
 
     else:
-        return "list", info_dict
+        return "ytb_playlist", info_dict
 
 
 def ytb_audio_download(ytb_url, info_dict):
@@ -37,31 +37,6 @@ def ytb_audio_download(ytb_url, info_dict):
     return video_title, video_path, video_duration
 
 
-def ytb_audio_download_list(ytb_url, info_dict):
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': "./downloads/" + '/%(title)s.%(ext)s',
-    }
-
-    with YoutubeDL(ydl_opts) as ydl:
-        ydl.download([ytb_url])
-
-    title_list = []
-    path_list = []
-    duration_list = []
-
-    for v in info_dict["entries"]:
-
-        video_title = v["fulltitle"]
-        video_duration = v["duration"]
-
-        title_list.append(video_title)
-        path_list.append(f"./downloads/{legal_name(video_title)}.webm")
-        duration_list.append(video_duration)
-
-    return title_list, path_list, duration_list
-
-
 def legal_name(name_str: str) -> str:
     """
     将字符串转换为合法的文件名
@@ -70,7 +45,7 @@ def legal_name(name_str: str) -> str:
     :return: 转换后文件名
     """
 
-    name_str = name_str.replace("\\", " -")
+    name_str = name_str.replace("\\", "_")
     name_str = name_str.replace("/", " -")
     name_str = name_str.replace(":", " -")
     name_str = name_str.replace("*", " -")
@@ -81,3 +56,7 @@ def legal_name(name_str: str) -> str:
     name_str = name_str.replace("|", "_")
 
     return name_str
+
+
+if __name__ == "__main__":
+    print(ytb_get_info("https://www.youtube.com/watch?v=h2Zf6kbPHtE&list=PL497uTpkfOYP3SPZonDNiHJDbc6Hz_Lxm"))
