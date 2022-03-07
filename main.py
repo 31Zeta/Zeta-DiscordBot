@@ -13,11 +13,11 @@ from tools import *
 # pip install youtube-search-python
 
 # -------------------- 设置 --------------------
-system_option = 0  # Windows - 0 | Linux - 1
+system_option = 1  # Windows - 0 | Linux - 1
 bot_activity = "音乐"
 bot_activity_type = discord.ActivityType.listening
-version = "v0.2.0"
-update_time = "2022.03.02"
+version = "v0.3.0"
+update_time = "2022.03.07"
 # ---------------------------------------------
 
 client = discord.Client()
@@ -30,7 +30,6 @@ else:
     command_prefix = "."
     ffmpeg_path = "./bin/ffmpeg.exe"
     token_name = "test_token.txt"
-
 
 # 设定指令前缀符，关闭默认Help指令
 bot = commands.Bot(command_prefix=f'{command_prefix}', help_command=None)
@@ -207,37 +206,88 @@ async def help(ctx):
     :return:
     """
     console_message_log_command(ctx)
-    # TODO 制作翻页Help菜单
-    await ctx.send(">>> **指令列表：**\n"
-                   "前缀符为反斜杠 \\\n"
-                   "    **info**\n            "
-                   "- 查看32Zeta的当前版本号和更新日期\n"
-                   "    **join**\n            "
-                   "- 让32Zeta加入指令发送者所在的语音频道\n"
-                   "    **join** ***A***\n            "
-                   "- 让32Zeta加入语音频道A\n"
-                   "    **leave**\n            "
-                   "- 让32Zeta离开语音频道\n"
-                   "    **play** ***名称***\n            "
-                   "- 如输入名称为Bilibili或Youtube的网页链接，则播放对应网页链接的"
-                   "音频; 如输入的为歌曲名称则将在Youtube上搜索相关前5的视频, 选择一"
-                   "首进行播放; 如不输入任何名称则恢复被暂停的播放\n"
-                   "    **skip**\n            "
-                   "- 跳过当前歌曲\n"
-                   "    **skip** ***A***\n            "
-                   "- 跳过第{A}首歌曲\n"
-                   "    **skip** ***A B***\n            "
-                   "- 跳过第{A}首到第{B}首歌曲\n"
-                   "    **skip** ***all***\n            "
-                   "- 清空服务器播放列表（all可用星号代替）"
-                   "    **pause**\n            "
-                   "- 暂停播放\n"
-                   "    **resume**\n            "
-                   "- 恢复播放\n"
-                   "    **list**\n            "
-                   "- 发送当前服务器播放列表\n"
-                   "    **help**\n            "
-                   "- 你这不正看着呢(～￣▽￣)～\n")
+    help_menu_page_1 = ">>> **指令列表：**\n" \
+                       "前缀符为反斜杠 \\\n" \
+                       "    **info**\n            " \
+                       "- 查看32Zeta的当前版本号和更新日期\n" \
+                       "    **join**\n            " \
+                       "- 让32Zeta加入指令发送者所在的语音频道\n" \
+                       "    **join** ***A***\n            " \
+                       "- 让32Zeta加入语音频道A\n" \
+                       "    **leave**\n            " \
+                       "- 让32Zeta离开语音频道\n" \
+                       "    **play** ***名称***\n            " \
+                       "- 如输入名称为Bilibili或Youtube的网页链接，则播放对应网页链接的" \
+                       "音频; 如输入的为歌曲名称则将在Youtube上搜索相关前5的视频, 选择一" \
+                       "首进行播放; 如不输入任何名称则恢复被暂停的播放\n"
+    help_menu_page_2 = ">>>    **skip**\n            " \
+                       "- 跳过当前歌曲\n" \
+                       "    **skip** ***A***\n            " \
+                       "- 跳过第{A}首歌曲\n" \
+                       "    **skip** ***A B***\n            " \
+                       "- 跳过第{A}首到第{B}首歌曲\n" \
+                       "    **skip** ***all***\n            " \
+                       "- 清空服务器播放列表（all可用星号代替）" \
+                       "    **pause**\n            " \
+                       "- 暂停播放\n" \
+                       "    **resume**\n            " \
+                       "- 恢复播放\n" \
+                       "    **list**\n            " \
+                       "- 发送当前服务器播放列表\n" \
+                       "    **help**\n            " \
+                       "- 你这不正看着呢(～￣▽￣)～\n"
+
+    help_menu = [help_menu_page_1, help_menu_page_2]
+    view = HelpMenu(ctx, help_menu)
+    view.message = await ctx.send(
+        content=help_menu_page_1 + f"\n第[1]页，共[{len(help_menu)}]页\n", view=view)
+
+
+class HelpMenu(View):
+
+    def __init__(self, ctx, menu_list):
+        super().__init__(timeout=60)
+        self.ctx = ctx
+        self.message = None
+        self.menu_list = menu_list
+        self.page_num = 0
+        self.result = []
+        self.occur_time = str(datetime.datetime.now())[11:19]
+
+    @discord.ui.button(label="上一页", style=discord.ButtonStyle.grey,
+                       custom_id="button_previous")
+    async def button_previous_callback(self, button, interaction):
+        button.disabled = False
+        msg = interaction.response
+        # 翻页
+        if self.page_num == 0:
+            return
+        else:
+            self.page_num -= 1
+        await msg.edit_message(
+            content=f"{self.menu_list[self.page_num]}\n第[{self.page_num + 1}]页，"
+                    f"共[{len(self.menu_list)}]页\n", view=self)
+
+    @discord.ui.button(label="下一页", style=discord.ButtonStyle.grey,
+                       custom_id="button_next")
+    async def button_next_callback(self, button, interaction):
+        button.disabled = False
+        msg = interaction.response
+        # 翻页
+        if self.page_num == len(self.menu_list) - 1:
+            return
+        else:
+            self.page_num += 1
+        await msg.edit_message(
+            content=f"{self.menu_list[self.page_num]}\n第[{self.page_num + 1}]页，"
+                    f"共[{len(self.menu_list)}]页\n", view=self)
+
+    async def on_timeout(self):
+        self.clear_items()
+
+        await self.message.delete()
+        console_message_log(self.ctx, f"{self.occur_time}生成的帮助菜单已超时"
+                                      f"(超时时间为{self.timeout}秒)")
 
 
 async def say(ctx, *message) -> None:
@@ -407,9 +457,17 @@ async def play(ctx, url_1="-1", *url_2):
     source = check_url_source(url)
     console_message_log(ctx, f"检测输入的参数为类型：{source}")
 
-    if source == "bili_bvid" or source == "bili_url":
+    # URL属于Bilibili
+    if source == "bili_bvid" or source == "bili_url" or \
+            source == "bili_short_url":
+
+        # 如果是Bilibili短链则获取重定向链接
+        if source == "bili_short_url":
+            url = get_redirect_url(url)
+            console_message_log(ctx, f"获取的重定向链接为 {url}")
+
         # 如果是URl则转换成BV号
-        if source == "bili_url":
+        if source == "bili_url" or source == "bili_short_url":
             bvid = bili_get_bvid(url)
             if bvid == "error_bvid":
                 console_message_log(ctx, f"{ctx.message.content} "
@@ -425,7 +483,9 @@ async def play(ctx, url_1="-1", *url_2):
         # 单一视频 bili_single
         if info_dict["videos"] == 1 and "ugc_season" not in info_dict:
             console_message_log(ctx, f"检测 {url} 为类型：bili_single")
+            loading_msg = await ctx.send("正在加载Bilibili歌曲")
             await play_bili(ctx, info_dict, "bili_single", 0)
+            await loading_msg.delete()
 
         # 合集视频 bili_collection
         elif "ugc_season" in info_dict:
@@ -449,7 +509,7 @@ async def play(ctx, url_1="-1", *url_2):
                 message = message + f"    **[{p_num}]** {p_title}  " \
                                     f"[{p_duration}]\n"
 
-            menu_list = make_menu_list(message)
+            menu_list = make_menu_list_10(message)
             view = EpisodeSelectView(ctx, "bili_p", info_dict, menu_list)
             view.message = await ctx.send(f"{menu_list[0]}\n第[1]页，共["
                                           f"{len(menu_list)}]页\n已输入：",
@@ -464,7 +524,9 @@ async def play(ctx, url_1="-1", *url_2):
         # 单一视频 ytb_single
         if url_type == "ytb_single":
             console_message_log(ctx, f"检测 {url} 为类型：ytb_single")
+            loading_msg = await ctx.send("正在加载Youtube歌曲")
             await play_ytb(ctx, url, info_dict, "normal")
+            await loading_msg.delete()
 
         # 播放列表 ytb_playlist
         else:
@@ -480,7 +542,7 @@ async def play(ctx, url_1="-1", *url_2):
                                     f"[{ep_duration}]\n"
                 counter += 1
 
-            menu_list = make_menu_list(message)
+            menu_list = make_menu_list_10(message)
             view = EpisodeSelectView(ctx, "ytb_playlist", info_dict, menu_list)
             view.message = await ctx.send(f"{menu_list[0]}\n第[1]页，共["
                                           f"{len(menu_list)}]页\n已输入：",
@@ -557,8 +619,6 @@ async def play_bili(ctx, info_dict, download_type="bili_single", num_option=0):
     if ctx.guild.id not in playlist_dict:
         await create_guild_playlist(ctx)
 
-    loading_msg = await ctx.send("正在加载Bilibili歌曲")
-
     current_playlist = playlist_dict[ctx.guild.id]
 
     bvid = info_dict["bvid"]
@@ -586,7 +646,6 @@ async def play_bili(ctx, info_dict, download_type="bili_single", num_option=0):
 
     current_playlist.add_song(title, path, duration)
     console_message_log(ctx, f"歌曲 {title} [{duration_str}] 已加入播放列表")
-    await loading_msg.delete()
 
     return title, duration
 
@@ -609,8 +668,6 @@ async def play_ytb(ctx, url, info_dict, download_type="ytb_single"):
         await create_guild_playlist(ctx)
 
     current_playlist = playlist_dict[ctx.guild.id]
-
-    loading_msg = await ctx.send("正在加载Youtube歌曲")
 
     title, path, duration = \
         ytb_audio_download(url, info_dict)
@@ -635,7 +692,6 @@ async def play_ytb(ctx, url, info_dict, download_type="ytb_single"):
 
     current_playlist.add_song(title, path, duration)
     console_message_log(ctx, f"歌曲 {title} [{duration_str}] 已加入播放列表")
-    await loading_msg.delete()
 
     return title, duration
 
@@ -673,7 +729,6 @@ async def skip(ctx, num1="-1", num2="-1"):
         elif num2 == "-1":
 
             if num1 == "*" or num1 == "all" or num1 == "All" or num1 == "ALL":
-                # TODO 修复出现重复歌曲时无法清空的问题
                 await clear(ctx)
 
             elif int(num1) == 1:
@@ -728,7 +783,6 @@ async def skip(ctx, num1="-1", num2="-1"):
 
 
 async def search_ytb(ctx, *input_name):
-
     name = " ".join(input_name)
     name = name.strip()
 
@@ -1041,6 +1095,7 @@ class EpisodeSelectView(View):
         """
         super().__init__(timeout=timeout)
         self.ctx = ctx
+        self.message = None
         self.source = source
         self.info_dict = info_dict
         self.menu_list = menu_list
@@ -1209,7 +1264,7 @@ class EpisodeSelectView(View):
         button.disabled = False
 
         if len(self.result) == 0 or not \
-                self.result[len(self.result)-1].isdigit():
+                self.result[len(self.result) - 1].isdigit():
             return
 
         msg = interaction.response
@@ -1255,7 +1310,7 @@ class EpisodeSelectView(View):
         button.disabled = False
         self.finish = True
 
-        if len(self.result) == 0 or self.result[len(self.result)-1] == "-":
+        if len(self.result) == 0 or self.result[len(self.result) - 1] == "-":
             return
 
         msg = interaction.response
@@ -1269,7 +1324,7 @@ class EpisodeSelectView(View):
                 temp.append("-")
                 num = ""
             elif item == ",":
-                if not len(temp) == 0 and temp[len(temp)-1] == "-":
+                if not len(temp) == 0 and temp[len(temp) - 1] == "-":
                     temp.pop()
                     start = temp.pop()
                     if int(num) < start:
@@ -1300,7 +1355,7 @@ class EpisodeSelectView(View):
                 num = num + item
         if num == "":
             pass
-        elif not len(temp) == 0 and temp[len(temp)-1] == "-":
+        elif not len(temp) == 0 and temp[len(temp) - 1] == "-":
             temp.pop()
             start = temp.pop()
             if int(num) < start:
@@ -1403,7 +1458,7 @@ class EpisodeSelectView(View):
         elif self.source == "ytb_playlist":
             total_num = len(self.info_dict["entries"])
 
-        for num in range(1, total_num+1):
+        for num in range(1, total_num + 1):
             final_result.append(num)
 
         self.clear_items()
@@ -1424,11 +1479,15 @@ class EpisodeSelectView(View):
                     total_duration += item["duration"]
                 counter += 1
             total_duration = convert_duration_to_time(total_duration)
-            await self.ctx.send(f"正在将{total_num}首歌曲加入播放列表  "
-                                f"总时长 -> [{total_duration}]")
+            loading_msg = await self.ctx.send(f"正在将{total_num}首歌曲加入播放"
+                                              f"列表  总时长 -> [{total_duration}]")
 
             for num_p in final_result:
-                await play_bili(self.ctx, self.info_dict, "bili_p", num_p-1)
+                await play_bili(self.ctx, self.info_dict, "bili_p", num_p - 1)
+
+            await loading_msg.edit_message(
+                content=f"已将{total_num}首歌曲加入播放列表  "
+                        f"总时长 -> [{total_duration}]")
 
         # 如果为Bilibili合集视频
         elif self.source == "bili_collection":
@@ -1438,14 +1497,18 @@ class EpisodeSelectView(View):
                     total_duration += item["arc"]["duration"]
                 counter += 1
             total_duration = convert_duration_to_time(total_duration)
-            await self.ctx.send(f"正在将{total_num}首歌曲加入播放列表  "
-                                f"总时长 -> [{total_duration}]")
+            loading_msg = await self.ctx.send(f"正在将{total_num}首歌曲加入播放"
+                                              f"列表  总时长 -> [{total_duration}]")
 
             for num in final_result:
                 bvid = self.info_dict["ugc_season"]["sections"][0]["episodes"][
-                    num-1]["bvid"]
+                    num - 1]["bvid"]
                 info_dict = await bili_get_info(bvid)
                 await play_bili(self.ctx, info_dict, "bili_collection")
+
+            await loading_msg.edit_message(
+                content=f"已将{total_num}首歌曲加入播放列表  "
+                        f"总时长 -> [{total_duration}]")
 
         # 如果为Youtube播放列表
         elif self.source == "ytb_playlist":
@@ -1455,14 +1518,18 @@ class EpisodeSelectView(View):
                     total_duration += item["duration"]
                 counter += 1
             total_duration = convert_duration_to_time(total_duration)
-            await self.ctx.send(f"正在将{total_num}首歌曲加入播放列表  "
-                                f"总时长 -> [{total_duration}]")
+            loading_msg = await self.ctx.send(f"正在将{total_num}首歌曲加入播放"
+                                              f"列表  总时长 -> [{total_duration}]")
 
             for num in final_result:
                 url = f"https://www.youtube.com/watch?v=" \
-                      f"{self.info_dict['entries'][num-1]['id']}"
+                      f"{self.info_dict['entries'][num - 1]['id']}"
                 download_type, info_dict = ytb_get_info(url)
                 await play_ytb(self.ctx, url, info_dict, "ytb_playlist")
+
+            await loading_msg.edit_message(
+                content=f"已将{total_num}首歌曲加入播放列表  "
+                        f"总时长 -> [{total_duration}]")
 
         else:
             console_message_log(self.ctx, "未知的播放源")
@@ -1482,6 +1549,7 @@ class CheckBiliCollectionView(View):
     def __init__(self, ctx, info_dict, timeout=10):
         super().__init__(timeout=timeout)
         self.ctx = ctx
+        self.message = None
         self.info_dict = info_dict
         self.occur_time = str(datetime.datetime.now())[11:19]
         self.finish = False
@@ -1503,7 +1571,7 @@ class CheckBiliCollectionView(View):
                                 f"[{ep_duration}]\n"
             counter += 1
 
-        menu_list = make_menu_list(message)
+        menu_list = make_menu_list_10(message)
         view = EpisodeSelectView(self.ctx, "bili_collection", self.info_dict,
                                  menu_list)
         view.message = await self.ctx.send(f"{menu_list[0]}\n第[1]页，共["
@@ -1548,6 +1616,7 @@ async def ip(ctx):
         else:
             await ctx.send("You said no!")
 
+
 # -------------------------------------------------
 
 
@@ -1555,7 +1624,6 @@ async def ip(ctx):
 class SongOptionButton(Button):
 
     def __init__(self, ctx, song_id, row):
-
         super().__init__(
             label=f"[{row}]", style=discord.ButtonStyle.grey)
         self.ctx = ctx
@@ -1563,6 +1631,8 @@ class SongOptionButton(Button):
 
     async def callback(self, interaction):
         await play(self.ctx, f"https://www.youtube.com/watch?v={self.song_id}")
+
+
 # -------------------------------------------------
 
 

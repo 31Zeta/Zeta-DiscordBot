@@ -55,23 +55,55 @@ def check_url_source(url):
         return "else"
 
 
-def make_menu_list(menu):
+def find_by_appear_times(in_str, target, times):
     """
-    检测输入的字符串，每出现第“[10]”或10的倍数的选项时，分割字符串并加入列表
+    返回第times次target出现在in_str中的位置
+    """
+    counter = 0
+    start = 0
+    while counter != times:
+        target_index = in_str.find(target, start)
+        if target_index == -1:
+            return -1
+        else:
+            counter += 1
+            start = target_index + len(target)
+    start -= len(target)
+    return start
+
+
+def make_menu_list_line(menu, line_num):
+    """
+    检测输入的字符串menu，每经过line_num行时，分割字符串并加入列表
+    返回一个每页行数为line_num的选项列表
+    """
+    menu_list = []
+    start = 0
+    while not len(menu[start:]) == 0:
+        index = find_by_appear_times(menu, "\n", line_num)
+        if index == -1:
+            menu_list.append(menu)
+            return menu_list
+        menu_list.append(menu[:index + 1])
+        menu = menu[index + 1:]
+
+    return menu_list
+
+
+def make_menu_list_10(menu):
+    """
+    检测输入的字符串menu，每出现第“[10]”或10的倍数的选项时，分割字符串并加入列表
     返回一个每个元素为10的倍数的选项的列表
     """
     menu_list = []
     i = 1
     start = 0
-    finish = False
-    while not finish:
+    while not len(menu[start:]) == 0:
         ten_index = menu.find(f"[{i * 10}]")
         n_index = menu.find("\n", ten_index)
         menu_list.append(menu[start:n_index + 1])
         start = n_index + 1
         i += 1
-        if len(menu[start:]) == 0:
-            finish = True
     return menu_list
 
 
