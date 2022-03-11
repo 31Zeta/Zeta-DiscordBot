@@ -16,8 +16,8 @@ from tools import *
 system_option = 1  # Windows - 0 | Linux - 1
 bot_activity = "音乐"
 bot_activity_type = discord.ActivityType.listening
-version = "v0.4.0"
-update_time = "2022.03.08"
+version = "v0.4.1"
+update_time = "2022.03.10"
 # ---------------------------------------------
 
 client = discord.Client()
@@ -174,7 +174,7 @@ async def on_command_error(ctx, error):
         print(current_time + f" 位置:{ctx.guild}\n    用户 {str(ctx.author)} "
                              f"发送未知指令 {ctx.message.content}\n")
         write_log(current_time, f"{ctx.guild} 用户 {str(ctx.author)} "
-                                f"发送未知指令 {ctx.message.content}\n")
+                                f"发送未知指令 {ctx.message.content}")
 
         await ctx.send("未知指令\n使用 \\help 查询可用指令")
 
@@ -184,7 +184,7 @@ async def on_command_error(ctx, error):
                              f"发送指令 {ctx.message.content}\n发生错误如下：")
         write_log(current_time, f"{ctx.guild} 用户 {str(ctx.author)} "
                                 f"发送指令 {ctx.message.content}    "
-                                f"发生错误如下：{error}\n")
+                                f"发生错误如下：{error}")
         await ctx.send("发生未知错误")
         raise error
 
@@ -402,6 +402,9 @@ async def play(ctx, url_1="-1", *url_2):
         await ctx.send(f"恢复异常中断的播放列表")
         return
 
+    elif url == "-1" and current_playlist.is_empty():
+        await ctx.send("请在\p加一个空格后打出您想要播放的链接或想要搜索的名称")
+
     elif url == "-1":
         await resume(ctx)
 
@@ -501,7 +504,8 @@ async def play(ctx, url_1="-1", *url_2):
                                           view=view)
 
     else:
-        await search_ytb(ctx, url)
+        if url != "-1":
+            await search_ytb(ctx, url)
 
 
 async def play_next(ctx):
@@ -517,22 +521,13 @@ async def play_next(ctx):
     console_message_log(ctx, f"触发play_next")
 
     if current_playlist.size() > 1:
-        # 从播放列表中删除当前歌曲，返回下一歌曲
-        # next_song = current_playlist.next_song()
-        # title = next_song[0]
-        # path = next_song[1]
-        # duration = convert_duration_to_time(next_song[2])
-
-        # 删除上一首歌的缓存文件
-        # await delete_temp(ctx, last_title, last_path)
-
         # 移除上一首歌曲
         current_playlist.remove_select(0)
         # 获取下一首歌曲
         next_song = current_playlist.get(0)
-        title = next_song[0]
-        path = next_song[1]
-        duration = next_song[2]
+        title = next_song.title
+        path = next_song.path
+        duration = next_song.duration
 
         voice_client.play(
             discord.FFmpegPCMAudio(
@@ -675,7 +670,7 @@ async def skip(ctx, num1="-1", num2="-1"):
         # 不输入参数的情况
         if num1 == "-1" and num2 == "-1":
             current_song = current_playlist.get(0)
-            title = current_song[0]
+            title = current_song.title
             voice_client.stop()
 
             console_message_log(ctx, f"第1首歌曲 {title} 已被用户 {ctx.author} 移出播放队列")
@@ -689,7 +684,7 @@ async def skip(ctx, num1="-1", num2="-1"):
 
             elif int(num1) == 1:
                 current_song = current_playlist.get(0)
-                title = current_song[0]
+                title = current_song.title
                 voice_client.stop()
 
                 console_message_log(ctx, f"第1首歌曲 {title} "
@@ -698,9 +693,9 @@ async def skip(ctx, num1="-1", num2="-1"):
 
             else:
                 num1 = int(num1)
-                select_song = current_playlist.get(num1)
-                title = select_song[0]
-                current_playlist.remove_select(num1)
+                select_song = current_playlist.get(num1 - 1)
+                title = select_song.title
+                current_playlist.remove_select(num1 - 1)
 
                 console_message_log(ctx, f"第{num1}首歌曲 {title} "
                                          f"已被用户 {ctx.author} 移出播放队列")
@@ -714,7 +709,7 @@ async def skip(ctx, num1="-1", num2="-1"):
             # 如果需要跳过正在播放的歌，则需要先移除除第一首歌以外的歌曲，第一首由stop()触发play_next移除
             if num1 == 1:
                 for i in range(num2, num1, -1):
-                    current_playlist.remove_select(i)
+                    current_playlist.remove_select(i - 1)
                 voice_client.stop()
 
                 console_message_log(ctx, f"歌曲第{num1}到第{num2}首被用户 "
@@ -724,7 +719,7 @@ async def skip(ctx, num1="-1", num2="-1"):
             # 不需要跳过正在播放的歌
             else:
                 for i in range(num2, num1 - 1, -1):
-                    current_playlist.remove_select(i)
+                    current_playlist.remove_select(i - 1)
 
                 console_message_log(ctx, f"歌曲第{num1}到第{num2}首被用户 "
                                          f"{ctx.author} 移出播放队列")
@@ -1012,7 +1007,7 @@ async def clear(ctx):
     current_playlist = playlist_dict[ctx.guild.id]
 
     current_song = current_playlist.get(0)
-    current_song_title = current_song[0]
+    current_song_title = current_song.title
     # remove_all跳过正在播放的歌曲
     current_playlist.remove_all(current_song_title)
     # stop触发play_next删除正在播放的歌曲
