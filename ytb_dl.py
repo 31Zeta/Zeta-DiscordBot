@@ -46,7 +46,7 @@ def legal_name(name_str: str) -> str:
     """
 
     name_str = name_str.replace("\\", "_")
-    name_str = name_str.replace("/", " -")
+    name_str = name_str.replace("/", "_")
     name_str = name_str.replace(":", " -")
     name_str = name_str.replace("*", " -")
     name_str = name_str.replace("?", "")
