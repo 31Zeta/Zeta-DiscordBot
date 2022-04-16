@@ -1,10 +1,9 @@
 import re
-
-from bilibili_api import video, Credential, favorite_list
+from bilibili_api import video, Credential
 import aiohttp
 import os
-import asyncio
 import datetime
+from audio import Audio
 
 # https://bili.moyu.moe/#/examples/video
 
@@ -88,15 +87,15 @@ def bili_legal_name(name_str: str) -> str:
     :return: 转换后文件名
     """
 
-    name_str = name_str.replace("\\", "")
-    name_str = name_str.replace("/", "")
-    name_str = name_str.replace(":", "")
-    name_str = name_str.replace("*", "")
-    name_str = name_str.replace("?", "")
-    name_str = name_str.replace("\"", "")
-    name_str = name_str.replace("<", "")
-    name_str = name_str.replace(">", "")
-    name_str = name_str.replace("|", "")
+    name_str = name_str.replace("\\", "_")
+    name_str = name_str.replace("/", "_")
+    name_str = name_str.replace(":", "_")
+    name_str = name_str.replace("*", "_")
+    name_str = name_str.replace("?", "_")
+    name_str = name_str.replace("\"", "_")
+    name_str = name_str.replace("<", "_")
+    name_str = name_str.replace(">", "_")
+    name_str = name_str.replace("|", "_")
 
     return name_str
 
@@ -177,8 +176,8 @@ async def bili_video_download(bvid):
         print('已下载为：video.mp4')
 
 
-async def bili_audio_download(bvid, info_dict, download_type="bili_single",
-                              num_p=0):
+async def bili_audio_download(bvid: str, info_dict: dict, download_path: str,
+                              download_type="bili_single", num_p=0) -> Audio:
     # 实例化 Credential 类
     credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
     # 实例化 Video 类
@@ -194,14 +193,7 @@ async def bili_audio_download(bvid, info_dict, download_type="bili_single",
     title = bili_legal_name(title)
     duration = int(info_dict["pages"][num_p]["duration"])
 
-    # # 检查重名文件
-    # num = 0
-    # new_title = title
-    # while os.path.exists(f"./downloads/{title}.mp3"):
-    #     num += 1
-    #     new_title = title + f"_{num}"
-
-    path = f"./downloads/{title}.mp3"
+    path = f"{download_path}{title}.mp3"
 
     # 获取视频下载链接
     url = await v.get_download_url(num_p)
@@ -235,11 +227,9 @@ async def bili_audio_download(bvid, info_dict, download_type="bili_single",
     current_time = str(datetime.datetime.now())[:19]
     print("\n\n" + current_time + f"\n    下载完成\n")
 
-    return original_title, path, duration
+    audio = Audio(original_title)
+    audio.download_init(download_type, bvid, path, duration)
 
+    return audio
 
-if __name__ == '__main__':
-    a = asyncio.get_event_loop().run_until_complete(
-        bili_audio_download("BV1Hx411A7QU")
-    )
-    print(a)
+# asyncio.get_event_loop().run_until_complete()

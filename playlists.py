@@ -1,40 +1,21 @@
 import os
 import datetime
+import json
+from typing import Union
 
-
-class Audio:
-
-    def __init__(self, title):
-        self.title = title
-        self.source = "N/A"
-        self.source_id = "N/A"
-        self.path = "N/A"
-        self.duration = 0
-        self.duration_str = "N/A"
-
-    def download_init(self, source, source_id, path, duration):
-        self.source = source
-        self.source_id = source_id
-        self.path = path
-        self.duration = duration
-        self.duration_str = convert_duration_to_time(duration)
+from utils import convert_duration_to_time
+from audio import Audio
 
 
 class Playlist(list):
 
-    def __init__(self, log_path):
+    def __init__(self) -> None:
         list.__init__(self)
-        self.log_path = log_path
 
-    def playlist_console_message_log(self, message):
-        current_time = str(datetime.datetime.now())[:19]
-        print(current_time + f"\n    {message}\n")
-        with open(self.log_path, "a", encoding="utf-8") as log:
-            log.write(f"{current_time} {message}\n")
-
-    def get_playlist_str(self):
+    def get_playlist_str(self) -> Union[tuple, str]:
         """
         返回当前播放列表字符串与总时长的元组
+        如果列表为空则返回-1
         """
         result = ""
         if self.is_empty():
@@ -48,7 +29,7 @@ class Playlist(list):
             # f"\n    播放列表总时长 -> [{total}]"
             return result, total_duration
 
-    def total_duration(self):
+    def total_duration(self) -> int:
         """
         返回当前播放列表中剩余的音频的总时长，单位为秒
         """
@@ -57,16 +38,55 @@ class Playlist(list):
             total += audio.duration
         return total
 
-    def add_audio(self, new_audio: Audio):
+    def total_duration_str(self) -> str:
         """
-        向播放列表中新增一个音频
+        返回当前播放列表中剩余的音频的总时长，单位为秒
+        """
+        total = self.total_duration()
+        result = convert_duration_to_time(total)
+        return result
+
+    def add_audio(self, new_audio: Audio, index: int) -> None:
+        """
+        在播放列表中索引<index>之前插入一个音频
+
+        :param new_audio: 新增的音频
+        :param index: 加入音频的位置索引
+        :return:
+        """
+        self.insert(index, new_audio)
+
+    def append_audio(self, new_audio: Audio) -> None:
+        """
+        向播放列表的末尾添加一个音频
 
         :param new_audio: 新增的音频
         :return:
         """
         self.append(new_audio)
 
-    def is_empty(self):
+    def move_audio(self, from_index: int, to_index: int) -> None:
+        """
+        将<from_index>索引的音频移动到<to_index>的索引位置
+
+        :param from_index: 被移动音频的位置索引
+        :param to_index: 目的地位置索引
+        :return:
+        """
+        target_audio = self.pop(from_index)
+        self.insert(to_index, target_audio)
+
+    def swap_audio(self, index_1: int, index_2: int) -> None:
+        """
+        将<index_1>索引的音频与<index_2>索引的音频交换位置
+
+        :param index_1: 被移动音频的位置索引
+        :param index_2: 目的地位置索引
+        :return:
+        """
+        self[index_1], self[index_2] = self[index_2], self[index_1]
+
+    def is_empty(self) -> bool:
         """
         如果列表为空返回True，反之返回False
 
@@ -74,13 +94,13 @@ class Playlist(list):
         """
         return len(self) == 0
 
-    def size(self):
+    def size(self) -> int:
         """
         :return: 当前播放列表的长度
         """
         return len(self)
 
-    def get(self, index=0):
+    def get(self, index=0) -> Union[Audio, str]:
         """
         返回一个音频（类Audio），默认为列表中的第一个音频\n
         如音频不存在则返回-1
@@ -89,11 +109,11 @@ class Playlist(list):
         :return: 类Audio
         """
         if self.is_empty() or index > self.size() - 1:
-            return -1
+            return "-1"
         else:
             return self[index]
 
-    def get_title(self, index=0):
+    def get_title(self, index=0) -> str:
         """
         返回一个音频的标题，默认为列表中的第一个音频\n
         如音频不存在则返回-1
@@ -102,11 +122,11 @@ class Playlist(list):
         :return: 音频的标题
         """
         if self.is_empty() or index > self.size() - 1:
-            return -1
+            return "-1"
         else:
             return self.get(index).title
 
-    def get_path(self, index=0):
+    def get_path(self, index=0) -> str:
         """
         返回一个音频的文件存储路径，默认为列表中的第一个音频\n
         如音频不存在则返回-1
@@ -115,11 +135,11 @@ class Playlist(list):
         :return: 音频的文件存储路径
         """
         if self.is_empty() or index > self.size() - 1:
-            return -1
+            return "-1"
         else:
             return self.get(index).path
 
-    def get_duration(self, index=0):
+    def get_duration(self, index=0) -> int:
         """
         返回一个音频的时长，单位为秒，默认为列表中的第一个音频\n
         如音频不存在则返回-1
@@ -132,7 +152,7 @@ class Playlist(list):
         else:
             return self.get(index).duration
 
-    def get_duration_str(self, index=0):
+    def get_duration_str(self, index=0) -> str:
         """
         返回一个音频的时长，类型为字符串形式的时间格式，默认为列表中的第一个音频\n
         如音频不存在则返回-1
@@ -141,11 +161,11 @@ class Playlist(list):
         :return: 音频的长度
         """
         if self.is_empty() or index > self.size() - 1:
-            return -1
+            return "-1"
         else:
             return self.get(index).duration_str
 
-    def is_repeat(self, index=0):
+    def is_repeat(self, index=0) -> bool:
         """
         检测一个音频在列表中是否重复出现，如重复返回True，反之返回False，默认为当前歌曲
         （通过检索是否有相同路径）
@@ -163,9 +183,41 @@ class Playlist(list):
         else:
             return False
 
-    def remove_select(self, index):
+    def remove_select(self, index) -> None:
         """
-        将一首歌移出播放列表，如果播放列表后没有再出现这首歌曲，则删除其文件
+        将一个音频移出播放列表
+
+        :param index: 要移除的音频的索引
+        :return:
+        """
+        # 获取要移除的歌曲的信息
+        del self[index]
+
+    def remove_all(self) -> None:
+        """
+        将播放列表中的全部音频移出播放列表
+
+        :return:
+        """
+        for i in range(self.size() - 1, -1, -1):
+            self.remove_select(i)
+
+
+class GuildPlaylist(Playlist):
+
+    def __init__(self, log_path) -> None:
+        super().__init__()
+        self.log_path = log_path
+
+    def playlist_console_message_log(self, message) -> None:
+        current_time = str(datetime.datetime.now())[:19]
+        print(current_time + f"\n    {message}\n")
+        with open(self.log_path, "a", encoding="utf-8") as log:
+            log.write(f"{current_time} {message}\n")
+
+    def delete_select(self, index) -> None:
+        """
+        将一个音频移出播放列表，如果播放列表后没有再出现这个音频，则删除其文件
 
         :param index: 要移除的歌曲的索引
         :return:
@@ -188,9 +240,9 @@ class Playlist(list):
         else:
             self.playlist_console_message_log(f"歌曲 {audio.title} 发现重复，跳过文件删除")
 
-    def remove_all(self, exception="-1"):
+    def delete_all(self, exception="-1") -> None:
         """
-        将播放列表中的全部歌曲移出播放清单，并删除其文件\n
+        将播放列表中的全部音频移出播放列表，并删除其文件\n
         跳过exception的文件不进行删除
 
         :param exception: 跳过不删除的文件名称
@@ -201,40 +253,45 @@ class Playlist(list):
                 self.playlist_console_message_log(f"发现需跳过的文件 {self[i].title} "
                                                   f"不进行删除")
             else:
-                self.remove_select(i)
+                self.delete_select(i)
 
 
-def convert_duration_to_time(duration):
-    """
-    将获取的秒数转换为正常时间格式
+class CustomPlaylist(Playlist):
 
-    :param duration: 时长秒数
-    :return:
-    """
-    duration = int(duration)
+    def __init__(self, title) -> None:
+        super().__init__()
+        self.title = title
+        self.save_path = f"./playlists/{self.title}_playlist.json"
+        self.audio_json_path = "./audios/audios_library.json"
+        if os.path.exists(self.save_path):
+            with open(self.save_path, "r") as file:
+                lines = file.read()
+            input_list = json.loads(lines)
+            for item in input_list:
+                self.append(item)
 
-    if duration <= 0:
-        return "-1"
+    def save(self):
+        with open(f"{self.save_path}", "w") as file:
+            file.write(
+                json.dumps(self, default=lambda x: x.encode(),
+                           sort_keys=False, indent=4)
+            )
 
-    total_min = duration // 60
-    hour = total_min // 60
-    minutes = total_min % 60
-    seconds = duration % 60
+    def delete_select(self, index) -> None:
+        """
+        将一个音频移出播放列表，如果播放列表后没有再出现这个音频，则删除其文件
 
-    if 0 < hour < 10:
-        hour = f"0{hour}"
+        :param index: 要移除的歌曲的索引
+        :return:
+        """
+        pass
 
-    if minutes == 0:
-        minutes = "00"
-    elif minutes < 10:
-        minutes = f"0{minutes}"
+    def delete_all(self, exception="-1") -> None:
+        """
+        将播放列表中的全部音频移出播放列表，并删除其文件\n
+        跳过exception的文件不进行删除
 
-    if seconds == 0:
-        seconds = "00"
-    elif seconds < 10:
-        seconds = f"0{seconds}"
-
-    if hour == 0:
-        return f"{minutes}:{seconds}"
-
-    return f"{hour}:{minutes}:{seconds}"
+        :param exception: 跳过不删除的文件名称
+        :return:
+        """
+        pass

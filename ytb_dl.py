@@ -1,7 +1,6 @@
 from __future__ import unicode_literals
 from yt_dlp import YoutubeDL
-
-
+from audio import Audio
 # import asyncio
 
 
@@ -21,23 +20,34 @@ def ytb_get_info(ytb_url):
         return "ytb_playlist", info_dict
 
 
-def ytb_audio_download(ytb_url, info_dict):
+def ytb_audio_download(ytb_url, info_dict, download_path,
+                       download_type="ytb_single") -> Audio:
+
+    if download_path.endswith("/"):
+        download_path = download_path.rstrip("/")
+
+    video_title = info_dict["title"]
+    video_path_title = ytb_legal_name(video_title)
+    video_name_extension = info_dict["ext"]
+    video_duration = info_dict["duration"]
+
+    video_path = f"{download_path}/{video_path_title}.{video_name_extension}"
+
     ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': "./downloads/" + '/%(title)s.%(ext)s',
+        "format": "bestaudio/best",
+        "outtmpl": video_path
     }
 
     with YoutubeDL(ydl_opts) as ydl:
-        video_title = info_dict.get('title', None)
-        video_duration = info_dict.get('duration', None)
         ydl.download([ytb_url])
 
-    video_path = f"./downloads/{legal_name(video_title)}.webm"
+    audio = Audio(video_title)
+    audio.download_init(download_type, ytb_url, video_path, video_duration)
 
-    return video_title, video_path, video_duration
+    return audio
 
 
-def legal_name(name_str: str) -> str:
+def ytb_legal_name(name_str: str) -> str:
     """
     将字符串转换为合法的文件名
 
@@ -47,16 +57,12 @@ def legal_name(name_str: str) -> str:
 
     name_str = name_str.replace("\\", "_")
     name_str = name_str.replace("/", "_")
-    name_str = name_str.replace(":", " -")
-    name_str = name_str.replace("*", " -")
-    name_str = name_str.replace("?", "")
-    name_str = name_str.replace("\"", "'")
-    name_str = name_str.replace("<", " -")
-    name_str = name_str.replace(">", " -")
+    name_str = name_str.replace(":", "_")
+    name_str = name_str.replace("*", "_")
+    name_str = name_str.replace("?", "_")
+    name_str = name_str.replace("\"", "_")
+    name_str = name_str.replace("<", "_")
+    name_str = name_str.replace(">", "_")
     name_str = name_str.replace("|", "_")
 
     return name_str
-
-
-if __name__ == "__main__":
-    print(ytb_get_info("https://www.youtube.com/watch?v=h2Zf6kbPHtE&list=PL497uTpkfOYP3SPZonDNiHJDbc6Hz_Lxm"))

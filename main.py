@@ -1,24 +1,55 @@
 import discord
 from discord.ext import commands
 from discord.ui import Button, View
-from bilibili_dl import *
-from ytb_dl import *
+import sys
+import asyncio
+import datetime
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from bilibili_dl import bili_audio_download, bili_get_info, bili_get_bvid
+from ytb_dl import ytb_audio_download, ytb_get_info
 from youtubesearchpython import VideosSearch
-from audio_control import *
-from tools import *
+from utils import *
+from audio import Audio
+from user import User
+from playlists import GuildPlaylist, CustomPlaylist
+from audio_library import AudioLibrary
+from user_library import UserLibrary
+
 
 # pip install -U git+https://github.com/Pycord-Development/pycord
+# pip install requests
 # pip install bilibili-api
 # pip install yt-dlp
 # pip install youtube-search-python
+# pip install APScheduler
 
 # -------------------- 设置 --------------------
 system_option = 1  # Windows - 0 | Linux - 1
+version = "v0.5.0"
+update_time = "2022.04.16"
 bot_activity = "音乐"
 bot_activity_type = discord.ActivityType.listening
-version = "v0.4.1"
-update_time = "2022.03.10"
+auto_reboot = True
+auto_reboot_timezone = "Asia/Shanghai"
+auto_reboot_time = "20:00:00"
+auto_reboot_announcement = True
+auto_reboot_reminder = True
+ar_reminder_time = "19:55:00"
 # ---------------------------------------------
+
+update_log = "v0.5.0" \
+             "1. 新增用户记录以及用户组权限" \
+             "2. 重构播放列表格式与音频信息格式" \
+             "3. 新增定时重启功能（目前只有Linux可用）" \
+             "4. 新增move指令" \
+             "5. 新增reboot指令（仅限管理员或更高用户组使用）" \
+             "6. 自动提取play指令中的链接（播放检测到的第一个链接）" \
+             "7. list指令在超时后会固定在当时列表最后一次刷新时的第1页" \
+             "8. 指令现在不再区分大小写" \
+             "9. 修复了Youtube下载后找不到文件的bug"
+
+python_path = sys.executable
 
 client = discord.Client()
 
@@ -32,7 +63,9 @@ else:
     token_name = "test_token.txt"
 
 # 设定指令前缀符，关闭默认Help指令
-bot = commands.Bot(command_prefix=f'{command_prefix}', help_command=None)
+bot = commands.Bot(
+    command_prefix=f'{command_prefix}', help_command=None, case_insensitive=True
+)
 
 # 初始化运行环境
 current_time_main = str(datetime.datetime.now())[:19]
@@ -41,35 +74,42 @@ if not os.path.exists("./downloads"):
     os.mkdir("downloads")
     print("创建downloads文件夹")
 if not os.path.exists("./logs"):
-    os.mkdir("downloads")
+    os.mkdir("logs")
     print("创建logs文件夹")
-if not os.path.exists("./users"):
-    os.mkdir("users")
-    print("创建users文件夹")
-if not os.path.exists("./users/user_group.csv"):
-    print("未检测到user_group文件")
+if not os.path.exists("./playlists"):
+    os.mkdir("./playlists")
+    print("创建playlists文件夹")
+
 # 创建本次运行日志
 log_name_time = current_time_main.replace(":", "_")
 with open(f"./logs/{log_name_time}.txt", "a", encoding="utf-8"):
     pass
 log_path = f"./logs/{log_name_time}.txt"
+
+# 初始化本地音频库
+audio_library = AudioLibrary("./audios")
+print("初始化本地音频库")
+# 初始化本地用户库
+user_library = UserLibrary("./users")
+print("初始化本地用户库")
 # 清空下载文件夹
 clear_downloads()
-# 用于储存不同服务器的播放列表的字典
+print("清空本地临时下载文件夹")
+# 创建用于储存不同服务器的播放列表的总字典
 playlist_dict = {}
 print("初始化完成\n")
 
 
-def write_log(time, line):
+def write_log(current_time, line):
     """
     向运行日志写入当前时间与信息
 
-    :param time: 当前时间
+    :param current_time: 当前时间
     :param line: 要写入的信息
     :return:
     """
     with open(log_path, "a", encoding="utf-8") as log:
-        log.write(f"{time} {line}\n")
+        log.write(f"{current_time} {line}\n")
 
 
 def console_message_log(ctx, message):
@@ -119,18 +159,98 @@ def console_message_log_list(ctx):
     write_log(current_time, f"{ctx.guild} 当前播放列表：{current_list}")
 
 
-# 启动提示
+async def auto_reboot_function():
+    """
+    用于执行定时重启，如果auto_reboot_announcement为True则广播重启消息
+    """
+    current_time = str(datetime.datetime.now())[:19]
+    audio_library.save()
+    user_library.save()
+    if auto_reboot_announcement:
+        await system_broadcast(f"{current_time} 执行自动定时重启")
+    os.execl(python_path, python_path, * sys.argv)
+
+
+async def auto_reboot_reminder_function():
+    for guild in bot.guilds:
+        voice_client = guild.voice_client
+        if voice_client is not None:
+            await guild.text_channels[0].send(f"注意：将在5分钟后自动重启")
+
+
+async def first_contact_check(ctx):
+    user_library.load()
+    user_id = ctx.author.id
+    user_name = ctx.author.name
+    if str(ctx.author.id) not in user_library.library["users"]:
+        new_user = User(user_id, user_name, user_library.path)
+        new_user.first_contact()
+        user_library.add_user(new_user)
+        await ctx.send(f"你好啊{user_name}，很高兴认识你！\n"
+                       f"您可以通过聊天输入\\help来查询可以对我使用的指令")
+
+
+def author(ctx):
+    user_id = ctx.author.id
+    user_name = ctx.author.name
+    return User(user_id, user_name, user_library.path)
+
+
+async def authorized(ctx, action: str):
+    await first_contact_check(ctx)
+    return author(ctx).authorized(action)
+
+
+# 启动就绪时
 @bot.event
 async def on_ready():
     print(f"---------- 准备就绪 ----------\n"
           f"成功以 {bot.user} 的身份登录")
     current_time = str(datetime.datetime.now())[:19]
-    print("登录时间：" + current_time + "\n")
+    print("登录时间：" + current_time)
     write_log(current_time, f"准备就绪 以{bot.user}的身份登录")
 
+    # 启动定时任务框架
+    scheduler_1 = AsyncIOScheduler()
+    scheduler_2 = AsyncIOScheduler()
+
+    if auto_reboot:
+        # 设置自动重启
+        ar_time = time_str_split(auto_reboot_time)
+        scheduler_1.add_job(
+            auto_reboot_function, CronTrigger(
+                timezone=auto_reboot_timezone, hour=ar_time[0],
+                minute=ar_time[1], second=ar_time[2]
+            )
+        )
+
+        if auto_reboot_reminder:
+            # 设置自动重启提醒
+            ar_r_time = time_str_split(ar_reminder_time)
+            scheduler_2.add_job(
+                auto_reboot_reminder_function, CronTrigger(
+                    timezone=auto_reboot_timezone, hour=ar_r_time[0],
+                    minute=ar_r_time[1], second=ar_r_time[2]
+                )
+            )
+
+        scheduler_1.start()
+        scheduler_2.start()
+
+        print(f"设置自动重启时间为 "
+              f"{ar_time[0]}时{ar_time[1]}分{ar_time[2]}秒\n\n"
+              )
+        write_log(current_time,
+                  f"设置自动重启时间为 "
+                  f"{ar_time[0]}时"
+                  f"{ar_time[1]}分"
+                  f"{ar_time[2]}秒"
+                  )
+
     # 设置机器人状态
-    await bot.change_presence(activity=discord.Activity(
-        type=bot_activity_type, name=bot_activity))
+    await bot.change_presence(
+        activity=discord.Activity(type=bot_activity_type, name=bot_activity)
+    )
 
 
 @bot.event
@@ -255,6 +375,33 @@ async def say(ctx, *message) -> None:
 
 
 @bot.command()
+async def broadcast(ctx, *message):
+    """
+    让机器人在所有服务器的第一个频道发送参数message
+
+    :param ctx: 指令原句
+    :param message: 需要发送的信息
+    :return:
+    """
+    if await authorized(ctx, "broadcast"):
+        for guild in bot.guilds:
+            await guild.text_channels[0].send(" ".join(message))
+    else:
+        await ctx.reply("权限不足")
+
+
+async def system_broadcast(*message):
+    """
+    让机器人在所有服务器的第一个频道发送参数message
+
+    :param message: 需要发送的信息
+    :return:
+    """
+    for guild in bot.guilds:
+        await guild.text_channels[0].send(" ".join(message))
+
+
+@bot.command()
 async def join(ctx, channel_name="-1"):
     """
     让机器人加入指令发送者所在的语音频道并发送提示\n
@@ -269,6 +416,7 @@ async def join(ctx, channel_name="-1"):
 
     # 指令发送者未加入频道的情况
     if channel_name == "-1" and not ctx.author.voice:
+        console_message_log(ctx, f"频道加入失败，用户 {ctx.author} 发送指令时未加入任何语音频道")
         await ctx.reply("您未加入任何语音频道")
         return False
 
@@ -348,7 +496,7 @@ async def leave(ctx):
 
 def create_guild_playlist(ctx):
     if ctx.guild.id not in playlist_dict:
-        temp_list = Playlist(log_path)
+        temp_list = GuildPlaylist(log_path)
         playlist_dict[ctx.guild.id] = temp_list
         console_message_log(ctx, f"创建 {ctx.guild} 的播放列表")
 
@@ -378,6 +526,7 @@ async def play(ctx, url_1="-1", *url_2):
 
     # 检测机器人是否已经加入语音频道
     if ctx.guild.voice_client is None:
+        console_message_log(ctx, "机器人未在任何语音频道中，尝试加入语音频道")
         result = await join(ctx)
         if not result:
             return
@@ -394,23 +543,29 @@ async def play(ctx, url_1="-1", *url_2):
         path = current_playlist.get_path(0)
 
         voice_client.play(
-            discord.FFmpegPCMAudio(
-                executable=ffmpeg_path, source=path),
+            discord.FFmpegPCMAudio(executable=ffmpeg_path, source=path),
             after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), client.loop))
+                play_next(ctx), client.loop
+            )
+        )
 
+        console_message_log(ctx, "恢复异常中断的播放列表")
+        console_message_log_list(ctx)
         await ctx.send(f"恢复异常中断的播放列表")
         return
 
     elif url == "-1" and current_playlist.is_empty():
-        await ctx.send("请在\p加一个空格后打出您想要播放的链接或想要搜索的名称")
+        console_message_log(ctx, "播放列表为空，用户未输入任何参数")
+        await ctx.send("请在\\p加一个空格后打出您想要播放的链接或想要搜索的名称")
 
     elif url == "-1":
+        console_message_log(ctx, "用户未输入任何参数，尝试恢复播放")
         await resume(ctx)
 
     # 检查输入的URL属于哪个网站
     source = check_url_source(url)
-    console_message_log(ctx, f"检测输入的参数为类型：{source}")
+    console_message_log(ctx, f"检测输入的链接为类型：{source}")
+    url = get_url_from_str(url, source)
 
     # URL属于Bilibili
     if source == "bili_bvid" or source == "bili_url" or \
@@ -418,7 +573,12 @@ async def play(ctx, url_1="-1", *url_2):
 
         # 如果是Bilibili短链则获取重定向链接
         if source == "bili_short_url":
-            url = get_redirect_url(url)
+            try:
+                url = get_redirect_url(url)
+            except requests.exceptions.InvalidSchema:
+                await ctx.send("链接异常")
+                console_message_log(ctx, f"链接重定向失败")
+
             console_message_log(ctx, f"获取的重定向链接为 {url}")
 
         # 如果是URl则转换成BV号
@@ -437,14 +597,12 @@ async def play(ctx, url_1="-1", *url_2):
 
         # 单一视频 bili_single
         if info_dict["videos"] == 1 and "ugc_season" not in info_dict:
-            console_message_log(ctx, f"检测 {url} 为类型：bili_single")
             loading_msg = await ctx.send("正在加载Bilibili歌曲")
             await play_bili(ctx, info_dict, "bili_single", 0)
             await loading_msg.delete()
 
         # 合集视频 bili_collection
         elif "ugc_season" in info_dict:
-            console_message_log(ctx, f"检测 {url} 为类型：bili_collection")
             await play_bili(ctx, info_dict, "bili_single", 0)
 
             collection_title = info_dict["ugc_season"]["title"]
@@ -454,7 +612,6 @@ async def play(ctx, url_1="-1", *url_2):
 
         # 分P视频 bili_p
         else:
-            console_message_log(ctx, f"检测 {url} 为类型：bili_p")
             message = "这是一个分p视频, 请选择要播放的分p:\n"
             for item in info_dict["pages"]:
                 p_num = item["page"]
@@ -478,14 +635,12 @@ async def play(ctx, url_1="-1", *url_2):
 
         # 单一视频 ytb_single
         if url_type == "ytb_single":
-            console_message_log(ctx, f"检测 {url} 为类型：ytb_single")
             loading_msg = await ctx.send("正在加载Youtube歌曲")
-            await play_ytb(ctx, url, info_dict, "normal")
+            await play_ytb(ctx, url, info_dict, url_type)
             await loading_msg.delete()
 
         # 播放列表 ytb_playlist
         else:
-            console_message_log(ctx, f"检测 {url} 为类型：ytb_playlist")
             message = "这是一个播放列表, 请选择要播放的集数:\n"
             counter = 1
             for item in info_dict["entries"]:
@@ -522,7 +677,7 @@ async def play_next(ctx):
 
     if current_playlist.size() > 1:
         # 移除上一首歌曲
-        current_playlist.remove_select(0)
+        current_playlist.delete_select(0)
         # 获取下一首歌曲
         next_song = current_playlist.get(0)
         title = next_song.title
@@ -530,10 +685,11 @@ async def play_next(ctx):
         duration = next_song.duration
 
         voice_client.play(
-            discord.FFmpegPCMAudio(
-                executable=ffmpeg_path, source=path),
+            discord.FFmpegPCMAudio(executable=ffmpeg_path, source=path),
             after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), client.loop))
+                play_next(ctx), client.loop
+            )
+        )
 
         duration = convert_duration_to_time(duration)
         console_message_log(ctx, f"开始播放：{title} [{duration}] {path}")
@@ -542,7 +698,7 @@ async def play_next(ctx):
         await ctx.send(f"正在播放：**{title} [{duration}]**")
 
     else:
-        current_playlist.remove_select(0)
+        current_playlist.delete_select(0)
 
         console_message_log(ctx, "播放队列已结束")
 
@@ -570,33 +726,33 @@ async def play_bili(ctx, info_dict, download_type="bili_single", num_option=0):
 
     bvid = info_dict["bvid"]
 
-    title, path, duration = await bili_audio_download(
-        bvid, info_dict, download_type, num_option)
+    audio = await bili_audio_download(
+        bvid, info_dict, "./downloads/", download_type, num_option)
 
-    duration_str = convert_duration_to_time(duration)
+    duration_str = audio.duration_str
 
     # 如果当前播放列表为空
     if current_playlist.is_empty() and not voice_client.is_playing():
 
         voice_client.play(
-            discord.FFmpegPCMAudio(
-                executable=ffmpeg_path, source=path),
+            discord.FFmpegPCMAudio(executable=ffmpeg_path, source=audio.path),
             after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), client.loop))
+                play_next(ctx), client.loop
+            )
+        )
 
-        console_message_log(ctx, f"开始播放：{title} [{duration_str}] {path}")
-        await ctx.send(f"正在播放：**{title} [{duration_str}]**")
+        console_message_log(ctx, f"开始播放：{audio.title} [{duration_str}] "
+                                 f"{audio.path}")
+        await ctx.send(f"正在播放：**{audio.title} [{duration_str}]**")
 
     # 如果播放列表不为空
     elif download_type == "bili_single":
-        await ctx.send(f"已加入播放列表：**{title} [{duration_str}]**")
+        await ctx.send(f"已加入播放列表：**{audio.title} [{duration_str}]**")
 
-    new_audio = Audio(title)
-    new_audio.download_init(download_type, bvid, path, duration)
-    current_playlist.add_audio(new_audio)
-    console_message_log(ctx, f"歌曲 {title} [{duration_str}] 已加入播放列表")
+    current_playlist.append_audio(audio)
+    console_message_log(ctx, f"歌曲 {audio.title} [{duration_str}] 已加入播放列表")
 
-    return title, duration
+    return audio
 
 
 async def play_ytb(ctx, url, info_dict, download_type="ytb_single"):
@@ -618,33 +774,32 @@ async def play_ytb(ctx, url, info_dict, download_type="ytb_single"):
 
     current_playlist = playlist_dict[ctx.guild.id]
 
-    title, path, duration = \
-        ytb_audio_download(url, info_dict)
+    audio = ytb_audio_download(url, info_dict, "./downloads/", download_type)
 
-    duration_str = convert_duration_to_time(duration)
+    duration_str = audio.duration_str
 
     # 如果当前播放列表为空
     if current_playlist.is_empty() and not voice_client.is_playing():
 
         voice_client.play(
-            discord.FFmpegPCMAudio(
-                executable=ffmpeg_path, source=path),
+            discord.FFmpegPCMAudio(executable=ffmpeg_path, source=audio.path),
             after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), client.loop))
+                play_next(ctx), client.loop
+            )
+        )
 
-        console_message_log(ctx, f"开始播放：{title} [{duration_str}] {path}")
-        await ctx.send(f"正在播放：**{title} [{duration_str}]**")
+        console_message_log(ctx, f"开始播放：{audio.title} [{duration_str}] "
+                                 f"{audio.path}")
+        await ctx.send(f"正在播放：**{audio.title} [{duration_str}]**")
 
     # 如果播放列表不为空
     elif download_type == "ytb_single":
-        await ctx.send(f"已加入播放列表：**{title} [{duration_str}]**")
+        await ctx.send(f"已加入播放列表：**{audio.title} [{duration_str}]**")
 
-    new_audio = Audio(title)
-    new_audio.download_init(download_type, url, path, duration)
-    current_playlist.add_audio(new_audio)
-    console_message_log(ctx, f"歌曲 {title} [{duration_str}] 已加入播放列表")
+    current_playlist.append_audio(audio)
+    console_message_log(ctx, f"歌曲 {audio.title} [{duration_str}] 已加入播放列表")
 
-    return title, duration
+    return audio
 
 
 @bot.command()
@@ -689,13 +844,17 @@ async def skip(ctx, num1="-1", num2="-1"):
 
                 console_message_log(ctx, f"第1首歌曲 {title} "
                                          f"已被用户 {ctx.author} 移出播放队列")
-                await ctx.send(f"已跳过当前歌曲  **{title}**")
+                await ctx.send(f"已跳过当前歌曲 **{title}**")
+
+            elif int(num1) > current_playlist.size():
+                console_message_log(ctx, f"用户 {ctx.author} 输入的序号不在范围内")
+                await ctx.reply(f"选择的序号不在范围内")
 
             else:
                 num1 = int(num1)
                 select_song = current_playlist.get(num1 - 1)
                 title = select_song.title
-                current_playlist.remove_select(num1 - 1)
+                current_playlist.delete_select(num1 - 1)
 
                 console_message_log(ctx, f"第{num1}首歌曲 {title} "
                                          f"已被用户 {ctx.author} 移出播放队列")
@@ -709,17 +868,22 @@ async def skip(ctx, num1="-1", num2="-1"):
             # 如果需要跳过正在播放的歌，则需要先移除除第一首歌以外的歌曲，第一首由stop()触发play_next移除
             if num1 == 1:
                 for i in range(num2, num1, -1):
-                    current_playlist.remove_select(i - 1)
+                    current_playlist.delete_select(i - 1)
                 voice_client.stop()
 
                 console_message_log(ctx, f"歌曲第{num1}到第{num2}首被用户 "
                                          f"{ctx.author} 移出播放队列")
                 await ctx.send(f"歌曲第{num1}到第{num2}首已被移出播放队列")
 
+            elif int(num1) > current_playlist.size() or \
+                    int(num2) > current_playlist.size():
+                console_message_log(ctx, f"用户 {ctx.author} 输入的序号不在范围内")
+                await ctx.reply(f"选择的序号不在范围内")
+
             # 不需要跳过正在播放的歌
             else:
                 for i in range(num2, num1 - 1, -1):
-                    current_playlist.remove_select(i - 1)
+                    current_playlist.delete_select(i - 1)
 
                 console_message_log(ctx, f"歌曲第{num1}到第{num2}首被用户 "
                                          f"{ctx.author} 移出播放队列")
@@ -731,6 +895,64 @@ async def skip(ctx, num1="-1", num2="-1"):
 
     else:
         await ctx.send("当前播放列表已为空")
+
+
+@bot.command()
+async def move(ctx, from_index: int, to_index: int):
+    console_message_log_command(ctx)
+
+    # 检测总词典是否有此服务器的播放列表
+    if ctx.guild.id not in playlist_dict:
+        create_guild_playlist(ctx)
+
+    voice_client = ctx.guild.voice_client
+    current_playlist = playlist_dict[ctx.guild.id]
+
+    # 两个参数相同的情况
+    if from_index == to_index:
+        await ctx.send("您搁这儿搁这儿呢")
+
+    # 先将音频复制到目的位置，然后通过stop移除正在播放的音频
+    # 因为有重复所以stop不会删除本地文件
+
+    # 将第一个音频移走的情况
+    elif from_index == 1:
+        current_song = current_playlist.get(0)
+        title = current_song.title
+        current_playlist.add_audio(current_song, to_index)
+        voice_client.stop()
+
+        console_message_log(ctx, f"音频 {title} 已被用户 {ctx.author} "
+                                 f"移至播放队列第 {to_index} 位")
+        await ctx.send(f"**{title}** 已被移至播放队列第 **{to_index}** 位")
+
+    # 将音频移到当前位置
+    elif to_index == 1:
+        current_song = current_playlist.get(0)
+        target_song = current_playlist.get(from_index - 1)
+        title = target_song.title
+        current_playlist.remove_select(from_index - 1)
+        current_playlist.add_audio(current_song, 1)
+        current_playlist.add_audio(target_song, 1)
+        voice_client.stop()
+
+        console_message_log(ctx, f"音频 {title} 已被用户 {ctx.author} "
+                                 f"移至播放队列第 {to_index} 位")
+        await ctx.send(f"**{title}** 已被移至播放队列第 **{to_index}** 位")
+
+    else:
+        target_song = current_playlist.get(from_index - 1)
+        title = target_song.title
+        if from_index < to_index:
+            current_playlist.add_audio(target_song, to_index)
+            current_playlist.remove_select(from_index - 1)
+        else:
+            current_playlist.add_audio(target_song, to_index - 1)
+            current_playlist.remove_select(from_index)
+
+        console_message_log(ctx, f"音频 {title} 已被用户 {ctx.author} "
+                                 f"移至播放队列第 {to_index} 位")
+        await ctx.send(f"**{title}** 已被移至播放队列第 **{to_index}** 位")
 
 
 async def search_ytb(ctx, *input_name):
@@ -905,9 +1127,21 @@ async def pause(ctx):
 
 @bot.command()
 async def stop(ctx):
-    # """pause方法别名"""
+    console_message_log_command(ctx)
     voice_client = ctx.guild.voice_client
-    voice_client.stop()
+
+    if voice_client is not None and voice_client.is_playing():
+        voice_client.stop()
+
+    else:
+        console_message_log(ctx, "收到stop指令时机器人未在播放任何音乐")
+        await ctx.send("未在播放任何音乐")
+
+
+@bot.command()
+async def restart(ctx):
+    """resume方法别名"""
+    await resume(ctx)
 
 
 @bot.command()
@@ -1009,7 +1243,7 @@ async def clear(ctx):
     current_song = current_playlist.get(0)
     current_song_title = current_song.title
     # remove_all跳过正在播放的歌曲
-    current_playlist.remove_all(current_song_title)
+    current_playlist.delete_all(current_song_title)
     # stop触发play_next删除正在播放的歌曲
     voice_client.stop()
 
@@ -1017,24 +1251,37 @@ async def clear(ctx):
     await ctx.send("播放列表已清空")
 
 
-async def shutdown(ctx):
-    """
-    登出机器人
-
-    :param ctx: 指令原句
-    :return:
-    """
-    console_message_log_command(ctx)
-
-    await ctx.send("32Zeta已登出")
-    await ctx.bot.logout()
-
-
 @bot.command()
 async def print_dict(ctx):
     console_message_log_command(ctx)
     print(playlist_dict)
     print()
+
+
+@discord.command()
+async def reboot(ctx):
+    """
+    重启程序
+    """
+    if await authorized(ctx, "reboot"):
+        console_message_log_command(ctx)
+        await ctx.send("正在重启")
+        os.execl(python_path, python_path, * sys.argv)
+    else:
+        await ctx.reply("权限不足")
+
+
+@discord.command()
+async def shutdown(ctx):
+    """
+    退出程序
+    """
+    if await authorized(ctx, "shutdown"):
+        console_message_log_command(ctx)
+        await ctx.send("正在关闭")
+        await bot.close()
+    else:
+        await ctx.reply("权限不足")
 
 
 class Menu(View):
@@ -1112,6 +1359,9 @@ class PlaylistMenu(View):
         self.page_num = 0
         self.result = []
         self.occur_time = str(datetime.datetime.now())[11:19]
+        # 保留当前第一页作为超时后显示的内容
+        self.first_page = f">>> **播放列表**\n\n{self.menu_list[0]}\n" \
+                          f"第[1]页，共[{len(self.menu_list)}]页\n"
 
     @discord.ui.button(label="上一页", style=discord.ButtonStyle.grey,
                        custom_id="button_previous")
@@ -1128,7 +1378,7 @@ class PlaylistMenu(View):
         else:
             self.page_num -= 1
         await msg.edit_message(
-            content=f">>> **当前播放列表**\n\n{self.menu_list[self.page_num]}\n"
+            content=f">>> **播放列表**\n\n{self.menu_list[self.page_num]}\n"
                     f"第[{self.page_num + 1}]页，"
                     f"共[{len(self.menu_list)}]页\n", view=self)
 
@@ -1147,7 +1397,7 @@ class PlaylistMenu(View):
         else:
             self.page_num += 1
         await msg.edit_message(
-            content=f">>> **当前播放列表**\n\n{self.menu_list[self.page_num]}\n"
+            content=f">>> **播放列表**\n\n{self.menu_list[self.page_num]}\n"
                     f"第[{self.page_num + 1}]页，"
                     f"共[{len(self.menu_list)}]页\n", view=self)
 
@@ -1160,9 +1410,11 @@ class PlaylistMenu(View):
             get_playlist_str()
         playlist_list = make_menu_list_10(playlist_str)
         self.menu_list = playlist_list
+        self.first_page = f">>> **播放列表**\n\n{self.menu_list[0]}\n" \
+                          f"第[1]页，共[{len(self.menu_list)}]页\n"
 
         await msg.edit_message(
-            content=f">>> **当前播放列表**\n\n{self.menu_list[self.page_num]}\n"
+            content=f">>> **播放列表**\n\n{self.menu_list[self.page_num]}\n"
                     f"第[{self.page_num + 1}]页，"
                     f"共[{len(self.menu_list)}]页\n", view=self)
 
@@ -1177,8 +1429,7 @@ class PlaylistMenu(View):
 
     async def on_timeout(self):
         self.clear_items()
-
-        await self.message.delete()
+        await self.message.edit(content=self.first_page, view=self)
         console_message_log(self.ctx, f"{self.occur_time}生成的播放列表菜单已超时"
                                       f"(超时时间为{self.timeout}秒)")
 
@@ -1706,20 +1957,23 @@ class CheckBiliCollectionView(View):
 async def ip(ctx):
     await ctx.send(f"y or n")
 
-    def check(msg):
+    def response_check(msg):
         return msg.author == ctx.author and msg.channel == ctx.channel
 
     try:
-        message = await bot.wait_for("message", timeout=3, check=check)
+        message = await bot.wait_for("message", timeout=3, check=response_check)
     except asyncio.TimeoutError:
         await ctx.send("timeout")
     else:
-        if message.content.lower() == "y":
+        if message.content.lower() == ".y":
             await ctx.send("You said yes!")
-        else:
+        elif message.content.lower() == ".n":
             await ctx.send("You said no!")
 
 
+@bot.command()
+async def hi(ctx):
+    await first_contact_check(ctx)
 # -------------------------------------------------
 
 
@@ -1734,8 +1988,6 @@ class SongOptionButton(Button):
 
     async def callback(self, interaction):
         await play(self.ctx, f"https://www.youtube.com/watch?v={self.song_id}")
-
-
 # -------------------------------------------------
 
 
