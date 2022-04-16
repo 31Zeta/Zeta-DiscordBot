@@ -26,7 +26,7 @@ from user_library import UserLibrary
 
 # -------------------- 设置 --------------------
 system_option = 1  # Windows - 0 | Linux - 1
-version = "v0.5.0"
+version = "v0.5.1"
 update_time = "2022.04.16"
 bot_activity = "音乐"
 bot_activity_type = discord.ActivityType.listening
@@ -44,10 +44,15 @@ update_log = "v0.5.0" \
              "3. 新增定时重启功能（目前只有Linux可用）" \
              "4. 新增move指令" \
              "5. 新增reboot指令（仅限管理员或更高用户组使用）" \
+             "6. 新增shutdown指令（仅限Root用户组使用）" \
              "6. 自动提取play指令中的链接（播放检测到的第一个链接）" \
              "7. list指令在超时后会固定在当时列表最后一次刷新时的第1页" \
              "8. 指令现在不再区分大小写" \
-             "9. 修复了Youtube下载后找不到文件的bug"
+             "9. 修复了Youtube下载后找不到文件的bug" \
+             "" \
+             "v0.5.1" \
+             "1. 修复reboot指令与shutdown指令无法使用的问题" \
+             "2. 在help中添加move指令的说明"
 
 python_path = sys.executable
 
@@ -347,6 +352,8 @@ async def help(ctx):
                        "- 跳过第{A}首到第{B}首歌曲\n" \
                        "    **skip** ***all***\n            " \
                        "- 清空服务器播放列表（all可用星号代替）" \
+                       "    **move** **A B**\n" \
+                       "- 将播放列表中位于第{A}首的歌曲移动到第{B}首\n" \
                        "    **pause**\n            " \
                        "- 暂停播放\n" \
                        "    **resume**\n            " \
@@ -1258,7 +1265,7 @@ async def print_dict(ctx):
     print()
 
 
-@discord.command()
+@bot.command()
 async def reboot(ctx):
     """
     重启程序
@@ -1271,7 +1278,7 @@ async def reboot(ctx):
         await ctx.reply("权限不足")
 
 
-@discord.command()
+@bot.command()
 async def shutdown(ctx):
     """
     退出程序
