@@ -25,9 +25,9 @@ from user_library import UserLibrary
 # pip install APScheduler
 
 # -------------------- 设置 --------------------
-system_option = 1  # Windows - 0 | Linux - 1
-version = "v0.5.1"
-update_time = "2022.04.16"
+system_option = 0  # Windows - 0 | Linux - 1
+version = "v0.5.2"
+update_time = "2022.04.17"
 bot_activity = "音乐"
 bot_activity_type = discord.ActivityType.listening
 auto_reboot = True
@@ -45,14 +45,19 @@ update_log = "v0.5.0" \
              "4. 新增move指令" \
              "5. 新增reboot指令（仅限管理员或更高用户组使用）" \
              "6. 新增shutdown指令（仅限Root用户组使用）" \
-             "6. 自动提取play指令中的链接（播放检测到的第一个链接）" \
-             "7. list指令在超时后会固定在当时列表最后一次刷新时的第1页" \
-             "8. 指令现在不再区分大小写" \
-             "9. 修复了Youtube下载后找不到文件的bug" \
+             "7. 自动提取play指令中的链接（播放检测到的第一个链接）" \
+             "8. list指令在超时后会固定在当时列表最后一次刷新时的第1页" \
+             "9. 指令现在不再区分大小写" \
+             "10. 修复了Youtube下载后找不到文件的bug" \
              "" \
              "v0.5.1" \
              "1. 修复reboot指令与shutdown指令无法使用的问题" \
-             "2. 在help中添加move指令的说明"
+             "2. 在help中添加move指令的说明" \
+             "" \
+             "v0.5.2" \
+             "1. 修复了play指令搜索产生N/A的bug" \
+             "2. 修复help指令错误" \
+             "3. 添加了指令中包含引号的报错信息"
 
 python_path = sys.executable
 
@@ -303,6 +308,16 @@ async def on_command_error(ctx, error):
 
         await ctx.send("未知指令\n使用 \\help 查询可用指令")
 
+    elif isinstance(error, discord.ext.commands.errors.UnexpectedQuoteError):
+        current_time = str(datetime.datetime.now())[:19]
+        print(current_time + f" 位置:{ctx.guild}\n    用户 {str(ctx.author)} "
+                             f"发送的指令 {ctx.message.content} 包含无效符号\n")
+        write_log(current_time, f"{ctx.guild} 用户 {str(ctx.author)} "
+                                f"发送的指令 {ctx.message.content} 包含无效符号")
+
+        await ctx.send("指令中请不要包含以下符号：\n"
+                       "“『”、“』”和引号")
+
     else:
         current_time = str(datetime.datetime.now())[:19]
         print(current_time + f" 位置:{ctx.guild}\n    用户 {str(ctx.author)} "
@@ -351,7 +366,7 @@ async def help(ctx):
                        "    **skip** ***A B***\n            " \
                        "- 跳过第{A}首到第{B}首歌曲\n" \
                        "    **skip** ***all***\n            " \
-                       "- 清空服务器播放列表（all可用星号代替）" \
+                       "- 清空服务器播放列表（all可用星号代替）\n" \
                        "    **move** **A B**\n" \
                        "- 将播放列表中位于第{A}首的歌曲移动到第{B}首\n" \
                        "    **pause**\n            " \
@@ -572,7 +587,10 @@ async def play(ctx, url_1="-1", *url_2):
     # 检查输入的URL属于哪个网站
     source = check_url_source(url)
     console_message_log(ctx, f"检测输入的链接为类型：{source}")
-    url = get_url_from_str(url, source)
+
+    # 如果指令中包含链接则提取链接
+    if source != "unknown":
+        url = get_url_from_str(url, source)
 
     # URL属于Bilibili
     if source == "bili_bvid" or source == "bili_url" or \
@@ -962,9 +980,8 @@ async def move(ctx, from_index: int, to_index: int):
         await ctx.send(f"**{title}** 已被移至播放队列第 **{to_index}** 位")
 
 
-async def search_ytb(ctx, *input_name):
-    name = " ".join(input_name)
-    name = name.strip()
+async def search_ytb(ctx, input_name):
+    name = input_name.strip()
 
     if name == "":
         ctx.reply("请输入要搜索的名称")
