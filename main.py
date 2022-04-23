@@ -10,11 +10,11 @@ from bilibili_dl import bili_audio_download, bili_get_info, bili_get_bvid
 from ytb_dl import ytb_audio_download, ytb_get_info
 from youtubesearchpython import VideosSearch
 from utils import *
-from audio import Audio
 from user import User
-from playlists import GuildPlaylist, CustomPlaylist
+from playlists import GuildPlaylist
 from audio_library import AudioLibrary
 from user_library import UserLibrary
+from help_menu import HelpMenuView
 
 
 # pip install -U git+https://github.com/Pycord-Development/pycord
@@ -25,9 +25,9 @@ from user_library import UserLibrary
 # pip install APScheduler
 
 # -------------------- 设置 --------------------
-system_option = 0  # Windows - 0 | Linux - 1
-version = "v0.5.2"
-update_time = "2022.04.17"
+system_option = 1  # Windows - 0 | Linux - 1
+version = "v0.6.0"
+update_time = "2022.04.23"
 bot_activity = "音乐"
 bot_activity_type = discord.ActivityType.listening
 auto_reboot = True
@@ -38,26 +38,12 @@ auto_reboot_reminder = True
 ar_reminder_time = "19:55:00"
 # ---------------------------------------------
 
-update_log = "v0.5.0" \
-             "1. 新增用户记录以及用户组权限" \
-             "2. 重构播放列表格式与音频信息格式" \
-             "3. 新增定时重启功能（目前只有Linux可用）" \
-             "4. 新增move指令" \
-             "5. 新增reboot指令（仅限管理员或更高用户组使用）" \
-             "6. 新增shutdown指令（仅限Root用户组使用）" \
-             "7. 自动提取play指令中的链接（播放检测到的第一个链接）" \
-             "8. list指令在超时后会固定在当时列表最后一次刷新时的第1页" \
-             "9. 指令现在不再区分大小写" \
-             "10. 修复了Youtube下载后找不到文件的bug" \
-             "" \
-             "v0.5.1" \
-             "1. 修复reboot指令与shutdown指令无法使用的问题" \
-             "2. 在help中添加move指令的说明" \
-             "" \
-             "v0.5.2" \
-             "1. 修复了play指令搜索产生N/A的bug" \
-             "2. 修复help指令错误" \
-             "3. 添加了指令中包含引号的报错信息"
+update_log = "v0.6.0" \
+             "1. 新增调整音频播放音量的功能和与其对应的volume指令" \
+             "2. 新增指令别名：list: l, move: m, volume: v, resume: r/restart" \
+             "3. 修复了因使用leave指令导致正在播放的歌曲被移出播放列表的问题" \
+             "4. 修复了因使用leave指令后再次直接使用play指令会导致的无法播放音频的问题" \
+             "5. 制作了全新的帮助菜单"
 
 python_path = sys.executable
 
@@ -107,6 +93,8 @@ clear_downloads()
 print("清空本地临时下载文件夹")
 # 创建用于储存不同服务器的播放列表的总字典
 playlist_dict = {}
+# 创建用于储存不同服务器的音量的总字典
+volume_dict = {}
 print("初始化完成\n")
 
 
@@ -156,9 +144,7 @@ def console_message_log_list(ctx):
     :param ctx: ctx
     :return:
     """
-    # 检测总词典是否有此服务器的播放列表
-    if ctx.guild.id not in playlist_dict:
-        create_guild_playlist(ctx)
+    guild_initialize(ctx)
 
     current_time = str(datetime.datetime.now())[:19]
     current_list = "["
@@ -167,6 +153,14 @@ def console_message_log_list(ctx):
     current_list = current_list + "]"
     print(current_time + f" 位置：{ctx.guild}\n    当前播放列表：{current_list}\n")
     write_log(current_time, f"{ctx.guild} 当前播放列表：{current_list}")
+
+
+def guild_initialize(ctx):
+    if ctx.guild.id not in playlist_dict:
+        temp_list = GuildPlaylist(log_path)
+        playlist_dict[ctx.guild.id] = temp_list
+        volume_dict[ctx.guild.id] = 100.0
+        console_message_log(ctx, f"初始化服务器 {ctx.guild} 的播放设置")
 
 
 async def auto_reboot_function():
@@ -345,43 +339,9 @@ async def help(ctx):
     :return:
     """
     console_message_log_command(ctx)
-    help_menu_page_1 = "**指令列表：**\n" \
-                       "前缀符为反斜杠 \\\n" \
-                       "    **info**\n            " \
-                       "- 查看32Zeta的当前版本号和更新日期\n" \
-                       "    **join**\n            " \
-                       "- 让32Zeta加入指令发送者所在的语音频道\n" \
-                       "    **join** ***A***\n            " \
-                       "- 让32Zeta加入语音频道A\n" \
-                       "    **leave**\n            " \
-                       "- 让32Zeta离开语音频道\n" \
-                       "    **play** ***名称***\n            " \
-                       "- 如输入名称为Bilibili或Youtube的网页链接，则播放对应网页链接的" \
-                       "音频; 如输入的为歌曲名称则将在Youtube上搜索相关前5的视频, 选择一" \
-                       "首进行播放; 如不输入任何名称则恢复被暂停的播放\n"
-    help_menu_page_2 = ">>>    **skip**\n            " \
-                       "- 跳过当前歌曲\n" \
-                       "    **skip** ***A***\n            " \
-                       "- 跳过第{A}首歌曲\n" \
-                       "    **skip** ***A B***\n            " \
-                       "- 跳过第{A}首到第{B}首歌曲\n" \
-                       "    **skip** ***all***\n            " \
-                       "- 清空服务器播放列表（all可用星号代替）\n" \
-                       "    **move** **A B**\n" \
-                       "- 将播放列表中位于第{A}首的歌曲移动到第{B}首\n" \
-                       "    **pause**\n            " \
-                       "- 暂停播放\n" \
-                       "    **resume**\n            " \
-                       "- 恢复播放\n" \
-                       "    **list**\n            " \
-                       "- 发送当前服务器播放列表\n" \
-                       "    **help**\n            " \
-                       "- 你这不正看着呢(～￣▽￣)～\n"
 
-    help_menu = [help_menu_page_1, help_menu_page_2]
-    view = HelpMenu(ctx, help_menu)
-    view.message = await ctx.send(
-        content=help_menu_page_1 + f"\n第[1]页，共[{len(help_menu)}]页\n", view=view)
+    view = HelpMenuView(ctx)
+    view.message = await ctx.send(content=view.catalog, view=view)
 
 
 async def say(ctx, *message) -> None:
@@ -501,11 +461,17 @@ async def leave(ctx):
     :return:
     """
     console_message_log_command(ctx)
+    voice_client = ctx.guild.voice_client
+    current_playlist = playlist_dict[ctx.guild.id]
+
+    # 防止因退出频道自动删除正在播放的音频
+    if voice_client.is_playing():
+        current_audio = current_playlist.get(0)
+        current_playlist.add_audio(current_audio, 0)
 
     if ctx.guild.voice_client is not None:
         voice_client = ctx.guild.voice_client
         last_channel = voice_client.channel
-        # await clear(ctx)
         await voice_client.disconnect()
 
         console_message_log(ctx, f"离开频道 {last_channel}")
@@ -516,21 +482,59 @@ async def leave(ctx):
         await ctx.send("32Zeta没有连接到任何语音频道")
 
 
-def create_guild_playlist(ctx):
-    if ctx.guild.id not in playlist_dict:
-        temp_list = GuildPlaylist(log_path)
-        playlist_dict[ctx.guild.id] = temp_list
-        console_message_log(ctx, f"创建 {ctx.guild} 的播放列表")
+@bot.command(aliases=["v"])
+async def volume(ctx, volume_num="send_current_volume"):
+
+    console_message_log_command(ctx)
+    voice_client = ctx.guild.voice_client
+    guild_initialize(ctx)
+    current_volume = volume_dict[ctx.guild.id]
+
+    if volume_num == "send_current_volume":
+        await ctx.send(f"当前音量为 **{current_volume}%**")
+    elif volume_num == "up" or volume_num == "u":
+        if current_volume + 20.0 >= 200:
+            current_volume = 200.0
+        else:
+            current_volume += 20.0
+        if voice_client.is_playing():
+            voice_client.source.volume = current_volume / 100.0
+        volume_dict[ctx.guild.id] = current_volume
+        console_message_log(
+            ctx, f"用户 {ctx.author} 已将音量设置为 {current_volume}%")
+        await ctx.send(f"将音量提升至 **{current_volume}%**")
+    elif volume_num == "down" or volume_num == "d":
+        if current_volume - 20.0 <= 0.0:
+            current_volume = 0.0
+        else:
+            current_volume -= 20.0
+        if voice_client.is_playing():
+            voice_client.source.volume = current_volume / 100.0
+        volume_dict[ctx.guild.id] = current_volume
+        console_message_log(
+            ctx, f"用户 {ctx.author} 已将音量设置为 {current_volume}%")
+        await ctx.send(f"将音量降低至 **{current_volume}%**")
+    else:
+        try:
+            volume_num = float(int(float(volume_num)))
+        except ValueError:
+            await ctx.reply(
+                "请输入up或down来提升或降低音量或一个0-200的数字来设置音量")
+            return
+        if volume_num > 200.0 or volume_num < 0.0:
+            await ctx.reply(
+                "请输入up或down来提升或降低音量或一个0-200的数字来设置音量")
+        else:
+            current_volume = volume_num
+            if voice_client.is_playing():
+                voice_client.source.volume = current_volume / 100.0
+            volume_dict[ctx.guild.id] = current_volume
+            console_message_log(
+                ctx, f"用户 {ctx.author} 已将音量设置为 {current_volume}%")
+            await ctx.send(f"已将音量设置为 **{current_volume}%**")
 
 
-@bot.command()
-async def p(ctx, url_1="-1", *url_2):
-    """play方法别名"""
-    url = url_1 + " ".join(url_2)
-    await play(ctx, url)
-
-
-@bot.command()
+@bot.command(aliases=["p"])
 async def play(ctx, url_1="-1", *url_2):
     """
     使机器人下载目标BV号音频后播放并将其标题与文件路径记录进当前服务器的播放列表
@@ -544,7 +548,8 @@ async def play(ctx, url_1="-1", *url_2):
     console_message_log_command(ctx)
 
     url = url_1 + " ".join(url_2)
-    voice_client = ctx.guild.voice_client
+    guild_initialize(ctx)
+    current_playlist = playlist_dict[ctx.guild.id]
 
     # 检测机器人是否已经加入语音频道
     if ctx.guild.voice_client is None:
@@ -553,36 +558,12 @@ async def play(ctx, url_1="-1", *url_2):
         if not result:
             return
 
-    # 检测总词典是否有此服务器的播放列表
-    if ctx.guild.id not in playlist_dict:
-        create_guild_playlist(ctx)
+    # 尝试恢复之前被停止的播放
+    await resume(ctx, play_call=True)
 
-    current_playlist = playlist_dict[ctx.guild.id]
-
-    # 机器人在频道中，没有在播放，并且播放列表不为空的情况
-    if voice_client is not None and not voice_client.is_playing and \
-            not current_playlist.is_empty():
-        path = current_playlist.get_path(0)
-
-        voice_client.play(
-            discord.FFmpegPCMAudio(executable=ffmpeg_path, source=path),
-            after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), client.loop
-            )
-        )
-
-        console_message_log(ctx, "恢复异常中断的播放列表")
-        console_message_log_list(ctx)
-        await ctx.send(f"恢复异常中断的播放列表")
-        return
-
-    elif url == "-1" and current_playlist.is_empty():
+    if url == "-1" and current_playlist.is_empty():
         console_message_log(ctx, "播放列表为空，用户未输入任何参数")
         await ctx.send("请在\\p加一个空格后打出您想要播放的链接或想要搜索的名称")
-
-    elif url == "-1":
-        console_message_log(ctx, "用户未输入任何参数，尝试恢复播放")
-        await resume(ctx)
 
     # 检查输入的URL属于哪个网站
     source = check_url_source(url)
@@ -710,11 +691,14 @@ async def play_next(ctx):
         duration = next_song.duration
 
         voice_client.play(
-            discord.FFmpegPCMAudio(executable=ffmpeg_path, source=path),
-            after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), client.loop
-            )
+            discord.PCMVolumeTransformer(
+                discord.FFmpegPCMAudio(
+                    executable=ffmpeg_path, source=path
+                )
+            ), after=lambda e: asyncio.run_coroutine_threadsafe(
+                play_next(ctx), client.loop)
         )
+        voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
 
         duration = convert_duration_to_time(duration)
         console_message_log(ctx, f"开始播放：{title} [{duration}] {path}")
@@ -742,10 +726,7 @@ async def play_bili(ctx, info_dict, download_type="bili_single", num_option=0):
     """
 
     voice_client = ctx.guild.voice_client
-
-    # 检测总词典是否有此服务器的播放列表
-    if ctx.guild.id not in playlist_dict:
-        create_guild_playlist(ctx)
+    guild_initialize(ctx)
 
     current_playlist = playlist_dict[ctx.guild.id]
 
@@ -760,11 +741,14 @@ async def play_bili(ctx, info_dict, download_type="bili_single", num_option=0):
     if current_playlist.is_empty() and not voice_client.is_playing():
 
         voice_client.play(
-            discord.FFmpegPCMAudio(executable=ffmpeg_path, source=audio.path),
-            after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), client.loop
-            )
+            discord.PCMVolumeTransformer(
+                discord.FFmpegPCMAudio(
+                    executable=ffmpeg_path, source=audio.path
+                )
+            ), after=lambda e: asyncio.run_coroutine_threadsafe(
+                play_next(ctx), client.loop)
         )
+        voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
 
         console_message_log(ctx, f"开始播放：{audio.title} [{duration_str}] "
                                  f"{audio.path}")
@@ -792,10 +776,7 @@ async def play_ytb(ctx, url, info_dict, download_type="ytb_single"):
     """
 
     voice_client = ctx.guild.voice_client
-
-    # 检测总词典是否有此服务器的播放列表
-    if ctx.guild.id not in playlist_dict:
-        create_guild_playlist(ctx)
+    guild_initialize(ctx)
 
     current_playlist = playlist_dict[ctx.guild.id]
 
@@ -807,11 +788,14 @@ async def play_ytb(ctx, url, info_dict, download_type="ytb_single"):
     if current_playlist.is_empty() and not voice_client.is_playing():
 
         voice_client.play(
-            discord.FFmpegPCMAudio(executable=ffmpeg_path, source=audio.path),
-            after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), client.loop
-            )
+            discord.PCMVolumeTransformer(
+                discord.FFmpegPCMAudio(
+                    executable=ffmpeg_path, source=audio.path
+                )
+            ), after=lambda e: asyncio.run_coroutine_threadsafe(
+                play_next(ctx), client.loop)
         )
+        voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
 
         console_message_log(ctx, f"开始播放：{audio.title} [{duration_str}] "
                                  f"{audio.path}")
@@ -839,9 +823,7 @@ async def skip(ctx, num1="-1", num2="-1"):
     """
     console_message_log_command(ctx)
 
-    # 检测总词典是否有此服务器的播放列表
-    if ctx.guild.id not in playlist_dict:
-        create_guild_playlist(ctx)
+    guild_initialize(ctx)
 
     voice_client = ctx.guild.voice_client
     current_playlist = playlist_dict[ctx.guild.id]
@@ -922,20 +904,21 @@ async def skip(ctx, num1="-1", num2="-1"):
         await ctx.send("当前播放列表已为空")
 
 
-@bot.command()
-async def move(ctx, from_index: int, to_index: int):
+@bot.command(aliases=["m"])
+async def move(ctx, from_index=-1, to_index=-1):
     console_message_log_command(ctx)
 
-    # 检测总词典是否有此服务器的播放列表
-    if ctx.guild.id not in playlist_dict:
-        create_guild_playlist(ctx)
+    guild_initialize(ctx)
 
     voice_client = ctx.guild.voice_client
     current_playlist = playlist_dict[ctx.guild.id]
 
+    if from_index == -1 or to_index == -1:
+        await ctx.reply("请输入想要移动的歌曲序号以及想要移动到的位置")
+
     # 两个参数相同的情况
-    if from_index == to_index:
-        await ctx.send("您搁这儿搁这儿呢")
+    elif from_index == to_index:
+        await ctx.reply("您搁这儿搁这儿呢")
 
     # 先将音频复制到目的位置，然后通过stop移除正在播放的音频
     # 因为有重复所以stop不会删除本地文件
@@ -1149,31 +1132,13 @@ async def pause(ctx):
         await ctx.send("未在播放任何音乐")
 
 
-@bot.command()
-async def stop(ctx):
-    console_message_log_command(ctx)
-    voice_client = ctx.guild.voice_client
-
-    if voice_client is not None and voice_client.is_playing():
-        voice_client.stop()
-
-    else:
-        console_message_log(ctx, "收到stop指令时机器人未在播放任何音乐")
-        await ctx.send("未在播放任何音乐")
-
-
-@bot.command()
-async def restart(ctx):
-    """resume方法别名"""
-    await resume(ctx)
-
-
-@bot.command()
-async def resume(ctx):
+@bot.command(aliases=["r", "restart"])
+async def resume(ctx, play_call=False):
     """
     恢复播放
 
     :param ctx: 指令原句
+    :param play_call: 是否是由play指令调用来尝试恢复播放
     :return:
     """
     console_message_log_command(ctx)
@@ -1205,19 +1170,24 @@ async def resume(ctx):
             path = current_playlist.get_path(0)
 
             voice_client.play(
-                discord.FFmpegPCMAudio(
-                    executable=ffmpeg_path, source=path),
-                after=lambda e: asyncio.run_coroutine_threadsafe(
-                    play_next(ctx), client.loop))
+                discord.PCMVolumeTransformer(
+                    discord.FFmpegPCMAudio(
+                        executable=ffmpeg_path, source=path
+                    )
+                ), after=lambda e: asyncio.run_coroutine_threadsafe(
+                    play_next(ctx), client.loop)
+            )
+            voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
 
-            await ctx.send(f"恢复上次异常中断的播放列表")
+            console_message_log(ctx, "恢复中断的播放列表")
+            await ctx.send(f"恢复上次中断的播放列表")
 
-        else:
+        elif not play_call:
             console_message_log(ctx, "收到resume指令时机器人没有任何被暂停的音乐")
             await ctx.send("当前没有任何被暂停的音乐")
 
 
-@bot.command()
+@bot.command(aliases=["l"])
 async def list(ctx):
     """
     将当前服务器播放列表发送到服务器文字频道中
@@ -1228,9 +1198,7 @@ async def list(ctx):
     console_message_log_command(ctx)
     console_message_log_list(ctx)
 
-    # 检测总词典是否有此服务器的播放列表
-    if ctx.guild.id not in playlist_dict:
-        create_guild_playlist(ctx)
+    guild_initialize(ctx)
 
     if ctx.guild.id not in playlist_dict:
         await ctx.send("当前播放列表为空")
@@ -1256,10 +1224,7 @@ async def clear(ctx):
     :param ctx: 指令原句
     :return:
     """
-
-    # 检测总词典是否有此服务器的播放列表
-    if ctx.guild.id not in playlist_dict:
-        create_guild_playlist(ctx)
+    guild_initialize(ctx)
 
     voice_client = ctx.guild.voice_client
     current_playlist = playlist_dict[ctx.guild.id]
@@ -1273,13 +1238,6 @@ async def clear(ctx):
 
     console_message_log(ctx, f"用户 {ctx.author} 已清空所在服务器的播放列表")
     await ctx.send("播放列表已清空")
-
-
-@bot.command()
-async def print_dict(ctx):
-    console_message_log_command(ctx)
-    print(playlist_dict)
-    print()
 
 
 @bot.command()
@@ -1365,12 +1323,6 @@ class Menu(View):
         await self.message.delete()
         console_message_log(self.ctx, f"{self.occur_time}生成的菜单已超时"
                                       f"(超时时间为{self.timeout}秒)")
-
-
-class HelpMenu(Menu):
-
-    def __init__(self, ctx, menu_list):
-        super().__init__(ctx, menu_list, "帮助菜单", 60)
 
 
 class PlaylistMenu(View):
@@ -1998,7 +1950,7 @@ async def ip(ctx):
 @bot.command()
 async def hi(ctx):
     await first_contact_check(ctx)
-# -------------------------------------------------
+# -------------------------------------------------.volume
 
 
 # ------------------ 代码保留区域 ------------------
