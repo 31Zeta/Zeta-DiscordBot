@@ -26,8 +26,8 @@ from help_menu import HelpMenuView
 
 # -------------------- 设置 --------------------
 system_option = 1  # Windows - 0 | Linux - 1
-version = "v0.6.0"
-update_time = "2022.04.23"
+version = "v0.6.1"
+update_time = "2022.04.24"
 bot_activity = "音乐"
 bot_activity_type = discord.ActivityType.listening
 auto_reboot = True
@@ -43,7 +43,11 @@ update_log = "v0.6.0" \
              "2. 新增指令别名：list: l, move: m, volume: v, resume: r/restart" \
              "3. 修复了因使用leave指令导致正在播放的歌曲被移出播放列表的问题" \
              "4. 修复了因使用leave指令后再次直接使用play指令会导致的无法播放音频的问题" \
-             "5. 制作了全新的帮助菜单"
+             "5. 制作了全新的帮助菜单" \
+             "v0.6.1" \
+             "1. 修复了使用play指令时会弹出“当前正在播放音乐”的bug" \
+             "2. 修复了正在播放音乐时使用Youtube搜索选择歌曲后没有加入播放列表提示的bug" \
+             "3. 将自动重启通知调整为仅在机器人语音频道在线的服务器广播"
 
 python_path = sys.executable
 
@@ -171,7 +175,10 @@ async def auto_reboot_function():
     audio_library.save()
     user_library.save()
     if auto_reboot_announcement:
-        await system_broadcast(f"{current_time} 执行自动定时重启")
+        for guild in bot.guilds:
+            voice_client = guild.voice_client
+            if voice_client is not None:
+                await guild.text_channels[0].send(f"{current_time} 执行自动定时重启")
     os.execl(python_path, python_path, * sys.argv)
 
 
@@ -395,6 +402,7 @@ async def join(ctx, channel_name="-1"):
     :return:
     """
     console_message_log_command(ctx)
+    guild_initialize(ctx)
 
     # 指令发送者未加入频道的情况
     if channel_name == "-1" and not ctx.author.voice:
@@ -461,6 +469,7 @@ async def leave(ctx):
     :return:
     """
     console_message_log_command(ctx)
+    guild_initialize(ctx)
     voice_client = ctx.guild.voice_client
     current_playlist = playlist_dict[ctx.guild.id]
 
@@ -486,8 +495,8 @@ async def leave(ctx):
 async def volume(ctx, volume_num="send_current_volume"):
 
     console_message_log_command(ctx)
-    voice_client = ctx.guild.voice_client
     guild_initialize(ctx)
+    voice_client = ctx.guild.voice_client
     current_volume = volume_dict[ctx.guild.id]
 
     if volume_num == "send_current_volume":
@@ -531,7 +540,7 @@ async def volume(ctx, volume_num="send_current_volume"):
             volume_dict[ctx.guild.id] = current_volume
             console_message_log(
                 ctx, f"用户 {ctx.author} 已将音量设置为 {current_volume}%")
-            await ctx.send(f"已将音量设置为 **{current_volume}%**")
+            await ctx.send(f"将音量设置为 **{current_volume}%**")
 
 
 @bot.command(aliases=["p"])
@@ -549,7 +558,6 @@ async def play(ctx, url_1="-1", *url_2):
 
     url = url_1 + " ".join(url_2)
     guild_initialize(ctx)
-    current_playlist = playlist_dict[ctx.guild.id]
 
     # 检测机器人是否已经加入语音频道
     if ctx.guild.voice_client is None:
@@ -561,8 +569,8 @@ async def play(ctx, url_1="-1", *url_2):
     # 尝试恢复之前被停止的播放
     await resume(ctx, play_call=True)
 
-    if url == "-1" and current_playlist.is_empty():
-        console_message_log(ctx, "播放列表为空，用户未输入任何参数")
+    if url == "-1":
+        console_message_log(ctx, "用户未输入任何参数")
         await ctx.send("请在\\p加一个空格后打出您想要播放的链接或想要搜索的名称")
 
     # 检查输入的URL属于哪个网站
@@ -725,8 +733,8 @@ async def play_bili(ctx, info_dict, download_type="bili_single", num_option=0):
     :return: （歌曲标题，歌曲时长）
     """
 
-    voice_client = ctx.guild.voice_client
     guild_initialize(ctx)
+    voice_client = ctx.guild.voice_client
 
     current_playlist = playlist_dict[ctx.guild.id]
 
@@ -775,8 +783,8 @@ async def play_ytb(ctx, url, info_dict, download_type="ytb_single"):
     :return: （歌曲标题，歌曲时长）
     """
 
-    voice_client = ctx.guild.voice_client
     guild_initialize(ctx)
+    voice_client = ctx.guild.voice_client
 
     current_playlist = playlist_dict[ctx.guild.id]
 
@@ -822,9 +830,7 @@ async def skip(ctx, num1="-1", num2="-1"):
     :return:
     """
     console_message_log_command(ctx)
-
     guild_initialize(ctx)
-
     voice_client = ctx.guild.voice_client
     current_playlist = playlist_dict[ctx.guild.id]
 
@@ -907,9 +913,7 @@ async def skip(ctx, num1="-1", num2="-1"):
 @bot.command(aliases=["m"])
 async def move(ctx, from_index=-1, to_index=-1):
     console_message_log_command(ctx)
-
     guild_initialize(ctx)
-
     voice_client = ctx.guild.voice_client
     current_playlist = playlist_dict[ctx.guild.id]
 
@@ -1024,7 +1028,7 @@ class SearchSelectView(View):
                                                 f"watch?v={self.options[0][1]}")
         await play_ytb(
             self.ctx, f"https://www.youtube.com/watch?v={self.options[0][1]}",
-            info_dict, "normal")
+            info_dict, "ytb_single")
 
     @discord.ui.button(label="2", style=discord.ButtonStyle.grey,
                        custom_id="button_2")
@@ -1039,7 +1043,7 @@ class SearchSelectView(View):
                                                 f"watch?v={self.options[1][1]}")
         await play_ytb(
             self.ctx, f"https://www.youtube.com/watch?v={self.options[1][1]}",
-            info_dict, "normal")
+            info_dict, "ytb_single")
 
     @discord.ui.button(label="3", style=discord.ButtonStyle.grey,
                        custom_id="button_3")
@@ -1054,7 +1058,7 @@ class SearchSelectView(View):
                                                 f"watch?v={self.options[2][1]}")
         await play_ytb(
             self.ctx, f"https://www.youtube.com/watch?v={self.options[2][1]}",
-            info_dict, "normal")
+            info_dict, "ytb_single")
 
     @discord.ui.button(label="4", style=discord.ButtonStyle.grey,
                        custom_id="button_4")
@@ -1069,7 +1073,7 @@ class SearchSelectView(View):
                                                 f"watch?v={self.options[3][1]}")
         await play_ytb(
             self.ctx, f"https://www.youtube.com/watch?v={self.options[3][1]}",
-            info_dict, "normal")
+            info_dict, "ytb_single")
 
     @discord.ui.button(label="5", style=discord.ButtonStyle.grey,
                        custom_id="button_5")
@@ -1084,7 +1088,7 @@ class SearchSelectView(View):
                                                 f"watch?v={self.options[4][1]}")
         await play_ytb(
             self.ctx, f"https://www.youtube.com/watch?v={self.options[4][1]}",
-            info_dict, "normal")
+            info_dict, "ytb_single")
 
     @discord.ui.button(label="取消", style=discord.ButtonStyle.red,
                        custom_id="button_cancel")
@@ -1114,7 +1118,7 @@ async def pause(ctx):
     :return:
     """
     console_message_log_command(ctx)
-
+    guild_initialize(ctx)
     voice_client = ctx.guild.voice_client
 
     if voice_client is not None and voice_client.is_playing():
@@ -1142,47 +1146,53 @@ async def resume(ctx, play_call=False):
     :return:
     """
     console_message_log_command(ctx)
-
+    guild_initialize(ctx)
     voice_client = ctx.guild.voice_client
     current_playlist = playlist_dict[ctx.guild.id]
 
-    if voice_client is not None:
+    # 未加入语音频道的情况
+    if voice_client is None:
+        if not play_call:
+            console_message_log(ctx, "收到resume指令时机器人没有加入任何语音频道")
+            await ctx.send("32Zeta尚未加入任何语音频道")
 
-        # 被暂停播放的情况
-        if voice_client.is_paused():
-            if ctx.author.voice and \
-                    voice_client.channel == ctx.author.voice.channel:
-                voice_client.resume()
-                console_message_log(ctx, "恢复播放")
-                await ctx.send("恢复播放")
-            else:
-                console_message_log(ctx, f"收到pause指令时指令发出者 {ctx.author} "
-                                         f"不在机器人所在的频道")
-                await ctx.reply("您不在32Zeta所在的频道")
+    # 被暂停播放的情况
+    elif voice_client.is_paused():
+        if ctx.author.voice and \
+                voice_client.channel == ctx.author.voice.channel:
+            voice_client.resume()
+            console_message_log(ctx, "恢复播放")
+            await ctx.send("恢复播放")
+        else:
+            console_message_log(ctx, f"收到pause指令时指令发出者 {ctx.author} "
+                                     f"不在机器人所在的频道")
+            await ctx.reply("您不在32Zeta所在的频道")
 
-        # 没有被暂停并且正在播放的情况
-        elif voice_client.is_playing():
+    # 没有被暂停并且正在播放的情况
+    elif voice_client.is_playing():
+        if not play_call:
             console_message_log(ctx, "收到resume指令时机器人正在播放音乐")
             await ctx.send("当前正在播放音乐")
 
-        # 没有被暂停，没有正在播放，并且播放列表中存在歌曲的情况
-        elif not current_playlist.is_empty():
-            path = current_playlist.get_path(0)
+    # 没有被暂停，没有正在播放，并且播放列表中存在歌曲的情况
+    elif not current_playlist.is_empty():
+        path = current_playlist.get_path(0)
 
-            voice_client.play(
-                discord.PCMVolumeTransformer(
-                    discord.FFmpegPCMAudio(
-                        executable=ffmpeg_path, source=path
-                    )
-                ), after=lambda e: asyncio.run_coroutine_threadsafe(
-                    play_next(ctx), client.loop)
-            )
-            voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
+        voice_client.play(
+            discord.PCMVolumeTransformer(
+                discord.FFmpegPCMAudio(
+                    executable=ffmpeg_path, source=path
+                )
+            ), after=lambda e: asyncio.run_coroutine_threadsafe(
+                play_next(ctx), client.loop)
+        )
+        voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
 
-            console_message_log(ctx, "恢复中断的播放列表")
-            await ctx.send(f"恢复上次中断的播放列表")
+        console_message_log(ctx, "恢复中断的播放列表")
+        await ctx.send(f"恢复上次中断的播放列表")
 
-        elif not play_call:
+    else:
+        if not play_call:
             console_message_log(ctx, "收到resume指令时机器人没有任何被暂停的音乐")
             await ctx.send("当前没有任何被暂停的音乐")
 
@@ -1197,7 +1207,6 @@ async def list(ctx):
     """
     console_message_log_command(ctx)
     console_message_log_list(ctx)
-
     guild_initialize(ctx)
 
     if ctx.guild.id not in playlist_dict:
@@ -1225,7 +1234,6 @@ async def clear(ctx):
     :return:
     """
     guild_initialize(ctx)
-
     voice_client = ctx.guild.voice_client
     current_playlist = playlist_dict[ctx.guild.id]
 
