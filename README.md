@@ -1,7 +1,10 @@
 # Zeta Discord机器人
 一个基于Pycord的Discord机器人  
+作者目前业余编程，如有不规范的地方请多多包涵与指教  
   
 **不推荐使用0.6.1或更早版本（这些版本中机器人将以32Zeta自称并且机器人相关设置在main.py文件中）**  
+  
+**0.7.0版本将于近日推出**
   
 核心功能
 --------
@@ -17,12 +20,12 @@
  pip install -r requirements.txt
  ```  
 或手动安装以下包：  
-- pycord (2.0或更高版本)  
-- APScheduler  
-- bilibili-api  
-- requests  
-- yt-dlp  
-- youtube-search-python  
+- py-cord (2.0或更高版本) https://github.com/Pycord-Development/pycord  
+- APScheduler https://github.com/agronholm/apscheduler  
+- bilibili-api https://github.com/MoyuScript/bilibili-api  
+- requests https://github.com/psf/requests  
+- yt-dlp https://github.com/yt-dlp/yt-dlp  
+- youtube-search-python https://github.com/alexmercerind/youtube-search-python  
   
 使用以下指令将本库克隆到本地：  
 ```
