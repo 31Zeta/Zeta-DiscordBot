@@ -37,8 +37,11 @@ Windows系统请前往ffmpeg官网 https://ffmpeg.org/download.html 获取ffmpeg
   
 Linux系统可使用库内bin文件夹内自带的ffmpeg或前往ffmpeg官网 https://ffmpeg.org/download.html 获取最新版ffmpeg  
   
-**0.6.1及更早版本**请将ffmpeg或ffmpeg.exe放入库根目录的bin文件夹中  
-打开main.py根据使用的系统将设置中的system_option设为对应数值  
+**0.6.1及更早版本**需进行如下操作：  
+1. 请将ffmpeg或ffmpeg.exe放入库根目录的bin文件夹中  
+2. 打开main.py根据使用的系统将设置中的system_option设为对应数值  
+3. 创建一个txt文件并将Discord机器人令牌存储到其中，默认情况下Linux系统将文件重命名为token.txt，Windows系统则重命名为test_token.txt，并将该文件置于库根目录下（请自行搜索如何创建Discord机器人及获得其令牌token）  
+4. 根据需求修改main.py中设置内的变量，机器人指令前缀以及令牌文件名称可根据需要搜索变量名command_prefix以及token_name进行修改  
   
 使用python运行**main.py**以运行机器人  
 根据提示完成设置，保持窗口打开以确保机器人正常运行  
