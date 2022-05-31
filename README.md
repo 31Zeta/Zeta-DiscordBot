@@ -2,7 +2,7 @@
 一个基于Pycord的Discord机器人  
 作者目前业余编程，如有不规范的地方请多多包涵与指教  
   
-**不推荐使用0.6.1或更早版本（这些版本中机器人将以32Zeta自称并且机器人相关设置在main.py文件中）**  
+**不推荐使用0.6.1或更早版本（这些版本中机器人的相关设置存储在main.py文件中且设置极不完善）**  
   
 **0.7.0版本将于近日推出**
   
@@ -20,7 +20,7 @@
  pip install -r requirements.txt
  ```  
 或手动安装以下包：  
-- py-cord (2.0或更高版本) https://github.com/Pycord-Development/pycord  
+- py-cord (v2.0.0-beta.4) https://github.com/Pycord-Development/pycord  
 - APScheduler https://github.com/agronholm/apscheduler  
 - bilibili-api https://github.com/MoyuScript/bilibili-api  
 - requests https://github.com/psf/requests  
