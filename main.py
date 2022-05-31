@@ -4,6 +4,7 @@ from discord.ui import Button, View
 import sys
 import asyncio
 import datetime
+import argparse
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from bilibili_dl import bili_audio_download, bili_get_info, bili_get_bvid
@@ -15,91 +16,26 @@ from playlists import GuildPlaylist
 from audio_library import AudioLibrary
 from user_library import UserLibrary
 from help_menu import HelpMenuView
+from setting import Setting
+from errors import *
 
 
-# pip install -U git+https://github.com/Pycord-Development/pycord
-# pip install requests
-# pip install bilibili-api
-# pip install yt-dlp
-# pip install youtube-search-python
-# pip install APScheduler
+version = "0.7.0"
+py_cord_version = discord.__version__
+update_time = "2022.06.01"
+update_log = "0.7.0" \
+             "- 设置与机器人令牌现在会保存在本地文件setting.json中" \
+             "- 新增服务器端的设置配置界面" \
+             "- 新增启动模式，命令行中使用 python main.py --mode=setting 启动设置配置界面" \
+             "- 机器人可以拥有自己的名字啦！前往设置中修改" \
+             "- 修改了info指令显示的内容" \
+             "- 帮助菜单现在会随着指令前缀符的不同改变" \
+             "- 新增用户组修改指令change_user_group和change_user_group_id"
 
-# -------------------- 设置 --------------------
-system_option = 1  # Windows - 0 | Linux - 1
-version = "v0.6.1"
-update_time = "2022.04.24"
-bot_activity = "音乐"
-bot_activity_type = discord.ActivityType.listening
-auto_reboot = True
-auto_reboot_timezone = "Asia/Shanghai"
-auto_reboot_time = "20:00:00"
-auto_reboot_announcement = True
-auto_reboot_reminder = True
-ar_reminder_time = "19:55:00"
-# ---------------------------------------------
-
-update_log = "v0.6.0" \
-             "1. 新增调整音频播放音量的功能和与其对应的volume指令" \
-             "2. 新增指令别名：list: l, move: m, volume: v, resume: r/restart" \
-             "3. 修复了因使用leave指令导致正在播放的歌曲被移出播放列表的问题" \
-             "4. 修复了因使用leave指令后再次直接使用play指令会导致的无法播放音频的问题" \
-             "5. 制作了全新的帮助菜单" \
-             "v0.6.1" \
-             "1. 修复了使用play指令时会弹出“当前正在播放音乐”的bug" \
-             "2. 修复了正在播放音乐时使用Youtube搜索选择歌曲后没有加入播放列表提示的bug" \
-             "3. 将自动重启通知调整为仅在机器人语音频道在线的服务器广播"
-
-python_path = sys.executable
-
-client = discord.Client()
-
-if system_option == 1:
-    command_prefix = "\\"
-    ffmpeg_path = "./bin/ffmpeg"
-    token_name = "token.txt"
-else:
-    command_prefix = "."
-    ffmpeg_path = "./bin/ffmpeg.exe"
-    token_name = "test_token.txt"
-
-# 设定指令前缀符，关闭默认Help指令
+# # 设定指令前缀符，关闭默认Help指令
 bot = commands.Bot(
-    command_prefix=f'{command_prefix}', help_command=None, case_insensitive=True
+    command_prefix=".", help_command=None, case_insensitive=True
 )
-
-# 初始化运行环境
-current_time_main = str(datetime.datetime.now())[:19]
-print("开始初始化")
-if not os.path.exists("./downloads"):
-    os.mkdir("downloads")
-    print("创建downloads文件夹")
-if not os.path.exists("./logs"):
-    os.mkdir("logs")
-    print("创建logs文件夹")
-if not os.path.exists("./playlists"):
-    os.mkdir("./playlists")
-    print("创建playlists文件夹")
-
-# 创建本次运行日志
-log_name_time = current_time_main.replace(":", "_")
-with open(f"./logs/{log_name_time}.txt", "a", encoding="utf-8"):
-    pass
-log_path = f"./logs/{log_name_time}.txt"
-
-# 初始化本地音频库
-audio_library = AudioLibrary("./audios")
-print("初始化本地音频库")
-# 初始化本地用户库
-user_library = UserLibrary("./users")
-print("初始化本地用户库")
-# 清空下载文件夹
-clear_downloads()
-print("清空本地临时下载文件夹")
-# 创建用于储存不同服务器的播放列表的总字典
-playlist_dict = {}
-# 创建用于储存不同服务器的音量的总字典
-volume_dict = {}
-print("初始化完成\n")
 
 
 def write_log(current_time, line):
@@ -110,8 +46,9 @@ def write_log(current_time, line):
     :param line: 要写入的信息
     :return:
     """
-    with open(log_path, "a", encoding="utf-8") as log:
-        log.write(f"{current_time} {line}\n")
+    if setting.value("log"):
+        with open(log_path, "a", encoding="utf-8") as log:
+            log.write(f"{current_time} {line}\n")
 
 
 def console_message_log(ctx, message):
@@ -174,7 +111,7 @@ async def auto_reboot_function():
     current_time = str(datetime.datetime.now())[:19]
     audio_library.save()
     user_library.save()
-    if auto_reboot_announcement:
+    if setting.value("ar_announcement"):
         for guild in bot.guilds:
             voice_client = guild.voice_client
             if voice_client is not None:
@@ -189,16 +126,17 @@ async def auto_reboot_reminder_function():
             await guild.text_channels[0].send(f"注意：将在5分钟后自动重启")
 
 
-async def first_contact_check(ctx):
+async def first_contact_check(message):
     user_library.load()
-    user_id = ctx.author.id
-    user_name = ctx.author.name
-    if str(ctx.author.id) not in user_library.library["users"]:
+    user_id = message.author.id
+    user_name = message.author.name
+    if str(message.author.id) not in user_library.library["users"]:
         new_user = User(user_id, user_name, user_library.path)
         new_user.first_contact()
         user_library.add_user(new_user)
-        await ctx.send(f"你好啊{user_name}，很高兴认识你！\n"
-                       f"您可以通过聊天输入\\help来查询可以对我使用的指令")
+        # await message.channel.send(f"你好啊{user_name}，很高兴认识你！\n"
+        #                            f"您可以通过聊天输入{bot.command_prefix}help"
+        #                            f"来查询可以对我使用的指令")
 
 
 def author(ctx):
@@ -207,9 +145,19 @@ def author(ctx):
     return User(user_id, user_name, user_library.path)
 
 
-async def authorized(ctx, action: str):
-    await first_contact_check(ctx)
-    return author(ctx).authorized(action)
+async def authorize(ctx, action: str) -> bool:
+    if str(author(ctx).id) == setting.value("owner"):
+        return True
+    return author(ctx).authorize(action)
+
+
+async def authorize_change_user_group(ctx, target_group: str) -> bool:
+    if str(author(ctx).id) == setting.value("owner"):
+        return True
+    if target_group in author(ctx).user_group.mutable_user_group:
+        return author(ctx).user_group.mutable_user_group[target_group] is True
+    else:
+        return False
 
 
 # 启动就绪时
@@ -218,29 +166,30 @@ async def on_ready():
     print(f"---------- 准备就绪 ----------\n"
           f"成功以 {bot.user} 的身份登录")
     current_time = str(datetime.datetime.now())[:19]
-    print("登录时间：" + current_time)
+    print("登录时间：" + current_time + "\n")
     write_log(current_time, f"准备就绪 以{bot.user}的身份登录")
 
     # 启动定时任务框架
     scheduler_1 = AsyncIOScheduler()
     scheduler_2 = AsyncIOScheduler()
 
-    if auto_reboot:
+    if setting.value("auto_reboot"):
         # 设置自动重启
-        ar_time = time_str_split(auto_reboot_time)
+        ar_timezone = "Asia/Shanghai"
+        ar_time = time_str_split(setting.value("ar_time"))
         scheduler_1.add_job(
             auto_reboot_function, CronTrigger(
-                timezone=auto_reboot_timezone, hour=ar_time[0],
+                timezone=ar_timezone, hour=ar_time[0],
                 minute=ar_time[1], second=ar_time[2]
             )
         )
 
-        if auto_reboot_reminder:
+        if setting.value("ar_reminder"):
             # 设置自动重启提醒
-            ar_r_time = time_str_split(ar_reminder_time)
+            ar_r_time = time_str_split(setting.value("ar_reminder_time"))
             scheduler_2.add_job(
                 auto_reboot_reminder_function, CronTrigger(
-                    timezone=auto_reboot_timezone, hour=ar_r_time[0],
+                    timezone=ar_timezone, hour=ar_r_time[0],
                     minute=ar_r_time[1], second=ar_r_time[2]
                 )
             )
@@ -259,9 +208,10 @@ async def on_ready():
                   )
 
     # 设置机器人状态
+    bot_activity_type = discord.ActivityType.playing
     await bot.change_presence(
-        activity=discord.Activity(type=bot_activity_type, name=bot_activity)
-    )
+        activity=discord.Activity(type=bot_activity_type,
+                                  name=setting.value("default_activity")))
 
 
 @bot.event
@@ -275,10 +225,12 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
+    await first_contact_check(message)
+
     if message.content.startswith('$hello'):
         await message.channel.send('Hello!')
 
-    if message.content.startswith('32Zeta'):
+    if message.content.startswith(setting.value("bot_name")):
         await message.channel.send('在!')
 
     if message.content.startswith('草'):
@@ -326,15 +278,17 @@ async def on_command_error(ctx, error):
         write_log(current_time, f"{ctx.guild} 用户 {str(ctx.author)} "
                                 f"发送指令 {ctx.message.content}    "
                                 f"发生错误如下：{error}")
-        await ctx.send("发生未知错误")
+        await ctx.send("发生错误，请重试或联系管理员")
         raise error
 
 
 @bot.command()
 async def info(ctx):
-    await ctx.send(f"当前版本号为 **{version}**\n"
+    console_message_log_command(ctx)
+    await ctx.send(f"**Zeta-Discord机器人 [版本 {version}]**\n"
+                   f"基于 Pycord {py_cord_version} 制作\n"
                    f"最后更新日期为 **{update_time}**\n"
-                   f"作者：31Zeta")
+                   f"作者：炤铭Zeta (31Zeta)")
 
 
 @bot.command()
@@ -347,10 +301,11 @@ async def help(ctx):
     """
     console_message_log_command(ctx)
 
-    view = HelpMenuView(ctx)
+    view = HelpMenuView(ctx, bot.command_prefix)
     view.message = await ctx.send(content=view.catalog, view=view)
 
 
+@bot.command()
 async def say(ctx, *message) -> None:
     """
     让机器人在当前频道发送参数message
@@ -372,7 +327,7 @@ async def broadcast(ctx, *message):
     :param message: 需要发送的信息
     :return:
     """
-    if await authorized(ctx, "broadcast"):
+    if await authorize(ctx, "broadcast"):
         for guild in bot.guilds:
             await guild.text_channels[0].send(" ".join(message))
     else:
@@ -488,7 +443,7 @@ async def leave(ctx):
         await ctx.send(f"离开语音频道：***{last_channel}***")
 
     else:
-        await ctx.send("32Zeta没有连接到任何语音频道")
+        await ctx.send(f"{setting.value('bot_name')}没有连接到任何语音频道")
 
 
 @bot.command(aliases=["v"])
@@ -555,6 +510,9 @@ async def play(ctx, url_1="-1", *url_2):
     :return:
     """
     console_message_log_command(ctx)
+
+    # 用户记录增加音乐播放计数
+    author(ctx).play_counter()
 
     url = url_1 + " ".join(url_2)
     guild_initialize(ctx)
@@ -701,10 +659,10 @@ async def play_next(ctx):
         voice_client.play(
             discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(
-                    executable=ffmpeg_path, source=path
+                    executable=setting.value("ffmpeg_path"), source=path
                 )
             ), after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), client.loop)
+                play_next(ctx), bot.loop)
         )
         voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
 
@@ -751,10 +709,10 @@ async def play_bili(ctx, info_dict, download_type="bili_single", num_option=0):
         voice_client.play(
             discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(
-                    executable=ffmpeg_path, source=audio.path
+                    executable=setting.value("ffmpeg_path"), source=audio.path
                 )
             ), after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), client.loop)
+                play_next(ctx), bot.loop)
         )
         voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
 
@@ -798,10 +756,10 @@ async def play_ytb(ctx, url, info_dict, download_type="ytb_single"):
         voice_client.play(
             discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(
-                    executable=ffmpeg_path, source=audio.path
+                    executable=setting.value("ffmpeg_path"), source=audio.path
                 )
             ), after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), client.loop)
+                play_next(ctx), bot.loop)
         )
         voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
 
@@ -1129,7 +1087,7 @@ async def pause(ctx):
             await ctx.send("暂停播放")
         else:
             console_message_log(ctx, f"收到pause指令时指令发出者 {ctx.author} 不在机器人所在的频道")
-            await ctx.reply("您不在32Zeta所在的频道")
+            await ctx.reply(f"您不在{setting.value('bot_name')}所在的频道")
 
     else:
         console_message_log(ctx, "收到pause指令时机器人未在播放任何音乐")
@@ -1154,7 +1112,7 @@ async def resume(ctx, play_call=False):
     if voice_client is None:
         if not play_call:
             console_message_log(ctx, "收到resume指令时机器人没有加入任何语音频道")
-            await ctx.send("32Zeta尚未加入任何语音频道")
+            await ctx.send(f"{setting.value('bot_name')}尚未加入任何语音频道")
 
     # 被暂停播放的情况
     elif voice_client.is_paused():
@@ -1166,7 +1124,7 @@ async def resume(ctx, play_call=False):
         else:
             console_message_log(ctx, f"收到pause指令时指令发出者 {ctx.author} "
                                      f"不在机器人所在的频道")
-            await ctx.reply("您不在32Zeta所在的频道")
+            await ctx.reply(f"您不在{setting.value('bot_name')}所在的频道")
 
     # 没有被暂停并且正在播放的情况
     elif voice_client.is_playing():
@@ -1181,10 +1139,10 @@ async def resume(ctx, play_call=False):
         voice_client.play(
             discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(
-                    executable=ffmpeg_path, source=path
+                    executable=setting.value("ffmpeg_path"), source=path
                 )
             ), after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), client.loop)
+                play_next(ctx), bot.loop)
         )
         voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
 
@@ -1249,11 +1207,61 @@ async def clear(ctx):
 
 
 @bot.command()
+async def change_user_group(ctx, user_name, group) -> None:
+
+    console_message_log_command(ctx)
+
+    if await authorize(ctx, "change_user_group") and \
+            await authorize_change_user_group(ctx, group):
+        for key in user_library.library["users"]:
+            if user_library.library["users"][key] == user_name:
+                if str(key) == str(ctx.author.id):
+                    console_message_log(ctx, f"{ctx.author.name}无法修改自己的用户组")
+                    await ctx.reply("您不能更改自己的用户组")
+                    return
+                User(key, user_name, user_library.path).change_user_group(group)
+                console_message_log(ctx, f"用户 {ctx.author.name} 将用户 {user_name}"
+                                         f" (id: {key}) 转移至用户组 {group}")
+                await ctx.reply(f"已将用户 {user_name} (id: {key}) 转移至用户组 {group}")
+                return
+        console_message_log(ctx, f"未找到用户 {user_name}")
+        await ctx.reply("未找到目标用户")
+    else:
+        console_message_log(ctx, f"用户 {ctx.author.name} 无权将用户转移至用户组 {group}")
+        await ctx.reply("权限不足")
+
+
+@bot.command()
+async def change_user_group_id(ctx, user_id, group) -> None:
+
+    console_message_log_command(ctx)
+
+    if await authorize(ctx, "change_user_group") and \
+            await authorize_change_user_group(ctx, group):
+        if user_id in user_library.library["users"]:
+            if str(user_id) == str(ctx.author.id):
+                console_message_log(ctx, f"{ctx.author.name}无法修改自己的用户组")
+                await ctx.reply("您不能更改自己的用户组")
+                return
+            user_name = user_library.library["users"][user_id]
+            User(user_id, user_name, user_library.path).change_user_group(group)
+            console_message_log(ctx, f"用户 {ctx.author.name} 将用户 {user_name} "
+                                     f"(id: {user_id}) 转移至用户组 {group}")
+            await ctx.reply(f"已将用户 {user_name} (id: {user_id}) 转移至用户组 {group}")
+            return
+        console_message_log(ctx, f"未找到用户 id:{user_id}")
+        await ctx.reply("未找到目标用户")
+    else:
+        console_message_log(ctx, f"用户 {ctx.author.name} 无权将用户转移至用户组 {group}")
+        await ctx.reply("权限不足")
+
+
+@bot.command()
 async def reboot(ctx):
     """
     重启程序
     """
-    if await authorized(ctx, "reboot"):
+    if await authorize(ctx, "reboot"):
         console_message_log_command(ctx)
         await ctx.send("正在重启")
         os.execl(python_path, python_path, * sys.argv)
@@ -1266,7 +1274,7 @@ async def shutdown(ctx):
     """
     退出程序
     """
-    if await authorized(ctx, "shutdown"):
+    if await authorize(ctx, "shutdown"):
         console_message_log_command(ctx)
         await ctx.send("正在关闭")
         await bot.close()
@@ -1936,50 +1944,150 @@ class CheckBiliCollectionView(View):
                                       f"(超时时间为{self.timeout}秒)")
 
 
-# -------------------- 测试区域 --------------------
-@bot.command()
-async def ip(ctx):
-    await ctx.send(f"y or n")
+all_setting = {
+    "token": {
+        "type": "str",
+        "description": "请输入Discord机器人令牌",
+        "default": "None"
+    },
+    "owner": {
+        "type": "str",
+        "description": "请输入给予本机器人最高管理权限的Discord用户的用户ID（纯数字ID）",
+        "regex": "\d+",
+        "default": "000000000000000000"
+    },
+    "command_prefix": {
+        "type": "str",
+        "description": "请设置机器人指令前缀",
+        "default": "."
+    },
+    "ffmpeg_path": {
+        "type": "str",
+        "description": "请输入ffmpeg程序的路径"
+                       "（Windows系统以ffmpeg.exe结尾，Linux系统以ffmpeg结尾）",
+        "default": "./bin/ffmpeg"
+    },
+    "log": {
+        "type": "bool",
+        "description": "请设置是否开启日志记录功能（输入y为开启，输入n为关闭）",
+        "default": True
+    },
+    "bot_name": {
+        "type": "str",
+        "description": "请设置机器人的名称",
+        "default": "机器人"
+    },
+    "default_activity": {
+        "type": "str",
+        "description": "请设置机器人启动时的默认状态",
+        "default": "Nothing"
+    },
+    "auto_reboot": {
+        "type": "bool",
+        "description": "请设置是否开启自动重启功能（输入y为开启，输入n为关闭）",
+        "default": False
+    },
+    "ar_time": {
+        "type": "str",
+        "description": "请设置自动重启时间（输入格式为\"小时:分钟:秒\"，示例：04:30:00）",
+        "regex": "([01]\d|2[0123]|\d):([012345]\d|\d):([012345]\d|\d)",
+        "dependent": "auto_reboot",
+        "default": "00:00:00"
+    },
+    "ar_announcement": {
+        "type": "bool",
+        "description": "请设置是否开启自动重启通知功能（输入y为开启，输入n为关闭）",
+        "dependent": "auto_reboot",
+        "default": False
+    },
+    "ar_reminder": {
+        "type": "bool",
+        "description": "请设置是否开启自动重启提前通知（输入y为开启，输入n为关闭）",
+        "dependent": "auto_reboot",
+        "default": False
+    },
+    "ar_reminder_time": {
+        "type": "str",
+        "description": "请设置自动重启提前通知时间（输入格式为\"小时:分钟:秒\"，示例：04:25:00）",
+        "regex": "([01]\d|2[0123]|\d):([012345]\d|\d):([012345]\d|\d)",
+        "dependent": "ar_reminder",
+        "default": "23:55:00"
+    },
+}
 
-    def response_check(msg):
-        return msg.author == ctx.author and msg.channel == ctx.channel
 
-    try:
-        message = await bot.wait_for("message", timeout=3, check=response_check)
-    except asyncio.TimeoutError:
-        await ctx.send("timeout")
+if __name__ == '__main__':
+
+    python_path = sys.executable
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", type=str, default="normal", help="启动模式")
+    args = parser.parse_args()
+
+    print(f"\nZeta-Discord机器人 [版本 {version}]\n"
+          f"作者：炤铭Zeta (31Zeta)\n")
+    print("正在启动\n")
+
+    setting = Setting("./setting.json", all_setting)
+
+    if args.mode == "setting":
+        print("---------- 修改设置 ----------")
+        print(setting.list_all())
+        print()
+        while True:
+            input_line = input("请输入需要修改的设置名称（输入exit以退出设置）：\n")
+            if input_line.lower() == "exit":
+                break
+            try:
+                setting.modify_setting(input_line)
+            except KeyNotFoundError:
+                print("未找到此设置\n")
+            except UserExit:
+                print()
+            else:
+                print()
+        print()
     else:
-        if message.content.lower() == ".y":
-            await ctx.send("You said yes!")
-        elif message.content.lower() == ".n":
-            await ctx.send("You said no!")
+        pass
 
+    setting.load()
+    bot.command_prefix = setting.value("command_prefix")
 
-@bot.command()
-async def hi(ctx):
-    await first_contact_check(ctx)
-# -------------------------------------------------.volume
+    # 初始化运行环境
+    current_time_main = str(datetime.datetime.now())[:19]
+    print("开始初始化")
+    if not os.path.exists("./downloads"):
+        os.mkdir("downloads")
+        print("创建downloads文件夹")
+    if not os.path.exists("./logs"):
+        os.mkdir("logs")
+        print("创建logs文件夹")
+    if not os.path.exists("./playlists"):
+        os.mkdir("./playlists")
+        print("创建playlists文件夹")
 
+    # 创建本次运行日志
+    log_name_time = current_time_main.replace(":", "_")
+    if setting.value("log"):
+        with open(f"./logs/{log_name_time}.txt", "a", encoding="utf-8"):
+            pass
+    log_path = f"./logs/{log_name_time}.txt"
 
-# ------------------ 代码保留区域 ------------------
-class SongOptionButton(Button):
+    # 初始化本地音频库
+    audio_library = AudioLibrary("./audios")
+    print("初始化本地音频库")
+    # 初始化本地用户库
+    user_library = UserLibrary("./users")
+    print("初始化本地用户库")
+    # 清空下载文件夹
+    clear_downloads()
+    print("清空本地临时下载文件夹")
+    # 创建用于储存不同服务器的播放列表的总字典
+    playlist_dict = {}
+    # 创建用于储存不同服务器的音量的总字典
+    volume_dict = {}
+    print("初始化完成")
+    print("正在登录\n")
 
-    def __init__(self, ctx, song_id, row):
-        super().__init__(
-            label=f"[{row}]", style=discord.ButtonStyle.grey)
-        self.ctx = ctx
-        self.song_id = song_id
+    bot.run(setting.value("token"))
 
-    async def callback(self, interaction):
-        await play(self.ctx, f"https://www.youtube.com/watch?v={self.song_id}")
-# -------------------------------------------------
-
-
-try:
-    with open(f'./{token_name}', 'r') as token_file:
-        token = token_file.readline()
-except FileNotFoundError:
-    print("未能找到机器人令牌文件")
-
-bot.run(token)
-print(f"----------程序结束----------")
+    print(f"---------- 程序结束 ----------")

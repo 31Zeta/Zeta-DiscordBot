@@ -42,8 +42,9 @@ class User:
 
     def change_user_group(self, group: str) -> None:
         self.user_group = UserGroup(group)
+        self.save()
 
-    def authorized(self, action: str) -> bool:
+    def authorize(self, action: str) -> bool:
         """
         返回一个布尔值代表用户是否有<action>指令的权限
         """
