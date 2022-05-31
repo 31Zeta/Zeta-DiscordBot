@@ -1,6 +1,6 @@
 APScheduler>=3.9.1
 bilibili-api>=9.1.0
-py-cord>=2.0.0rc1
+py-cord==2.0.0-beta.4
 requests>=2.24.0
 youtube-search-python>=1.6.2
 yt-dlp>=2022.2.4
