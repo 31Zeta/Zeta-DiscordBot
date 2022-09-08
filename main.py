@@ -20,22 +20,24 @@ from setting import Setting
 from errors import *
 
 
-version = "0.7.0"
+version = "0.8.0"
 py_cord_version = discord.__version__
-update_time = "2022.06.01"
-update_log = "0.7.0" \
-             "- 设置与机器人令牌现在会保存在本地文件setting.json中" \
-             "- 新增服务器端的设置配置界面" \
-             "- 新增启动模式，命令行中使用 python main.py --mode=setting 启动设置配置界面" \
-             "- 机器人可以拥有自己的名字啦！前往设置中修改" \
-             "- 修改了info指令显示的内容" \
-             "- 帮助菜单现在会随着指令前缀符的不同改变" \
-             "- 新增用户组修改指令change_user_group和change_user_group_id"
+update_time = "2022.09.08"
+update_log = "0.8.0" \
+             "- [重要] 由于Discord逐渐停止前缀指令支持，现已改为使用应用程序指令（正斜杠指令）" \
+             "- 去除掉自定义指令前缀功能" \
+             "- 将Pycord升级至v2.1.1版本" \
+             "- 修复了设置时输入\\报错的问题" \
+             "- 互动面板提示语句调整"
+
+intents = discord.Intents.default()
+intents.message_content = True
+intents.messages = True
 
 # # 设定指令前缀符，关闭默认Help指令
-bot = commands.Bot(
-    command_prefix=".", help_command=None, case_insensitive=True
-)
+bot = discord.Bot(
+    help_command=None, case_insensitive=True, intents=intents
+    )
 
 
 def write_log(current_time, line):
@@ -64,18 +66,19 @@ def console_message_log(ctx, message):
     write_log(current_time, f"{ctx.guild} {message}")
 
 
-def console_message_log_command(ctx):
+def console_message_log_command(ctx, command_name: str):
     """
     在控制台打印出服务器内用户名称和该用户发出的信息，并记录在运行日志中
 
     :param ctx: ctx
+    :param command_name: 用户输入的指令名称
     :return:
     """
     current_time = str(datetime.datetime.now())[:19]
     print(current_time + f" 位置：{ctx.guild}\n    用户 {ctx.author} "
-                         f"发送指令 {ctx.message.content}\n")
+                         f"发送指令：\"{command_name}\"\n")
     write_log(current_time, f"{ctx.guild} 用户 {ctx.author} "
-                            f"发送指令 {ctx.message.content}")
+                            f"发送指令：\"{command_name}\"")
 
 
 def console_message_log_list(ctx):
@@ -134,9 +137,7 @@ async def first_contact_check(message):
         new_user = User(user_id, user_name, user_library.path)
         new_user.first_contact()
         user_library.add_user(new_user)
-        # await message.channel.send(f"你好啊{user_name}，很高兴认识你！\n"
-        #                            f"您可以通过聊天输入{bot.command_prefix}help"
-        #                            f"来查询可以对我使用的指令")
+        # await message.channel.send(f"你好啊{user_name}，很高兴认识你！\n")
 
 
 def author(ctx):
@@ -239,7 +240,12 @@ async def on_message(message):
     if message.content.startswith('yee'):
         await message.channel.send('yee')
 
-    await bot.process_commands(message)
+    if message.content.startswith('\\p'):
+        await message.channel.send('由于Discord逐渐停止支持前缀指令，Zeta-Discord'
+                                   '机器人现已改为使用统一的应用程序指令\n应用程序指令'
+                                   '前缀为正斜杠\"/\"（示例：/play）')
+
+    # await bot.process_commands(message)
 
 
 @bot.event
@@ -282,44 +288,30 @@ async def on_command_error(ctx, error):
         raise error
 
 
-@bot.command()
+@bot.command(description="关于Zeta-Discord机器人")
 async def info(ctx):
-    console_message_log_command(ctx)
-    await ctx.send(f"**Zeta-Discord机器人 [版本 {version}]**\n"
-                   f"基于 Pycord {py_cord_version} 制作\n"
-                   f"最后更新日期为 **{update_time}**\n"
-                   f"作者：炤铭Zeta (31Zeta)")
+    console_message_log_command(ctx, "info")
+    await ctx.respond(f"**Zeta-Discord机器人 [版本 {version}]**\n"
+                      f"   基于 Pycord v{py_cord_version} 制作\n"
+                      f"   最后更新日期为 **{update_time}**\n"
+                      f"   作者：炤铭Zeta (31Zeta)")
 
 
-@bot.command()
+@bot.command(description="显示帮助菜单")
 async def help(ctx):
     """
-    覆盖掉原有help指令, 向频道发送指令列表
+    覆盖掉原有help指令, 向频道发送帮助菜单
 
     :param ctx: 指令原句
     :return:
     """
-    console_message_log_command(ctx)
-
-    view = HelpMenuView(ctx, bot.command_prefix)
-    view.message = await ctx.send(content=view.catalog, view=view)
-
-
-@bot.command()
-async def say(ctx, *message) -> None:
-    """
-    让机器人在当前频道发送参数message
-
-    :param ctx: 指令原句
-    :param message: 需要发送的信息
-    :return:
-    """
-    console_message_log_command(ctx)
-    await ctx.send(" ".join(message))
+    console_message_log_command(ctx, "help")
+    view = HelpMenuView(ctx)
+    await ctx.respond(content=view.catalog, view=view)
 
 
-@bot.command()
-async def broadcast(ctx, *message):
+@bot.command(description="[管理员] 向机器人所在的所有服务器广播消息")
+async def broadcast(ctx, message):
     """
     让机器人在所有服务器的第一个频道发送参数message
 
@@ -329,24 +321,14 @@ async def broadcast(ctx, *message):
     """
     if await authorize(ctx, "broadcast"):
         for guild in bot.guilds:
-            await guild.text_channels[0].send(" ".join(message))
+            await guild.text_channels[0].send(message)
+        await ctx.respond("已发送")
     else:
-        await ctx.reply("权限不足")
+        await ctx.respond("权限不足")
 
 
-async def system_broadcast(*message):
-    """
-    让机器人在所有服务器的第一个频道发送参数message
-
-    :param message: 需要发送的信息
-    :return:
-    """
-    for guild in bot.guilds:
-        await guild.text_channels[0].send(" ".join(message))
-
-
-@bot.command()
-async def join(ctx, channel_name="-1"):
+@bot.command(description="让机器人加入语音频道")
+async def join(ctx, channel_name="N/A"):
     """
     让机器人加入指令发送者所在的语音频道并发送提示\n
     如果机器人已经加入一个频道则转移到新频道并发送提示
@@ -356,30 +338,30 @@ async def join(ctx, channel_name="-1"):
     :param channel_name: 要加入的频道名称
     :return:
     """
-    console_message_log_command(ctx)
+    console_message_log_command(ctx, "join")
     guild_initialize(ctx)
 
     # 指令发送者未加入频道的情况
-    if channel_name == "-1" and not ctx.author.voice:
+    if channel_name == "N/A" and not ctx.author.voice:
         console_message_log(ctx, f"频道加入失败，用户 {ctx.author} 发送指令时未加入任何语音频道")
-        await ctx.reply("您未加入任何语音频道")
+        await ctx.respond("您未加入任何语音频道")
         return False
 
     # 机器人已在一个语音频道的情况
     elif ctx.guild.voice_client is not None:
         # 未输入参数
-        if channel_name == "-1":
+        if channel_name == "N/A":
             channel = ctx.author.voice.channel
         # 寻找与参数名称相同的频道
         else:
-            channel = "-1"
+            channel = "N/A"
             for ch in ctx.guild.channels:
                 if ch.type is discord.ChannelType.voice and \
                         ch.name == channel_name:
                     channel = ch
 
-            if channel == "-1":
-                await ctx.reply("无效的语音频道名称")
+            if channel == "N/A":
+                await ctx.respond("无效的语音频道名称")
                 return False
 
         voice_client = ctx.guild.voice_client
@@ -388,34 +370,34 @@ async def join(ctx, channel_name="-1"):
         console_message_log(ctx, f"从频道 {voice_client.channel} "
                                  f"转移到 {channel_name}")
 
-        await ctx.send(f"转移频道：***{voice_client.channel}*** -> "
-                       f"***{channel.name}***")
+        await ctx.respond(f"转移频道：***{voice_client.channel}*** -> "
+                          f"***{channel.name}***")
         return True
 
     # 机器人未在语音频道的情况
     else:
-        if channel_name == "-1":
+        if channel_name == "N/A":
             channel = ctx.author.voice.channel
         else:
-            channel = "-1"
+            channel = "N/A"
             for ch in ctx.guild.channels:
                 if ch.type is discord.ChannelType.voice and \
                         ch.name == channel_name:
                     channel = ch
 
-            if channel == "-1":
-                await ctx.reply("无效的语音频道名称")
+            if channel == "N/A":
+                await ctx.respond("无效的语音频道名称")
                 return False
 
         await channel.connect()
 
         console_message_log(ctx, f"加入频道 {channel.name}")
 
-        await ctx.send(f"加入语音频道 -> ***{channel.name}***")
+        await ctx.respond(f"加入语音频道 -> ***{channel.name}***")
         return True
 
 
-@bot.command()
+@bot.command(description="让机器人离开当前所在的语音频道")
 async def leave(ctx):
     """
     让机器人离开语音频道并发送提示
@@ -423,7 +405,7 @@ async def leave(ctx):
     :param ctx: 指令原句
     :return:
     """
-    console_message_log_command(ctx)
+    console_message_log_command(ctx, "leave")
     guild_initialize(ctx)
     voice_client = ctx.guild.voice_client
     current_playlist = playlist_dict[ctx.guild.id]
@@ -440,22 +422,22 @@ async def leave(ctx):
 
         console_message_log(ctx, f"离开频道 {last_channel}")
 
-        await ctx.send(f"离开语音频道：***{last_channel}***")
+        await ctx.respond(f"离开语音频道：***{last_channel}***")
 
     else:
-        await ctx.send(f"{setting.value('bot_name')}没有连接到任何语音频道")
+        await ctx.respond(f"{setting.value('bot_name')}没有连接到任何语音频道")
 
 
-@bot.command(aliases=["v"])
+@bot.command(description="调整机器人的音量")
 async def volume(ctx, volume_num="send_current_volume"):
 
-    console_message_log_command(ctx)
+    console_message_log_command(ctx, "volume")
     guild_initialize(ctx)
     voice_client = ctx.guild.voice_client
     current_volume = volume_dict[ctx.guild.id]
 
     if volume_num == "send_current_volume":
-        await ctx.send(f"当前音量为 **{current_volume}%**")
+        await ctx.respond(f"当前音量为 **{current_volume}%**")
     elif volume_num == "up" or volume_num == "u":
         if current_volume + 20.0 >= 200:
             current_volume = 200.0
@@ -466,7 +448,7 @@ async def volume(ctx, volume_num="send_current_volume"):
         volume_dict[ctx.guild.id] = current_volume
         console_message_log(
             ctx, f"用户 {ctx.author} 已将音量设置为 {current_volume}%")
-        await ctx.send(f"将音量提升至 **{current_volume}%**")
+        await ctx.respond(f"将音量提升至 **{current_volume}%**")
     elif volume_num == "down" or volume_num == "d":
         if current_volume - 20.0 <= 0.0:
             current_volume = 0.0
@@ -477,16 +459,16 @@ async def volume(ctx, volume_num="send_current_volume"):
         volume_dict[ctx.guild.id] = current_volume
         console_message_log(
             ctx, f"用户 {ctx.author} 已将音量设置为 {current_volume}%")
-        await ctx.send(f"将音量降低至 **{current_volume}%**")
+        await ctx.respond(f"将音量降低至 **{current_volume}%**")
     else:
         try:
             volume_num = float(int(float(volume_num)))
         except ValueError:
-            await ctx.reply(
+            await ctx.respond(
                 "请输入up或down来提升或降低音量或一个0-200的数字来设置音量")
             return
         if volume_num > 200.0 or volume_num < 0.0:
-            await ctx.reply(
+            await ctx.respond(
                 "请输入up或down来提升或降低音量或一个0-200的数字来设置音量")
         else:
             current_volume = volume_num
@@ -495,26 +477,30 @@ async def volume(ctx, volume_num="send_current_volume"):
             volume_dict[ctx.guild.id] = current_volume
             console_message_log(
                 ctx, f"用户 {ctx.author} 已将音量设置为 {current_volume}%")
-            await ctx.send(f"将音量设置为 **{current_volume}%**")
+            await ctx.respond(f"将音量设置为 **{current_volume}%**")
 
 
-@bot.command(aliases=["p"])
-async def play(ctx, url_1="-1", *url_2):
+@bot.command(description="播放Bilibili或Youtube的音频(play指令)")
+async def p(ctx, link="N/A"):
+    await play(ctx, link)
+
+
+@bot.command(description="播放Bilibili或Youtube的音频", aliases=["p"])
+async def play(ctx, link="N/A"):
     """
-    使机器人下载目标BV号音频后播放并将其标题与文件路径记录进当前服务器的播放列表
+    使机器人下载目标BV号或Youtube音频后播放并将其标题与文件路径记录进当前服务器的播放列表
     播放结束后调用play_next
     如果当前有歌曲正在播放，则将下载目标音频并将其标题与文件路径记录进当前服务器的播放列表
 
     :param ctx: 指令原句
-    :param url_1: 目标URL
+    :param link: 目标URL或BV号
     :return:
     """
-    console_message_log_command(ctx)
+    console_message_log_command(ctx, "play")
 
     # 用户记录增加音乐播放计数
     author(ctx).play_counter()
 
-    url = url_1 + " ".join(url_2)
     guild_initialize(ctx)
 
     # 检测机器人是否已经加入语音频道
@@ -527,17 +513,17 @@ async def play(ctx, url_1="-1", *url_2):
     # 尝试恢复之前被停止的播放
     await resume(ctx, play_call=True)
 
-    if url == "-1":
+    if link == "N/A":
         console_message_log(ctx, "用户未输入任何参数")
-        await ctx.send("请在\\p加一个空格后打出您想要播放的链接或想要搜索的名称")
+        await ctx.respond("请在\\p加一个空格后打出您想要播放的链接或想要搜索的名称")
 
     # 检查输入的URL属于哪个网站
-    source = check_url_source(url)
+    source = check_url_source(link)
     console_message_log(ctx, f"检测输入的链接为类型：{source}")
 
     # 如果指令中包含链接则提取链接
     if source != "unknown":
-        url = get_url_from_str(url, source)
+        link = get_url_from_str(link, source)
 
     # URL属于Bilibili
     if source == "bili_bvid" or source == "bili_url" or \
@@ -546,23 +532,23 @@ async def play(ctx, url_1="-1", *url_2):
         # 如果是Bilibili短链则获取重定向链接
         if source == "bili_short_url":
             try:
-                url = get_redirect_url(url)
+                link = get_redirect_url(link)
             except requests.exceptions.InvalidSchema:
-                await ctx.send("链接异常")
+                await ctx.respond("链接异常")
                 console_message_log(ctx, f"链接重定向失败")
 
-            console_message_log(ctx, f"获取的重定向链接为 {url}")
+            console_message_log(ctx, f"获取的重定向链接为 {link}")
 
         # 如果是URl则转换成BV号
         if source == "bili_url" or source == "bili_short_url":
-            bvid = bili_get_bvid(url)
+            bvid = bili_get_bvid(link)
             if bvid == "error_bvid":
                 console_message_log(ctx, f"{ctx.message.content} "
                                          f"为无效的链接")
-                await ctx.send("无效的Bilibili链接")
+                await ctx.respond("无效的Bilibili链接")
                 return
         else:
-            bvid = url
+            bvid = link
 
         # 获取Bilibili视频信息
         info_dict = await bili_get_info(bvid)
@@ -580,7 +566,7 @@ async def play(ctx, url_1="-1", *url_2):
             collection_title = info_dict["ugc_season"]["title"]
             message = f"此视频包含在合集 **{collection_title}** 中, 是否要查看此合集？\n"
             view = CheckBiliCollectionView(ctx, info_dict)
-            view.message = await ctx.send(message, view=view)
+            await ctx.respond(message, view=view)
 
         # 分P视频 bili_p
         else:
@@ -595,20 +581,20 @@ async def play(ctx, url_1="-1", *url_2):
 
             menu_list = make_menu_list_10(message)
             view = EpisodeSelectView(ctx, "bili_p", info_dict, menu_list)
-            view.message = await ctx.send(f"{menu_list[0]}\n第[1]页，共["
-                                          f"{len(menu_list)}]页\n已输入：",
-                                          view=view)
+            await ctx.respond(f"{menu_list[0]}\n第[1]页，"
+                              f"共[{len(menu_list)}]页\n已输入：",
+                              view=view)
 
     elif source == "ytb_url":
 
         loading_msg = await ctx.send("正在获取Youtube视频信息")
-        url_type, info_dict = ytb_get_info(url)
+        url_type, info_dict = ytb_get_info(link)
         await loading_msg.delete()
 
         # 单一视频 ytb_single
         if url_type == "ytb_single":
             loading_msg = await ctx.send("正在加载Youtube歌曲")
-            await play_ytb(ctx, url, info_dict, url_type)
+            await play_ytb(ctx, link, info_dict, url_type)
             await loading_msg.delete()
 
         # 播放列表 ytb_playlist
@@ -626,13 +612,13 @@ async def play(ctx, url_1="-1", *url_2):
 
             menu_list = make_menu_list_10(message)
             view = EpisodeSelectView(ctx, "ytb_playlist", info_dict, menu_list)
-            view.message = await ctx.send(f"{menu_list[0]}\n第[1]页，共["
-                                          f"{len(menu_list)}]页\n已输入：",
-                                          view=view)
+            await ctx.respond(f"{menu_list[0]}\n第[1]页，"
+                              f"共[{len(menu_list)}]页\n已输入：",
+                              view=view)
 
     else:
-        if url != "-1":
-            await search_ytb(ctx, url)
+        if link != "N/A":
+            await search_ytb(ctx, link)
 
 
 async def play_next(ctx):
@@ -777,159 +763,163 @@ async def play_ytb(ctx, url, info_dict, download_type="ytb_single"):
     return audio
 
 
-@bot.command()
-async def skip(ctx, num1="-1", num2="-1"):
+@bot.command(description="跳过正在播放或播放列表中的音频")
+async def skip(ctx, first_number="-1", second_number="-1"):
     """
     使机器人跳过指定的歌曲，并删除对应歌曲的文件
 
     :param ctx: 指令原句
-    :param num1: 跳过起始曲目的序号
-    :param num2: 跳过最终曲目的序号
+    :param first_number: 跳过起始曲目的序号
+    :param second_number: 跳过最终曲目的序号
     :return:
     """
-    console_message_log_command(ctx)
+    console_message_log_command(ctx, "skip")
     guild_initialize(ctx)
     voice_client = ctx.guild.voice_client
     current_playlist = playlist_dict[ctx.guild.id]
 
     if not current_playlist.is_empty():
         # 不输入参数的情况
-        if num1 == "-1" and num2 == "-1":
+        if first_number == "-1" and second_number == "-1":
             current_song = current_playlist.get(0)
             title = current_song.title
             voice_client.stop()
 
             console_message_log(ctx, f"第1首歌曲 {title} 已被用户 {ctx.author} 移出播放队列")
-            await ctx.send(f"已跳过当前歌曲  **{title}**")
+            await ctx.respond(f"已跳过当前歌曲  **{title}**")
 
         # 输入1个参数的情况
-        elif num2 == "-1":
+        elif second_number == "-1":
 
-            if num1 == "*" or num1 == "all" or num1 == "All" or num1 == "ALL":
+            if first_number == "*" or first_number == "all" or \
+                    first_number == "All" or first_number == "ALL":
                 await clear(ctx)
 
-            elif int(num1) == 1:
+            elif int(first_number) == 1:
                 current_song = current_playlist.get(0)
                 title = current_song.title
                 voice_client.stop()
 
                 console_message_log(ctx, f"第1首歌曲 {title} "
                                          f"已被用户 {ctx.author} 移出播放队列")
-                await ctx.send(f"已跳过当前歌曲 **{title}**")
+                await ctx.respond(f"已跳过当前歌曲 **{title}**")
 
-            elif int(num1) > current_playlist.size():
+            elif int(first_number) > current_playlist.size():
                 console_message_log(ctx, f"用户 {ctx.author} 输入的序号不在范围内")
-                await ctx.reply(f"选择的序号不在范围内")
+                await ctx.respond(f"选择的序号不在范围内")
 
             else:
-                num1 = int(num1)
-                select_song = current_playlist.get(num1 - 1)
+                first_number = int(first_number)
+                select_song = current_playlist.get(first_number - 1)
                 title = select_song.title
-                current_playlist.delete_select(num1 - 1)
+                current_playlist.delete_select(first_number - 1)
 
-                console_message_log(ctx, f"第{num1}首歌曲 {title} "
+                console_message_log(ctx, f"第{first_number}首歌曲 {title} "
                                          f"已被用户 {ctx.author} 移出播放队列")
-                await ctx.send(f"第{num1}首歌曲 **{title}** 已被移出播放列表")
+                await ctx.respond(f"第{first_number}首歌曲 **{title}** 已被移出播放列表")
 
         # 输入2个参数的情况
-        elif int(num1) < int(num2):
-            num1 = int(num1)
-            num2 = int(num2)
+        elif int(first_number) < int(second_number):
+            first_number = int(first_number)
+            second_number = int(second_number)
 
             # 如果需要跳过正在播放的歌，则需要先移除除第一首歌以外的歌曲，第一首由stop()触发play_next移除
-            if num1 == 1:
-                for i in range(num2, num1, -1):
+            if first_number == 1:
+                for i in range(second_number, first_number, -1):
                     current_playlist.delete_select(i - 1)
                 voice_client.stop()
 
-                console_message_log(ctx, f"歌曲第{num1}到第{num2}首被用户 "
-                                         f"{ctx.author} 移出播放队列")
-                await ctx.send(f"歌曲第{num1}到第{num2}首已被移出播放队列")
+                console_message_log(ctx, f"歌曲第{first_number}到第{second_number}"
+                                         f"首被用户 {ctx.author} 移出播放队列")
+                await ctx.respond(f"歌曲第{first_number}到第{second_number}"
+                                  f"首已被移出播放队列")
 
-            elif int(num1) > current_playlist.size() or \
-                    int(num2) > current_playlist.size():
+            elif int(first_number) > current_playlist.size() or \
+                    int(second_number) > current_playlist.size():
                 console_message_log(ctx, f"用户 {ctx.author} 输入的序号不在范围内")
-                await ctx.reply(f"选择的序号不在范围内")
+                await ctx.respond(f"选择的序号不在范围内")
 
             # 不需要跳过正在播放的歌
             else:
-                for i in range(num2, num1 - 1, -1):
+                for i in range(second_number, first_number - 1, -1):
                     current_playlist.delete_select(i - 1)
 
-                console_message_log(ctx, f"歌曲第{num1}到第{num2}首被用户 "
-                                         f"{ctx.author} 移出播放队列")
-                await ctx.send(f"歌曲第{num1}到第{num2}首已被移出播放队列")
+                console_message_log(ctx, f"歌曲第{first_number}到第{second_number}"
+                                         f"首被用户 {ctx.author} 移出播放队列")
+                await ctx.respond(
+                    f"歌曲第{first_number}到第{second_number}首已被移出播放队列"
+                )
 
         else:
-            await ctx.send("参数错误")
+            await ctx.respond("参数错误")
             console_message_log(ctx, f"用户 {ctx.author} 的skip指令参数错误")
 
     else:
-        await ctx.send("当前播放列表已为空")
+        await ctx.respopnd("当前播放列表已为空")
 
 
-@bot.command(aliases=["m"])
-async def move(ctx, from_index=-1, to_index=-1):
-    console_message_log_command(ctx)
+@bot.command(description="移动播放列表中音频的位置")
+async def move(ctx, from_number=-1, to_number=-1):
+    console_message_log_command(ctx, "move")
     guild_initialize(ctx)
     voice_client = ctx.guild.voice_client
     current_playlist = playlist_dict[ctx.guild.id]
 
-    if from_index == -1 or to_index == -1:
-        await ctx.reply("请输入想要移动的歌曲序号以及想要移动到的位置")
+    if from_number == -1 or to_number == -1:
+        await ctx.respond("请输入想要移动的歌曲序号以及想要移动到的位置")
 
     # 两个参数相同的情况
-    elif from_index == to_index:
-        await ctx.reply("您搁这儿搁这儿呢")
+    elif from_number == to_number:
+        await ctx.respond("您搁这儿搁这儿呢")
 
     # 先将音频复制到目的位置，然后通过stop移除正在播放的音频
     # 因为有重复所以stop不会删除本地文件
 
     # 将第一个音频移走的情况
-    elif from_index == 1:
+    elif from_number == 1:
         current_song = current_playlist.get(0)
         title = current_song.title
-        current_playlist.add_audio(current_song, to_index)
+        current_playlist.add_audio(current_song, to_number)
         voice_client.stop()
 
         console_message_log(ctx, f"音频 {title} 已被用户 {ctx.author} "
-                                 f"移至播放队列第 {to_index} 位")
-        await ctx.send(f"**{title}** 已被移至播放队列第 **{to_index}** 位")
+                                 f"移至播放队列第 {to_number} 位")
+        await ctx.respond(f"**{title}** 已被移至播放队列第 **{to_number}** 位")
 
     # 将音频移到当前位置
-    elif to_index == 1:
+    elif to_number == 1:
         current_song = current_playlist.get(0)
-        target_song = current_playlist.get(from_index - 1)
+        target_song = current_playlist.get(from_number - 1)
         title = target_song.title
-        current_playlist.remove_select(from_index - 1)
+        current_playlist.remove_select(from_number - 1)
         current_playlist.add_audio(current_song, 1)
         current_playlist.add_audio(target_song, 1)
         voice_client.stop()
 
         console_message_log(ctx, f"音频 {title} 已被用户 {ctx.author} "
-                                 f"移至播放队列第 {to_index} 位")
-        await ctx.send(f"**{title}** 已被移至播放队列第 **{to_index}** 位")
+                                 f"移至播放队列第 {to_number} 位")
+        await ctx.respond(f"**{title}** 已被移至播放队列第 **{to_number}** 位")
 
     else:
-        target_song = current_playlist.get(from_index - 1)
+        target_song = current_playlist.get(from_number - 1)
         title = target_song.title
-        if from_index < to_index:
-            current_playlist.add_audio(target_song, to_index)
-            current_playlist.remove_select(from_index - 1)
+        if from_number < to_number:
+            current_playlist.add_audio(target_song, to_number)
+            current_playlist.remove_select(from_number - 1)
         else:
-            current_playlist.add_audio(target_song, to_index - 1)
-            current_playlist.remove_select(from_index)
+            current_playlist.add_audio(target_song, to_number - 1)
+            current_playlist.remove_select(from_number)
 
         console_message_log(ctx, f"音频 {title} 已被用户 {ctx.author} "
-                                 f"移至播放队列第 {to_index} 位")
-        await ctx.send(f"**{title}** 已被移至播放队列第 **{to_index}** 位")
+                                 f"移至播放队列第 {to_number} 位")
+        await ctx.respond(f"**{title}** 已被移至播放队列第 **{to_number}** 位")
 
 
 async def search_ytb(ctx, input_name):
     name = input_name.strip()
 
     if name == "":
-        ctx.reply("请输入要搜索的名称")
+        ctx.respond("请输入要搜索的名称")
         return
 
     options = []
@@ -955,11 +945,11 @@ async def search_ytb(ctx, input_name):
     message = message + "\n请选择："
 
     if len(info_dict) == 0:
-        await ctx.send("没有搜索到任何结果")
+        await ctx.respond("没有搜索到任何结果")
         return
 
     view = SearchSelectView(ctx, options)
-    view.message = await ctx.send(message, view=view)
+    await ctx.respond(message, view=view)
 
 
 class SearchSelectView(View):
@@ -1060,14 +1050,14 @@ class SearchSelectView(View):
     async def on_timeout(self):
         self.clear_items()
         if self.finish:
-            await self.message.edit(view=self)
+            await self.ctx.edit(view=self)
         else:
-            await self.message.edit(content="已超时", view=self)
+            await self.ctx.edit(content="搜索栏已超时", view=self)
         console_message_log(self.ctx, f"{self.occur_time}生成的搜索选择栏已超时"
                                       f"(超时时间为{self.timeout}秒)")
 
 
-@bot.command()
+@bot.command(description="暂停正在播放的音频")
 async def pause(ctx):
     """
     暂停播放
@@ -1075,7 +1065,7 @@ async def pause(ctx):
     :param ctx: 指令原句
     :return:
     """
-    console_message_log_command(ctx)
+    console_message_log_command(ctx, "pause")
     guild_initialize(ctx)
     voice_client = ctx.guild.voice_client
 
@@ -1084,17 +1074,17 @@ async def pause(ctx):
                 voice_client.channel == ctx.author.voice.channel:
             voice_client.pause()
             console_message_log(ctx, "暂停播放")
-            await ctx.send("暂停播放")
+            await ctx.respond("暂停播放")
         else:
             console_message_log(ctx, f"收到pause指令时指令发出者 {ctx.author} 不在机器人所在的频道")
-            await ctx.reply(f"您不在{setting.value('bot_name')}所在的频道")
+            await ctx.respond(f"您不在{setting.value('bot_name')}所在的频道")
 
     else:
         console_message_log(ctx, "收到pause指令时机器人未在播放任何音乐")
-        await ctx.send("未在播放任何音乐")
+        await ctx.respond("未在播放任何音乐")
 
 
-@bot.command(aliases=["r", "restart"])
+@bot.command(description="继续播放暂停的或被意外中断的音频", aliases=["restart"])
 async def resume(ctx, play_call=False):
     """
     恢复播放
@@ -1103,7 +1093,7 @@ async def resume(ctx, play_call=False):
     :param play_call: 是否是由play指令调用来尝试恢复播放
     :return:
     """
-    console_message_log_command(ctx)
+    console_message_log_command(ctx, "resume")
     guild_initialize(ctx)
     voice_client = ctx.guild.voice_client
     current_playlist = playlist_dict[ctx.guild.id]
@@ -1112,7 +1102,7 @@ async def resume(ctx, play_call=False):
     if voice_client is None:
         if not play_call:
             console_message_log(ctx, "收到resume指令时机器人没有加入任何语音频道")
-            await ctx.send(f"{setting.value('bot_name')}尚未加入任何语音频道")
+            await ctx.respond(f"{setting.value('bot_name')}尚未加入任何语音频道")
 
     # 被暂停播放的情况
     elif voice_client.is_paused():
@@ -1120,17 +1110,17 @@ async def resume(ctx, play_call=False):
                 voice_client.channel == ctx.author.voice.channel:
             voice_client.resume()
             console_message_log(ctx, "恢复播放")
-            await ctx.send("恢复播放")
+            await ctx.respond("恢复播放")
         else:
             console_message_log(ctx, f"收到pause指令时指令发出者 {ctx.author} "
                                      f"不在机器人所在的频道")
-            await ctx.reply(f"您不在{setting.value('bot_name')}所在的频道")
+            await ctx.respond(f"您不在{setting.value('bot_name')}所在的频道")
 
     # 没有被暂停并且正在播放的情况
     elif voice_client.is_playing():
         if not play_call:
             console_message_log(ctx, "收到resume指令时机器人正在播放音乐")
-            await ctx.send("当前正在播放音乐")
+            await ctx.respond("当前正在播放音乐")
 
     # 没有被暂停，没有正在播放，并且播放列表中存在歌曲的情况
     elif not current_playlist.is_empty():
@@ -1147,15 +1137,15 @@ async def resume(ctx, play_call=False):
         voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
 
         console_message_log(ctx, "恢复中断的播放列表")
-        await ctx.send(f"恢复上次中断的播放列表")
+        await ctx.respond(f"恢复上次中断的播放列表")
 
     else:
         if not play_call:
             console_message_log(ctx, "收到resume指令时机器人没有任何被暂停的音乐")
-            await ctx.send("当前没有任何被暂停的音乐")
+            await ctx.respond("当前没有任何被暂停的音乐")
 
 
-@bot.command(aliases=["l"])
+@bot.command(description="显示当前播放列表")
 async def list(ctx):
     """
     将当前服务器播放列表发送到服务器文字频道中
@@ -1163,20 +1153,20 @@ async def list(ctx):
     :param ctx: 指令原句
     :return:
     """
-    console_message_log_command(ctx)
+    console_message_log_command(ctx, "list")
     console_message_log_list(ctx)
     guild_initialize(ctx)
 
     if ctx.guild.id not in playlist_dict:
-        await ctx.send("当前播放列表为空")
+        await ctx.respond("当前播放列表为空")
     elif playlist_dict[ctx.guild.id].is_empty():
-        await ctx.send("当前播放列表为空")
+        await ctx.respond("当前播放列表为空")
     else:
         playlist_str, duration = playlist_dict[ctx.guild.id].get_playlist_str()
         playlist_list = make_menu_list_10(playlist_str)
 
         view = PlaylistMenu(ctx, playlist_list)
-        view.message = await ctx.send(
+        await ctx.respond(
             content=">>> **播放列表**\n\n" + playlist_list[0] +
                     f"\n第[1]页，共[{len(playlist_list)}]页\n", view=view)
 
@@ -1203,13 +1193,13 @@ async def clear(ctx):
     voice_client.stop()
 
     console_message_log(ctx, f"用户 {ctx.author} 已清空所在服务器的播放列表")
-    await ctx.send("播放列表已清空")
+    await ctx.respond("播放列表已清空")
 
 
-@bot.command()
+@bot.command(description="[管理员]修改与用户的用户组")
 async def change_user_group(ctx, user_name, group) -> None:
 
-    console_message_log_command(ctx)
+    console_message_log_command(ctx, "change_user_group")
 
     if await authorize(ctx, "change_user_group") and \
             await authorize_change_user_group(ctx, group):
@@ -1217,69 +1207,71 @@ async def change_user_group(ctx, user_name, group) -> None:
             if user_library.library["users"][key] == user_name:
                 if str(key) == str(ctx.author.id):
                     console_message_log(ctx, f"{ctx.author.name}无法修改自己的用户组")
-                    await ctx.reply("您不能更改自己的用户组")
+                    await ctx.respond("您不能更改自己的用户组")
                     return
                 User(key, user_name, user_library.path).change_user_group(group)
                 console_message_log(ctx, f"用户 {ctx.author.name} 将用户 {user_name}"
                                          f" (id: {key}) 转移至用户组 {group}")
-                await ctx.reply(f"已将用户 {user_name} (id: {key}) 转移至用户组 {group}")
+                await ctx.respond(f"已将用户 {user_name} (id: {key}) 转移至用户组 "
+                                  f"{group}")
                 return
         console_message_log(ctx, f"未找到用户 {user_name}")
-        await ctx.reply("未找到目标用户")
+        await ctx.respond("未找到目标用户")
     else:
         console_message_log(ctx, f"用户 {ctx.author.name} 无权将用户转移至用户组 {group}")
-        await ctx.reply("权限不足")
+        await ctx.respond("权限不足")
 
 
-@bot.command()
+@bot.command(description="[管理员]通过用户ID修改与用户的用户组")
 async def change_user_group_id(ctx, user_id, group) -> None:
 
-    console_message_log_command(ctx)
+    console_message_log_command(ctx, "change_user_group_id")
 
     if await authorize(ctx, "change_user_group") and \
             await authorize_change_user_group(ctx, group):
         if user_id in user_library.library["users"]:
             if str(user_id) == str(ctx.author.id):
                 console_message_log(ctx, f"{ctx.author.name}无法修改自己的用户组")
-                await ctx.reply("您不能更改自己的用户组")
+                await ctx.respond("您不能更改自己的用户组")
                 return
             user_name = user_library.library["users"][user_id]
             User(user_id, user_name, user_library.path).change_user_group(group)
             console_message_log(ctx, f"用户 {ctx.author.name} 将用户 {user_name} "
                                      f"(id: {user_id}) 转移至用户组 {group}")
-            await ctx.reply(f"已将用户 {user_name} (id: {user_id}) 转移至用户组 {group}")
+            await ctx.respond(f"已将用户 {user_name} (id: {user_id}) 转移至用户组 "
+                              f"{group}")
             return
         console_message_log(ctx, f"未找到用户 id:{user_id}")
-        await ctx.reply("未找到目标用户")
+        await ctx.respond("未找到目标用户")
     else:
         console_message_log(ctx, f"用户 {ctx.author.name} 无权将用户转移至用户组 {group}")
-        await ctx.reply("权限不足")
+        await ctx.respond("权限不足")
 
 
-@bot.command()
+@bot.command(description="[管理员]重启机器人")
 async def reboot(ctx):
     """
     重启程序
     """
     if await authorize(ctx, "reboot"):
-        console_message_log_command(ctx)
-        await ctx.send("正在重启")
+        console_message_log_command(ctx, "reboot")
+        await ctx.respond("正在重启")
         os.execl(python_path, python_path, * sys.argv)
     else:
-        await ctx.reply("权限不足")
+        await ctx.respond("权限不足")
 
 
-@bot.command()
+@bot.command(description="[管理员]关闭机器人")
 async def shutdown(ctx):
     """
     退出程序
     """
     if await authorize(ctx, "shutdown"):
-        console_message_log_command(ctx)
-        await ctx.send("正在关闭")
+        console_message_log_command(ctx, "shutdown")
+        await ctx.respond("正在关闭")
         await bot.close()
     else:
-        await ctx.reply("权限不足")
+        await ctx.respond("权限不足")
 
 
 class Menu(View):
@@ -1287,7 +1279,6 @@ class Menu(View):
     def __init__(self, ctx, menu_list, title, timeout):
         super().__init__(timeout=timeout)
         self.ctx = ctx
-        self.message = None
         self.menu_list = menu_list
         self.title = title
         self.page_num = 0
@@ -1331,12 +1322,11 @@ class Menu(View):
         msg = interaction.response
         self.clear_items()
         await msg.edit_message(content="已关闭", view=self)
-        await self.message.delete()
+        await self.ctx.delete()
 
     async def on_timeout(self):
         self.clear_items()
-
-        await self.message.delete()
+        await self.ctx.delete()
         console_message_log(self.ctx, f"{self.occur_time}生成的菜单已超时"
                                       f"(超时时间为{self.timeout}秒)")
 
@@ -1346,7 +1336,6 @@ class PlaylistMenu(View):
     def __init__(self, ctx, menu_list, timeout=60):
         super().__init__(timeout=timeout)
         self.ctx = ctx
-        self.message = None
         self.menu_list = menu_list
         self.page_num = 0
         self.result = []
@@ -1417,11 +1406,11 @@ class PlaylistMenu(View):
         msg = interaction.response
         self.clear_items()
         await msg.edit_message(content="已关闭", view=self)
-        await self.message.delete()
+        await self.ctx.delete()
 
     async def on_timeout(self):
         self.clear_items()
-        await self.message.edit(content=self.first_page, view=self)
+        await self.ctx.edit(content=self.first_page, view=self)
         console_message_log(self.ctx, f"{self.occur_time}生成的播放列表菜单已超时"
                                       f"(超时时间为{self.timeout}秒)")
 
@@ -1441,7 +1430,6 @@ class EpisodeSelectView(View):
         """
         super().__init__(timeout=timeout)
         self.ctx = ctx
-        self.message = None
         self.source = source
         self.info_dict = info_dict
         self.menu_list = menu_list
@@ -1628,8 +1616,8 @@ class EpisodeSelectView(View):
     async def button_backspace_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
-        if len(self.result) == 0:
-            return
+        if len(self.result) <= 0:
+            pass
         else:
             self.result.pop()
             num = ""
@@ -1883,10 +1871,10 @@ class EpisodeSelectView(View):
     async def on_timeout(self):
         self.clear_items()
         if self.finish:
-            await self.message.edit(view=self)
+            await self.ctx.edit(view=self)
         else:
-            await self.message.edit(content="已超时", view=self)
-        console_message_log(self.ctx, f"{self.occur_time}生成的搜索选择栏已超时"
+            await self.ctx.edit(content="分集选择菜单已超时", view=self)
+        console_message_log(self.ctx, f"{self.occur_time}生成的搜索选择菜单已超时"
                                       f"(超时时间为{self.timeout}秒)")
 
 
@@ -1895,7 +1883,6 @@ class CheckBiliCollectionView(View):
     def __init__(self, ctx, info_dict, timeout=10):
         super().__init__(timeout=timeout)
         self.ctx = ctx
-        self.message = None
         self.info_dict = info_dict
         self.occur_time = str(datetime.datetime.now())[11:19]
         self.finish = False
@@ -1920,12 +1907,12 @@ class CheckBiliCollectionView(View):
         menu_list = make_menu_list_10(message)
         view = EpisodeSelectView(self.ctx, "bili_collection", self.info_dict,
                                  menu_list)
-        view.message = await self.ctx.send(f"{menu_list[0]}\n第[1]页，共["
-                                           f"{len(menu_list)}]页\n已输入：",
-                                           view=view)
+        await self.ctx.send(f"{menu_list[0]}\n第[1]页，共["
+                            f"{len(menu_list)}]页\n已输入：",
+                            view=view)
 
         await msg.edit_message(view=self)
-        await self.message.delete()
+        await self.ctx.delete()
 
     @discord.ui.button(label="取消", style=discord.ButtonStyle.grey,
                        custom_id="button_cancel")
@@ -1935,11 +1922,11 @@ class CheckBiliCollectionView(View):
         self.finish = True
         self.clear_items()
         await msg.edit_message(view=self)
-        await self.message.delete()
+        await self.ctx.delete()
 
     async def on_timeout(self):
         if not self.finish:
-            await self.message.delete()
+            await self.ctx.delete()
         console_message_log(self.ctx, f"{self.occur_time}生成的合集查看选择栏已超时"
                                       f"(超时时间为{self.timeout}秒)")
 
@@ -1956,15 +1943,10 @@ all_setting = {
         "regex": "\d+",
         "default": "000000000000000000"
     },
-    "command_prefix": {
-        "type": "str",
-        "description": "请设置机器人指令前缀",
-        "default": "."
-    },
     "ffmpeg_path": {
         "type": "str",
         "description": "请输入ffmpeg程序的路径"
-                       "（Windows系统以ffmpeg.exe结尾，Linux系统以ffmpeg结尾）",
+                       "（Windows系统以ffmpeg.exe结尾，Linux系统以ffmpeg结尾，路径中请使用\"/\"）",
         "default": "./bin/ffmpeg"
     },
     "log": {
@@ -2050,7 +2032,6 @@ if __name__ == '__main__':
         pass
 
     setting.load()
-    bot.command_prefix = setting.value("command_prefix")
 
     # 初始化运行环境
     current_time_main = str(datetime.datetime.now())[:19]

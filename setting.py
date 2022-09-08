@@ -90,6 +90,8 @@ class Setting(dict):
             if input_line.lower() == "exit":
                 raise UserExit
             try:
+                input_line = legal_str(input_line)
+
                 if regex != "":
                     input_line = eval(f"{require_type}(\"{input_line}\")")
                     if re.match(regex, input_line) is None:
@@ -123,3 +125,14 @@ class Setting(dict):
                 done = True
 
         self.save()
+
+
+def legal_str(string: str) -> str:
+    result = ""
+    for char in string:
+        if char == "\\":
+            result += "/"
+        else:
+            result += char
+
+    return result
