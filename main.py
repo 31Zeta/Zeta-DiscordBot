@@ -20,19 +20,14 @@ from setting import Setting
 from errors import *
 
 
-version = "0.8.0"
+version = "0.8.1"
 py_cord_version = discord.__version__
 update_time = "2022.09.08"
-update_log = "0.8.0" \
-             "- [重要] 由于Discord逐渐停止前缀指令支持，现已改为使用应用程序指令（正斜杠指令）" \
-             "- 去除掉自定义指令前缀功能" \
-             "- 将Pycord升级至v2.1.1版本" \
-             "- 修复了设置时输入\\报错的问题" \
-             "- 互动面板提示语句调整"
+update_log = "0.8.1" \
+             "- 修复了v0.8.0无法在Linux运行的问题" \
+             "- [已知问题] 检测到Bilibili合集时概率出现应用程序未响应的问题"
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.messages = True
+intents = discord.Intents.all()
 
 # # 设定指令前缀符，关闭默认Help指令
 bot = discord.Bot(
