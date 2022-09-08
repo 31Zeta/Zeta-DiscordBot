@@ -23,7 +23,7 @@ git clone https://github.com/31Zeta/Zeta-DiscordBot.git
  pip install -r requirements.txt
 ```  
 或手动安装以下包：  
-- py-cord (v2.0.0-beta.4) https://github.com/Pycord-Development/pycord  
+- py-cord (v2.1.1) https://github.com/Pycord-Development/pycord  
 - APScheduler https://github.com/agronholm/apscheduler  
 - bilibili-api https://github.com/MoyuScript/bilibili-api  
 - PyNaCl https://github.com/pyca/pynacl/
