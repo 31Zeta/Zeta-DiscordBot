@@ -25,7 +25,7 @@ git clone https://github.com/31Zeta/Zeta-DiscordBot.git
 或手动安装以下包：  
 - py-cord (v2.1.1) https://github.com/Pycord-Development/pycord  
 - APScheduler https://github.com/agronholm/apscheduler  
-- bilibili-api https://github.com/MoyuScript/bilibili-api  
+- bilibili-api-python https://github.com/Nemo2011/bilibili-api
 - PyNaCl https://github.com/pyca/pynacl/
 - requests https://github.com/psf/requests  
 - yt-dlp https://github.com/yt-dlp/yt-dlp  
