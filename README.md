@@ -6,7 +6,7 @@ A Discord Bot that based on Pycord.
   
 **不推荐使用0.6.1或更低版本（这些版本中机器人的相关设置存储在main.py文件中且设置极不完善）**  
 
-**Not recommended to use Ver 0.6.1 or below (The setting in those version is stored in main.py and incomplete)
+**Not recommended to use Ver 0.6.1 or below (The setting in those version is stored in main.py and incomplete)**
 
 核心功能 Core Functions
 --------  
