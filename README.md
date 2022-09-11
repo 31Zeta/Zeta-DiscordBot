@@ -66,7 +66,7 @@ To change the setting, please use following command (Ver 0.7.0 or higher require
 python main.py --mode=setting
 ```  
   
-0.6.1及更低版本注意事项
+0.6.1及更低版本注意事项 /n
 P.S. for Ver 0.6.1 and lower version
 ----------------------  
 1. 请将ffmpeg或ffmpeg.exe放入库根目录的bin文件夹中  
