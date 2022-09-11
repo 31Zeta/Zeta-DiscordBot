@@ -66,7 +66,7 @@ To change the setting, please use following command (Ver 0.7.0 or higher require
 python main.py --mode=setting
 ```  
   
-0.6.1及更低版本注意事项 /n
+0.6.1及更低版本注意事项     
 P.S. for Ver 0.6.1 and lower version
 ----------------------  
 1. 请将ffmpeg或ffmpeg.exe放入库根目录的bin文件夹中  
@@ -74,7 +74,10 @@ P.S. for Ver 0.6.1 and lower version
 3. 创建一个txt文件并将Discord机器人令牌存储到其中，默认情况下Linux系统将文件重命名为token.txt，Windows系统则重命名为test_token.txt，并将该文件置于库根目录下（请自行搜索如何创建Discord机器人及获得其令牌token）  
 4. 根据需求修改main.py中设置内的变量，机器人指令前缀以及令牌文件名称可根据需要搜索变量名command_prefix以及token_name进行修改  
 
-1. Put ffmpeg or ffmpeg.exe to /bin folder
-2. Set the system_option in the settings to the corresponding value according to the system used (in main.py)
-3. Create a txt file and store Discord Bot's token in it. Linux user should rename the file name with "token.txt". Windows user should rename the file name with "test_token.txt". Then put this file in root dir.
-4. Set the var in main.py according to the demand. Change Bot command prefix by edit var command_prefix. Change token filename by edit var token_name.
+
+<ol>
+<li>Put ffmpeg or ffmpeg.exe to /bin folder
+<li>Set the system_option in the settings to the corresponding value according to the system used (in main.py)
+<li>Create a txt file and store Discord Bot's token in it. Linux user should rename the file name with "token.txt". Windows user should rename the file name with "test_token.txt". Then put this file in root dir.
+<li>Set the var in main.py according to the demand. Change Bot command prefix by edit var command_prefix. Change token filename by edit var token_name.
+</ol>
