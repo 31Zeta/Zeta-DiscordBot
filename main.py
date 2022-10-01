@@ -1,5 +1,4 @@
 import discord
-from discord.ext import commands
 from discord.ui import Button, View
 import sys
 import asyncio
@@ -20,12 +19,12 @@ from setting import Setting
 from errors import *
 
 
-version = "0.8.1"
+version = "0.8.2"
 py_cord_version = discord.__version__
-update_time = "2022.09.08"
-update_log = "0.8.1" \
-             "- 修复了v0.8.0无法在Linux运行的问题" \
-             "- [已知问题] 检测到Bilibili合集时概率出现应用程序未响应的问题"
+update_time = "2022.10.01"
+update_log = "0.8.2" \
+             "- 将帮助菜单超时时间调回正常时间" \
+             "- 修复无效的Bilibili链接无响应的问题"
 
 intents = discord.Intents.all()
 
@@ -238,49 +237,8 @@ async def on_message(message):
     if message.content.startswith('\\p'):
         await message.channel.send('由于Discord逐渐停止支持前缀指令，Zeta-Discord'
                                    '机器人现已改为使用统一的应用程序指令\n应用程序指令'
-                                   '前缀为正斜杠\"/\"（示例：/play）')
-
-    # await bot.process_commands(message)
-
-
-@bot.event
-async def on_command_error(ctx, error):
-    """
-    指令报错时发送提示
-
-    :param ctx: 指令原句
-    :param error: 错误
-    :return:
-    """
-    # 指令报错提示
-    if isinstance(error, commands.CommandNotFound):
-        current_time = str(datetime.datetime.now())[:19]
-        print(current_time + f" 位置:{ctx.guild}\n    用户 {str(ctx.author)} "
-                             f"发送未知指令 {ctx.message.content}\n")
-        write_log(current_time, f"{ctx.guild} 用户 {str(ctx.author)} "
-                                f"发送未知指令 {ctx.message.content}")
-
-        await ctx.send("未知指令\n使用 \\help 查询可用指令")
-
-    elif isinstance(error, discord.ext.commands.errors.UnexpectedQuoteError):
-        current_time = str(datetime.datetime.now())[:19]
-        print(current_time + f" 位置:{ctx.guild}\n    用户 {str(ctx.author)} "
-                             f"发送的指令 {ctx.message.content} 包含无效符号\n")
-        write_log(current_time, f"{ctx.guild} 用户 {str(ctx.author)} "
-                                f"发送的指令 {ctx.message.content} 包含无效符号")
-
-        await ctx.send("指令中请不要包含以下符号：\n"
-                       "“『”、“』”和引号")
-
-    else:
-        current_time = str(datetime.datetime.now())[:19]
-        print(current_time + f" 位置:{ctx.guild}\n    用户 {str(ctx.author)} "
-                             f"发送指令 {ctx.message.content}\n发生错误如下：")
-        write_log(current_time, f"{ctx.guild} 用户 {str(ctx.author)} "
-                                f"发送指令 {ctx.message.content}    "
-                                f"发生错误如下：{error}")
-        await ctx.send("发生错误，请重试或联系管理员")
-        raise error
+                                   '前缀为正斜杠\"/\"（示例：/play）\n'
+                                   '输入后在出现的指令列表中找到Zeta的对应指令后按回车')
 
 
 @bot.command(description="关于Zeta-Discord机器人")
@@ -538,8 +496,7 @@ async def play(ctx, link="N/A"):
         if source == "bili_url" or source == "bili_short_url":
             bvid = bili_get_bvid(link)
             if bvid == "error_bvid":
-                console_message_log(ctx, f"{ctx.message.content} "
-                                         f"为无效的链接")
+                console_message_log(ctx, f"{link} 为无效的链接")
                 await ctx.respond("无效的Bilibili链接")
                 return
         else:
@@ -1191,7 +1148,7 @@ async def clear(ctx):
     await ctx.respond("播放列表已清空")
 
 
-@bot.command(description="[管理员]修改与用户的用户组")
+@bot.command(description="[管理员] 修改与用户的用户组")
 async def change_user_group(ctx, user_name, group) -> None:
 
     console_message_log_command(ctx, "change_user_group")
@@ -1217,7 +1174,7 @@ async def change_user_group(ctx, user_name, group) -> None:
         await ctx.respond("权限不足")
 
 
-@bot.command(description="[管理员]通过用户ID修改与用户的用户组")
+@bot.command(description="[管理员] 通过用户ID修改与用户的用户组")
 async def change_user_group_id(ctx, user_id, group) -> None:
 
     console_message_log_command(ctx, "change_user_group_id")
@@ -1243,7 +1200,7 @@ async def change_user_group_id(ctx, user_id, group) -> None:
         await ctx.respond("权限不足")
 
 
-@bot.command(description="[管理员]重启机器人")
+@bot.command(description="[管理员] 重启机器人")
 async def reboot(ctx):
     """
     重启程序
@@ -1256,7 +1213,7 @@ async def reboot(ctx):
         await ctx.respond("权限不足")
 
 
-@bot.command(description="[管理员]关闭机器人")
+@bot.command(description="[管理员] 关闭机器人")
 async def shutdown(ctx):
     """
     退出程序
