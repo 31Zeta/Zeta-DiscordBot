@@ -56,7 +56,7 @@ class HelpMenu:
 
 class HelpMenuView(View):
     def __init__(self, ctx):
-        super().__init__(timeout=2)
+        super().__init__(timeout=180)
         self.content = HelpMenu()
         self.ctx = ctx
         self.message = None
