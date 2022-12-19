@@ -1,0 +1,12 @@
+.*/
+out/
+venv/
+*.xml
+*.iml
+*.log
+*.class
+downloads/
+logs/
+playlists/
+users/
+setting.json
