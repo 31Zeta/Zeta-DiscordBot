@@ -5,6 +5,9 @@ venv/
 *.iml
 *.log
 *.class
+audios/
+bin/ffmpeg
+bin/ffmpeg.exe
 downloads/
 logs/
 playlists/
