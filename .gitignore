@@ -6,8 +6,8 @@ venv/
 *.log
 *.class
 audios/
-bin/ffmpeg
-bin/ffmpeg.exe
+zeta_bot/bin/ffmpeg
+zeta_bot/bin/ffmpeg.exe
 downloads/
 logs/
 playlists/
