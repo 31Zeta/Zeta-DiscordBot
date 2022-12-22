@@ -6,20 +6,20 @@ from errors import *
 
 class Log:
     def __init__(self, error_log_path: str, log_path: str, log: bool) -> None:
-        self.log = log
-        self.log_path = log_path
-        self.error_log_path = error_log_path
-        logging.basicConfig(filename=self.error_log_path, level=logging.WARNING)
+        self.__log = log
+        self.__log_path = log_path
+        self.__error_log_path = error_log_path
+        logging.basicConfig(filename=self.__error_log_path, level=logging.WARNING)
 
     def record(self, ctx, content) -> None:
-        record_and_print(self.log_path, ctx, utils.time(), content)
+        record_and_print(self.__log_path, ctx, utils.time(), content)
 
     def on_error(self, exception) -> None:
-        error(self.error_log_path, exception)
+        error(self.__error_log_path, exception)
 
     def on_application_command_error(self, ctx, exception) -> None:
         application_command_error(
-            self.log_path, self.error_log_path, ctx, exception)
+            self.__log_path, self.__error_log_path, ctx, exception)
 
 
 def record(path: str, time: str, content: str) -> None:

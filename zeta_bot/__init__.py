@@ -1,3 +1,4 @@
-from log import *
-from setting import *
-from utils import *
+from errors import *
+import setting
+import utils
+import log

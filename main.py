@@ -14,7 +14,7 @@ startup_time = utils.time()
 
 log_name_time = startup_time.replace(":", "_")
 error_log_path = f"./logs/{log_name_time}_errors.log"
-log = Log()
+log = log.Log()
 
 
 @bot.event
