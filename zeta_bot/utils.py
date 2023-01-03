@@ -1,4 +1,5 @@
 import datetime
+import os
 import json
 
 
@@ -33,6 +34,16 @@ def path_end_formatting(string: str) -> str:
         string = string.rstrip("\\")
 
     return string
+
+
+def create_folder(path: str):
+    """
+    检测在指定目录是否存在文件夹，如果不存在则创建
+    """
+    if not os.path.exists(path):
+        name = path[path.rfind("/") + 1:]
+        os.mkdir(path)
+        print(f"创建{name}文件夹")
 
 
 def json_save(json_path: str, save_dict: dict) -> None:

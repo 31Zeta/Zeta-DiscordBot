@@ -12,4 +12,6 @@ downloads/
 logs/
 playlists/
 users/
-data/setting.json
+data/
+log/
+/code_test.py

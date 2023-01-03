@@ -1,8 +1,7 @@
 import traceback
 import logging
 
-import zeta_bot.errors as errors
-import zeta_bot.utils as utils
+from zeta_bot import errors, utils
 
 
 class Log:
