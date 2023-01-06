@@ -45,10 +45,13 @@ class Setting(dict):
                     print("新的描述如下：")
                     print(f"    {name}\n        - {description}\n")
                     print(f"现在的值为：{original_value}")
+                    # 同步最新设置信息
+                    self[key] = self.__config[key]
 
                     option = utils.input_yes_no("请问是否要修改此设置？（输入yes为是，输入no为否）\n")
                     if option:
                         self.modify_setting(key)
+                    self.save()
 
                 # 读取选项
                 else:
@@ -152,7 +155,7 @@ class Setting(dict):
 
     def check_setting_update(self, key: str) -> bool:
         """
-        如果设置中的信息有变化则返回TRUE
+        如果设置中的信息有变化则返回True
         """
         if self[key]["name"] != self.__config[key]["name"]:
             return True

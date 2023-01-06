@@ -46,12 +46,12 @@ def create_folder(path: str):
         print(f"创建{name}文件夹")
 
 
-def json_save(json_path: str, save_dict: dict) -> None:
+def json_save(json_path: str, saving_dict: dict) -> None:
     """
     将<save_dict>以json格式保存到<json_path>
     """
     with open(json_path, "w", encoding="utf-8") as file:
-        file.write(json.dumps(save_dict, default=lambda x: x.encode(),
+        file.write(json.dumps(saving_dict, default=lambda x: x.encode(),
                               sort_keys=False, indent=4))
 
 
@@ -76,3 +76,21 @@ def input_yes_no(description: str) -> bool:
             return False
         else:
             print("请输入yes或者no")
+
+
+def time_split(time_str: str) -> list:
+
+    time_str_list = time_str.split(":")
+    for i in range(3):
+        time_str_list.append("00")
+
+    time_list = []
+    for i in range(3):
+        time_list.append(int(time_str_list[i]))
+
+    for i in range(2, -1, -1):
+        if i != 0 and time_list[i] > 60:
+            time_list[i - 1] += time_list[i] // 60
+            time_list[i] = time_list[i] % 60
+
+    return time_list

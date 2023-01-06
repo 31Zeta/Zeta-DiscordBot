@@ -6,49 +6,69 @@ from zeta_bot import errors, utils
 
 class Log:
     def __init__(self, error_log_path: str, log_path: str, log: bool) -> None:
-        self.__log = log
-        self.__log_path = log_path
-        self.__error_log_path = error_log_path
+        self.log = log
+        self.log_path = log_path
+        self.error_log_path = error_log_path
+
+        with open(self.error_log_path, "a", encoding="utf-8"):
+            pass
+        if self.log:
+            with open(self.log_path, "a", encoding="utf-8"):
+                pass
+
         logging.basicConfig(
-            filename=self.__error_log_path, level=logging.WARNING
+            filename=self.error_log_path, level=logging.WARNING
         )
 
-    def record(self, ctx, content) -> None:
-        record_and_print(self.__log_path, ctx, utils.time(), content)
+    def rec(self, content: str, position="") -> None:
+        """
+        记录运行日志
+        """
+        if self.log:
+            write_log(self.log_path, utils.time(), content, position)
+
+    def rec_p(self, content: str, position=""):
+        """
+        Record and print
+        记录运行日志，并打印到控制台
+        """
+        current_time = utils.time()
+        print_log(current_time, content)
+        if self.log:
+            write_log(self.log_path, current_time, content, position)
 
     def on_error(self, exception) -> None:
-        error(self.__error_log_path, exception)
+        error(self.error_log_path, exception)
 
     def on_application_command_error(self, ctx, exception) -> None:
         application_command_error(
-            self.__log_path, self.__error_log_path, ctx, exception)
+            self.log_path, self.error_log_path, ctx, exception)
 
 
-def record(path: str, time: str, content: str) -> None:
+def write_log(path: str, time: str, content: str, position="") -> None:
     """
     向运行日志写入时间与信息
 
     :param path: 日志路径
     :param time: 要记录的时间
     :param content: 要写入的信息
+    :param position: 位置信息
     :return:
     """
     with open(path, "a", encoding="utf-8") as log:
-        log.write(f"{time} {content}\n")
+        log.write(f"{time} {position} {content}\n")
 
 
-def record_and_print(path: str, ctx, time: str, content: str) -> None:
+def print_log(time: str, content: str, position="") -> None:
     """
-    在控制台打印一条信息，并记录在运行日志中
+    在控制台打印一条包含位置的信息，并记录在运行日志中
 
-    :param path: 日志路径
-    :param ctx: ctx
     :param time: 要记录的时间
     :param content: 要写入的信息
+    :param position: 位置信息
     :return:
     """
-    print(time + f" {ctx.guild}\n    {content}\n")
-    record(path, time, f"[{ctx.guild}] {content}")
+    print(f"{time} {position}\n    {content}\n")
 
 
 def error(error_log_path, exception) -> None:
@@ -69,13 +89,9 @@ def error(error_log_path, exception) -> None:
     logger.error(f"{current_time}\n{message}\n{full_exception}")
 
     # 控制台输出错误信息
-    print(current_time + f"\n    \033[0;31m发生错误：{exception}\n    "
-                         f"详情请查看错误日志：根目录{error_log_path[1:]}\033[0m\n"
-          )
+    print_log(current_time, f"\033[0;31m发生错误：{exception}\n    详情请查看错误日志：根目录{error_log_path[1:]}\033[0m\n")
     # 系统活动日志写入错误信息
-    record(error_log_path, current_time,
-           f"发生错误：{exception}，详情请查看错误日志：根目录{error_log_path[1:]}"
-           )
+    write_log(error_log_path, current_time, f"发生错误：{exception}，详情请查看错误日志：根目录{error_log_path[1:]}", "[系统]")
 
 
 def application_command_error(log_path, error_log_path, ctx, exception) -> None:
@@ -97,13 +113,9 @@ def application_command_error(log_path, error_log_path, ctx, exception) -> None:
     logger.error(f"{current_time}\n{message}\n{full_exception}")
 
     # 控制台输出错误信息
-    print(current_time + f" {ctx.guild}\n    \033[0;31m发生错误：{exception}\n    "
-                         f"详情请查看错误日志：根目录{error_log_path[1:]}\033[0m\n"
-          )
+    print_log(current_time, f"\033[0;31m发生错误：{exception}\n    详情请查看错误日志：根目录{error_log_path[1:]}\033[0m", f"\033[0;31m{ctx.guild}\033[0m")
     # 系统活动日志写入错误信息
-    record(log_path, current_time, f"[{ctx.guild}] 发生错误：{exception}，"
-                                   f"详情请查看错误日志：根目录{error_log_path[1:]}"
-           )
+    write_log(log_path, current_time, f"发生错误：{exception}，详情请查看错误日志：根目录{error_log_path[1:]}", f"{ctx.guild}")
 
     # 向用户回复发生错误
     # try:
