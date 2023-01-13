@@ -60,7 +60,7 @@ class Member:
 
     def update_members_library(self):
         """
-        更新记录名称的总字典
+        更新总用户库
         """
         path = "./data/member/.Members"
         if not os.path.exists(path):
@@ -88,4 +88,3 @@ class Normal(Enum):
 
 class Banned(Enum):
     name = "Banned"
-

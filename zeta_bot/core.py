@@ -1,6 +1,7 @@
 import discord
 import sys
 import os
+import time
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -34,18 +35,24 @@ def start(mode: str) -> None:
     根据模式启动程序
     """
     if mode == "normal" or mode == "":
-        run()
+        run_bot()
     elif mode == "setting":
+        # TODO 移动到setting.py
         pass
     elif mode == "reset":
-        pass
+        setting.reset_setting()
+        run_bot()
+    else:
+        print("模式不存在")
+        time.sleep(2)
+        sys.exit()
 
 
 if __name__ == "__main__":
     start("normal")
 
 
-def run() -> None:
+def run_bot() -> None:
     """启动机器人"""
     try:
         bot.run(setting.value("token"))

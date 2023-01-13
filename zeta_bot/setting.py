@@ -165,6 +165,42 @@ class Setting(dict):
             return True
         return False
 
+    def modify_mode(self):
+        num_key = {}
+        # 将序号与设置名对应
+        for key in bot_setting_configs:
+            num_key[bot_setting_configs[key]["num"]] = key
+
+        print("---------- 修改设置 ----------")
+        while True:
+            print(self.list_all())
+            print()
+            input_line = input(
+                "请输入需要修改的设置序号（输入exit以退出设置）：\n")
+            if input_line.lower() == "exit":
+                break
+
+            try:
+                input_line = int(input_line)
+                input_line = num_key[input_line]
+            except ValueError:
+                print("请输入正确的序号（输入exit以退出设置）\n")
+                continue
+            except KeyError:
+                print("请输入正确的序号（输入exit以退出设置）\n")
+                continue
+
+            try:
+                self.modify_setting(input_line)
+            #     TODO Check
+            except errors.SettingKeyNotFound:
+                print("未找到此设置\n")
+            except errors.UserCancelled:
+                print()
+            else:
+                print()
+        print()
+
     def reset_setting(self):
         self.clear()
         self.initialize_setting()
