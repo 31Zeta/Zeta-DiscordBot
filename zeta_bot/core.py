@@ -5,7 +5,7 @@ import time
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from zeta_bot import errors, utils, setting, log
+from zeta_bot import errors, utils, setting, log, member
 
 version = "0.10.0"
 author = "炤铭Zeta"
@@ -28,6 +28,7 @@ logger = log.Log(error_log_path, log_path, setting.value("log"))
 logger.rec_p("程序启动", "[系统]")
 
 utils.create_folder("./data/member")
+member_library = member.MemberLibrary()
 
 
 def start(mode: str) -> None:
@@ -37,15 +38,13 @@ def start(mode: str) -> None:
     if mode == "normal" or mode == "":
         run_bot()
     elif mode == "setting":
-        # TODO 移动到setting.py
-        pass
+        setting.modify_mode()
+        run_bot()
     elif mode == "reset":
         setting.reset_setting()
         run_bot()
     else:
-        print("模式不存在")
-        time.sleep(2)
-        sys.exit()
+        raise errors.BootModeNotFound
 
 
 if __name__ == "__main__":
@@ -56,7 +55,7 @@ def run_bot() -> None:
     """启动机器人"""
     try:
         bot.run(setting.value("token"))
-    except discord.errors.LoginFailure:
+    except errors.LoginFailure:
         print("登录失败，请检查Discord机器人令牌是否正确，在启动指令后添加\" --mode=setting\"来修改设置")
 
 

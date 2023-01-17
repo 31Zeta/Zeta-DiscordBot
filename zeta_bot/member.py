@@ -14,13 +14,8 @@ class Member:
         # 如果用户已存在
         if os.path.exists(self.path):
             self.load()
-
             # 更新用户信息
-            self.name = ctx.author.name
-            self.guilds[ctx.guild.id] = {"nickname": ctx.author.nick}
-            self.save()
-
-            self.update_members_library()
+            self.update(ctx)
 
         # 如果用户不存在则新建用户档案
         else:
@@ -32,8 +27,6 @@ class Member:
 
             # 储存该用户在此服务器的信息
             self.guilds[ctx.guild.id] = {"nickname": ctx.author.nick}
-
-            self.update_members_library()
 
     def encode(self) -> dict:
         info_dict = {
@@ -58,33 +51,64 @@ class Member:
         self.data = loaded_dict["data"]
         self.property = loaded_dict["property"]
 
-    def update_members_library(self):
+    def update(self, ctx: discord.ApplicationContext):
         """
-        更新总用户库
+        更新用户信息
         """
-        path = "./data/member/.Members"
-        if not os.path.exists(path):
-            utils.json_save(path, {})
-
-        loaded_dict = utils.json_load(path)
-        loaded_dict[self.id] = self.name
-        utils.json_save(path, loaded_dict)
+        if ctx.author.id == self.id:
+            self.name = ctx.author.name
+            self.guilds[ctx.guild.id]["nickname"] = ctx.author.nick
+            self.save()
 
     def set_group(self):
         pass
 
 
-class Owner(Enum):
-    name = "Owner"
+class MemberLibrary(dict):
+    """
+    类本身用于储存活跃的用户类，self.local用于管理本地.Members文件
+    """
+    def __init__(self):
+        super().__init__()
+
+        self.path = "./data/member/.Members.json"
+        if not os.path.exists(self.path):
+            utils.json_save(self.path, {})
+        self.local = {}
+        self.load_local()
+
+    def update_local(self, member: Member):
+        self.local[member.id] = member.name
+        self.save_local()
+
+    def save_local(self):
+        utils.json_save(self.path, self.local)
+
+    def load_local(self):
+        loaded_dict = utils.json_load(self.path)
+        for key in loaded_dict:
+            self.local[key] = loaded_dict[key]
+
+    def get_member(self, ctx: discord.ApplicationContext) -> Member:
+        if ctx.author.id not in self:
+            member = Member(ctx)
+            self[ctx.author.id] = member
+        # 更新用户信息
+        self[ctx.author.id].update(ctx)
+        # 更新库本地文件
+        self.update_local(self[ctx.author.id])
+        return self[ctx.author.id]
 
 
-class Admin(Enum):
-    name = "Admin"
+group_permission_configs = {
+    "shutdown": False,
+    "reboot": False,
+    "change_user_group": False,
+    "broadcast": False,
+    "blacklist": False,
+    "debug": False
+}
 
+class MemberGroup:
+    def __init__(self):
 
-class Normal(Enum):
-    name = "Normal"
-
-
-class Banned(Enum):
-    name = "Banned"

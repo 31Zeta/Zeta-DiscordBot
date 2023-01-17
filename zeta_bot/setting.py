@@ -9,13 +9,13 @@ from zeta_bot import utils, errors
 class Setting(dict):
     def __init__(self, path: str, config: dict) -> None:
         super().__init__(self)
-        self.__path = path
-        self.__name = self.__path[self.__path.rfind("/") + 1:]
-        self.__config = config
+        self.path = path
+        self.name = self.path[self.path.rfind("/") + 1:]
+        self.config = config
 
         try:
             # 检测设置文件是否存在
-            if not os.path.exists(self.__path):
+            if not os.path.exists(self.path):
                 self.initialize_setting()
             else:
                 self.load()
@@ -25,28 +25,28 @@ class Setting(dict):
             sys.exit()
 
     def save(self) -> None:
-        utils.json_save(self.__path, self)
+        utils.json_save(self.path, self)
 
     def load(self) -> None:
-        loaded_dict = utils.json_load(self.__path)
+        loaded_dict = utils.json_load(self.path)
 
         # 读取loaded_dict
         for key in loaded_dict:
             self[key] = loaded_dict[key]
 
-        for key in self.__config:
+        for key in self.config:
             if key in self:
                 # 如果选项中的内容有变化
                 if self.check_setting_update(key):
-                    name = self.__config[key]["name"]
-                    description = self.__config[key]["description"]
+                    name = self.config[key]["name"]
+                    description = self.config[key]["description"]
                     original_value = loaded_dict[key]["value"]
                     print("\n设置选项的描述发生变动")
                     print("新的描述如下：")
                     print(f"    {name}\n        - {description}\n")
                     print(f"现在的值为：{original_value}")
                     # 同步最新设置信息
-                    self[key] = self.__config[key]
+                    self[key] = self.config[key]
 
                     option = utils.input_yes_no("请问是否要修改此设置？（输入yes为是，输入no为否）\n")
                     if option:
@@ -55,7 +55,7 @@ class Setting(dict):
 
                 # 读取选项
                 else:
-                    self[key] = self.__config[key]
+                    self[key] = self.config[key]
                     self[key]["value"] = loaded_dict[key]["value"]
 
             # 新增设置选项
@@ -79,7 +79,7 @@ class Setting(dict):
 
     def initialize_setting(self):
         print("开始进行初始设置\n在任意步骤中输入exit以退出设置：")
-        for key in self.__config:
+        for key in self.config:
             try:
                 self.modify_setting(key)
             except errors.UserCancelled:
@@ -91,7 +91,7 @@ class Setting(dict):
         """
         修改一项设置，如果<self.__config>中不包含此项设置则直接返回
         """
-        if key not in self.__config:
+        if key not in self.config:
             return
 
         done = False
@@ -99,9 +99,9 @@ class Setting(dict):
         if key in self:
             original_value = self[key]["value"]
         else:
-            original_value = self.__config[key]["value"]
+            original_value = self.config[key]["value"]
         # 同步最新设置信息
-        self[key] = self.__config[key]
+        self[key] = self.config[key]
         name = self[key]["name"]
         require_type = self[key]["type"]
         description = self[key]["description"]
@@ -157,11 +157,11 @@ class Setting(dict):
         """
         如果设置中的信息有变化则返回True
         """
-        if self[key]["name"] != self.__config[key]["name"]:
+        if self[key]["name"] != self.config[key]["name"]:
             return True
-        if self[key]["description"] != self.__config[key]["description"]:
+        if self[key]["description"] != self.config[key]["description"]:
             return True
-        if self[key]["input_description"] != self.__config[key]["input_description"]:
+        if self[key]["input_description"] != self.config[key]["input_description"]:
             return True
         return False
 
@@ -192,12 +192,7 @@ class Setting(dict):
 
             try:
                 self.modify_setting(input_line)
-            #     TODO Check
-            except errors.SettingKeyNotFound:
-                print("未找到此设置\n")
             except errors.UserCancelled:
-                print()
-            else:
                 print()
         print()
 
