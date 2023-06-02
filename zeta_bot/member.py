@@ -20,7 +20,7 @@ class Member:
         # 如果用户不存在则新建用户档案
         else:
             self.name = ctx.author.name
-            self.group = Normal
+            # self.group = Normal
             self.guilds = {}
             self.data = {"first_contact": current_time, "play_counter": 0}
             self.property = {"playlist": []}
@@ -110,5 +110,11 @@ group_permission_configs = {
 }
 
 class MemberGroup:
+
     def __init__(self):
+        pass
+
+    def permission(self, action: str):
+        raise NotImplementedError
+
 

@@ -22,6 +22,7 @@ class Log:
 
     def rec(self, content: str, position="") -> None:
         """
+        Record
         记录运行日志
         """
         if self.log:

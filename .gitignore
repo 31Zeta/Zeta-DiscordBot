@@ -7,6 +7,7 @@ venv/
 *.class
 zeta_bot/bin/ffmpeg
 zeta_bot/bin/ffmpeg.exe
+zeta_bot/data/
 /code_test.py
 audio/
 audios/

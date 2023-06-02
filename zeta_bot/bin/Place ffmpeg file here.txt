@@ -1,2 +1,0 @@
-Please place ffmpeg or ffmpeg.ece file in this folder
-请将ffmpeg或ffmpeg.exe文件放在此文件夹内

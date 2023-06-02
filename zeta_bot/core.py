@@ -1,3 +1,5 @@
+import gettext
+
 import discord
 import sys
 import os
@@ -12,6 +14,9 @@ author = "炤铭Zeta"
 python_path = sys.executable
 pycord_version = discord.__version__
 
+# 多语言
+_ = gettext.gettext
+
 # 初始化机器人设置
 intents = discord.Intents.all()
 bot = discord.Bot(help_command=None, case_insensitive=True, intents=intents)
@@ -20,15 +25,15 @@ startup_time = utils.time()
 utils.create_folder("./data")
 setting = setting.Setting("./data/setting.json", setting.bot_setting_configs)
 
-utils.create_folder("./log")
+utils.create_folder("./logs")
 log_name_time = startup_time.replace(":", "_")
-error_log_path = f"./log/{log_name_time}_errors.log"
-log_path = f"./log/{log_name_time}.log"
+error_log_path = f"./logs/{log_name_time}_errors.log"
+log_path = f"./logs/{log_name_time}.log"
 logger = log.Log(error_log_path, log_path, setting.value("log"))
 logger.rec_p("程序启动", "[系统]")
 
 utils.create_folder("./data/member")
-member_library = member.MemberLibrary()
+# member_library = member.MemberLibrary()
 
 
 def start(mode: str) -> None:
@@ -121,6 +126,22 @@ async def on_ready():
     await bot.change_presence(
         activity=discord.Activity(type=bot_activity_type,
                                   name=setting.value("default_activity")))
+
+
+# 文字频道中收到信息时
+@bot.event
+async def on_message(message):
+    """
+    当检测到消息时调用
+
+    :param message:频道中的消息
+    :return:
+    """
+    if message.author == bot.user:
+        return
+
+    if message.content.startswith("test"):
+        await message.channel.send(_("测试"))
 
 
 async def auto_reboot_function():
