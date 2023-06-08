@@ -1,7 +1,16 @@
 import traceback
 import logging
 
-from zeta_bot import errors, utils
+from zeta_bot import (
+    errors,
+    language,
+    utils
+)
+
+# 多语言模块
+lang = language.Lang()
+_ = lang.get_string
+printl = lang.printl
 
 
 class Log:
@@ -28,7 +37,7 @@ class Log:
         if self.log:
             write_log(self.log_path, utils.time(), content, position)
 
-    def rec_p(self, content: str, position=""):
+    def rec_p(self, content: str, level=""):
         """
         Record and print
         记录运行日志，并打印到控制台
@@ -36,7 +45,7 @@ class Log:
         current_time = utils.time()
         print_log(current_time, content)
         if self.log:
-            write_log(self.log_path, current_time, content, position)
+            write_log(self.log_path, current_time, content, level)
 
     def on_error(self, exception) -> None:
         error(self.error_log_path, exception)
@@ -46,18 +55,18 @@ class Log:
             self.log_path, self.error_log_path, ctx, exception)
 
 
-def write_log(path: str, time: str, content: str, position="") -> None:
+def write_log(path: str, time: str, content: str, level="") -> None:
     """
     向运行日志写入时间与信息
 
     :param path: 日志路径
     :param time: 要记录的时间
     :param content: 要写入的信息
-    :param position: 位置信息
+    :param level: 位置信息
     :return:
     """
     with open(path, "a", encoding="utf-8") as log:
-        log.write(f"{time} {position} {content}\n")
+        log.write(f"{time} {level} {content}\n")
 
 
 def print_log(time: str, content: str, position="") -> None:

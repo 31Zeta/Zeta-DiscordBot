@@ -1,5 +1,3 @@
-import gettext
-
 import discord
 import sys
 import os
@@ -7,23 +5,33 @@ import time
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from zeta_bot import errors, utils, setting, log, member
+from zeta_bot import (
+    errors,
+    language,
+    utils,
+    setting,
+    log,
+    member
+)
 
 version = "0.10.0"
 author = "炤铭Zeta"
 python_path = sys.executable
 pycord_version = discord.__version__
 
-# 多语言
-_ = gettext.gettext
+# 多语言模块
+lang = language.Lang()
+_ = lang.get_string
+printl = lang.printl
 
 # 初始化机器人设置
 intents = discord.Intents.all()
 bot = discord.Bot(help_command=None, case_insensitive=True, intents=intents)
 startup_time = utils.time()
-
 utils.create_folder("./data")
-setting = setting.Setting("./data/setting.json", setting.bot_setting_configs)
+lang_setting = setting.Setting("./data/language.json", setting.language_setting_configs)
+lang.set_system_language(lang_setting.value("language"))
+setting = setting.Setting("./data/settings.json", setting.bot_setting_configs, lang_setting.value("language"))
 
 utils.create_folder("./logs")
 log_name_time = startup_time.replace(":", "_")
@@ -141,7 +149,7 @@ async def on_message(message):
         return
 
     if message.content.startswith("test"):
-        await message.channel.send(_("测试"))
+        await message.channel.send(_("custom.reply_1"))
 
 
 async def auto_reboot_function():

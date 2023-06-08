@@ -1,0 +1,43 @@
+system=系统
+
+# core.py
+
+core.program_start=程序启动
+core.bot_login_failed=登录失败，请检查Discord机器人令牌是否正确，在启动指令后添加" --mode=setting"来修改设置
+core.bot_ready=准备就绪
+core.bot_login_ready_time=以{0}的身份登录，登录时间：{1}
+core.set_auto_reboot_time=设置自动重启时间为 {0}时{1}分{2}秒
+core.start_auto_reboot=开始执行自动定时重启
+core.remind_auto_reboot=注意：将在{0}时自动重启
+
+# setting.py
+
+setting.setting_file_corrupted=设置文件已损坏
+setting.initial_setting_start=开始进行{0}的初始设置\n在任意步骤中输入exit以退出设置：
+setting.initial_setting_cancelled=您需要完成设置才可正常运行该程序\n再次启动该程序以完成设置\n正在退出
+setting.version_changed=版本变更导致以前已有的设置内容可能发生变动，请问您是否要重新检查所有的设置选项？
+setting.introducing_new_change=新的描述如下：
+setting.introducing_current_value=现在的值为：
+setting.modify_prompt=请问是否要修改此设置？（输入yes为是，输入no为否）
+setting.modify_prompt_2=（输入yes为是，输入skip为暂时跳过，输入no为否且下次不再提醒）
+setting.value_error_prompt=请输入yes，skip或者no
+setting.new_setting_found=发现新增设置
+setting.change_saved=所有设置已保存
+setting.invalid_input=无效输入，请按说明重新输入
+setting.modify_setting=修改设置
+setting.input_number=请输入需要修改的设置序号（输入exit以退出设置）：
+setting.wrong_number=请输入正确的序号（输入exit以退出设置）
+
+setting.config.
+
+# log.py
+
+log.error_print=发生错误：{0}\n    详情请查看错误日志：根目录{1}
+log.error_write=发生错误：{0}，详情请查看错误日志：根目录{1}
+log.command_error=用户发送指令：{0} 造成错误
+
+# utils.py
+utils.create_folder=创建{0}文件夹
+utils.input_yes_no=请输入yes或者no
+
+custom.1=你好，世界！

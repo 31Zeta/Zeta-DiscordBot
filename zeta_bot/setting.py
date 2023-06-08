@@ -3,15 +3,31 @@ import re
 import sys
 import time
 
-from zeta_bot import utils, errors
+from zeta_bot import (
+    errors,
+    language,
+    utils
+)
+
+# 多语言模块
+lang = language.Lang()
+_ = lang.get_string
+printl = lang.printl
 
 
-class Setting(dict):
-    def __init__(self, path: str, config: dict) -> None:
-        super().__init__(self)
+class Setting:
+    def __init__(self, path: str, config: dict, required=False) -> None:
         self.path = path
-        self.name = self.path[self.path.rfind("/") + 1:]
+        self.setting = {}
         self.config = config
+
+        # 加载配置
+        self.name = self.config[0]["config_name"]
+        self.version = self.config[0]["version"]
+        self.setting["config_name"] = self.name
+        self.setting["version"] = self.version
+        for i in range(1, len(self.config)):
+            self.setting[self.config[i]["id"]] = self.config[i]["value"]
 
         try:
             # 检测设置文件是否存在
@@ -19,113 +35,123 @@ class Setting(dict):
                 self.initialize_setting()
             else:
                 self.load()
+        except KeyError:
+            print("设置文件已损坏")
+            self.initialize_setting()
         except errors.UserCancelled:
-            print("您需要完成设置才可正常运行该程序\n再次启动该程序以完成设置\n正在退出")
-            time.sleep(3)
-            sys.exit()
+            if required:
+                print("您需要完成设置才可正常运行该程序\n再次启动该程序以完成设置\n正在退出")
+                time.sleep(3)
+                sys.exit()
 
     def save(self) -> None:
-        utils.json_save(self.path, self)
+        utils.json_save(self.path, self.setting)
 
-    def load(self) -> None:
+    def load(self):
+        """
+        读取self.path的文件，并将其中的设置选项加入到self.setting中
+        """
         loaded_dict = utils.json_load(self.path)
 
         # 读取loaded_dict
-        for key in loaded_dict:
-            self[key] = loaded_dict[key]
-
-        for key in self.config:
-            if key in self:
-                # 如果选项中的内容有变化
-                if self.check_setting_update(key):
-                    name = self.config[key]["name"]
-                    description = self.config[key]["description"]
-                    original_value = loaded_dict[key]["value"]
-                    print("\n设置选项的描述发生变动")
-                    print("新的描述如下：")
-                    print(f"    {name}\n        - {description}\n")
-                    print(f"现在的值为：{original_value}")
-                    # 同步最新设置信息
-                    self[key] = self.config[key]
-
-                    option = utils.input_yes_no("请问是否要修改此设置？（输入yes为是，输入no为否）\n")
-                    if option:
-                        self.modify_setting(key)
-                    self.save()
-
-                # 读取选项
-                else:
-                    self[key] = self.config[key]
-                    self[key]["value"] = loaded_dict[key]["value"]
-
-            # 新增设置选项
+        loaded_name = loaded_dict["config_name"]
+        loaded_version = loaded_dict["version"]
+        for key in self.setting:
+            if key in loaded_dict:
+                self.setting[key] = loaded_dict[key]
             else:
-                print("\n发现新增设置")
-                self.modify_setting(key)
+                print("发现新增设置")
+                try:
+                    self.change_setting(self.find_index(key))
+                except errors.UserCancelled:
+                    raise errors.UserCancelled
+
+        if loaded_version != self.version:
+            print("版本变更导致以前已有的设置内容可能发生变动，请问您是否要重新检查所有的设置选项？")
+            input_line = input("（输入yes为是，输入skip为暂时跳过，输入no为否且下次不再提醒）\n")
+            input_option = input_line.lower()
+            if input_option == "true" or input_option == "yes" or \
+                    input_option == "y":
+                self.setting["version"] = self.version
+                self.save()
+                self.modify_mode()
+            elif input_option == "false" or input_option == "no" or \
+                    input_option == "n":
+                self.setting["version"] = self.version
+                self.save()
+            elif input_option == "skip":
+                pass
+            else:
+                print("请输入yes，skip或者no")
 
     def value(self, key: str) -> any:
-        return self[key]["value"]
+        return self.setting[key]
 
     def list_all(self) -> str:
-        result = ""
-        for key in self:
-            num = str(self[key]["num"])
-            num_str = f"[{num}] "
+        result = self.name + "\n"
+        for i in range(1, len(self.config)):
+            num_str = f"[{i}] "
             # 对齐数字
-            if len(num) == 1:
+            if i < 10:
                 num_str += " "
-            result += num_str + self[key]["name"] + "\n"
+            result += num_str + self.config[i]["name"] + "\n"
         return result
 
     def initialize_setting(self):
-        print("开始进行初始设置\n在任意步骤中输入exit以退出设置：")
-        for key in self.config:
+        print(f"开始进行{self.name}的初始设置\n在任意步骤中输入exit以退出设置：")
+        print(self.name)
+        for i in range(1, len(self.config)):
             try:
-                self.modify_setting(key)
+                self.change_setting(i)
             except errors.UserCancelled:
                 raise errors.UserCancelled
 
         print("\n所有设置已保存\n")
 
-    def modify_setting(self, key) -> None:
+    def find_index(self, key) -> int:
+        for i in range(1, len(self.config)):
+            if key == self.config[i]["id"]:
+                return i
+        return -1
+
+    def change_setting(self, index) -> None:
         """
         修改一项设置，如果<self.__config>中不包含此项设置则直接返回
         """
-        if key not in self.config:
+        if index < 1 or index > len(self.config) - 1:
             return
 
         done = False
         # 保存原始值
-        if key in self:
-            original_value = self[key]["value"]
-        else:
-            original_value = self.config[key]["value"]
-        # 同步最新设置信息
-        self[key] = self.config[key]
-        name = self[key]["name"]
-        require_type = self[key]["type"]
-        description = self[key]["description"]
-        input_description = self[key]["input_description"]
-        regex = self[key]["regex"]
+        original_value = self.setting[self.config[index]["id"]]
 
-        if self[key]["dependent"] is not None and self[self[key]["dependent"]]["value"] is False:
+        # 检查依赖项
+        if self.config[index]["dependent"] is not None and self.setting[self.config[index]["dependent"]] is False:
             done = True
 
+        name = self.config[index]["name"]
+        description = self.config[index]["description"]
+        input_description = self.config[index]["input_description"]
+        regex = self.config[index]["regex"]
+        require_type = self.config[index]["type"]
+        options = self.config[index]["options"]
         while not done:
             input_line = input(
                 f"\n{name}\n    - {description}\n{input_description}:\n"
             )
 
             if input_line.lower() == "exit":
-                self[key]["value"] = original_value
+                self.setting[self.config[index]["id"]] = original_value
                 raise errors.UserCancelled
 
             try:
+                # 正则表达式检测
                 if regex is not None:
                     input_line = eval(f"{require_type}(\"{input_line}\")")
                     if re.match(regex, input_line) is None:
                         raise ValueError
 
+                # 布尔值检测
                 if require_type == "bool":
                     input_option = input_line.lower()
                     if input_option == "true" or input_option == "yes" or \
@@ -140,41 +166,29 @@ class Setting(dict):
                 elif input_line == "\\":
                     pass
 
+                # 类型转换
                 else:
                     input_line = eval(f"{require_type}(\"{input_line}\")")
+
+                # 选项检测
+                if options is not None:
+                    if input_line not in options:
+                        raise ValueError
 
             except ValueError:
                 print("\n无效输入，请按说明重新输入")
                 time.sleep(1)
 
             else:
-                self[key]["value"] = input_line
+                self.setting[self.config[index]["id"]] = input_line
                 done = True
 
         self.save()
 
-    def check_setting_update(self, key: str) -> bool:
-        """
-        如果设置中的信息有变化则返回True
-        """
-        if self[key]["name"] != self.config[key]["name"]:
-            return True
-        if self[key]["description"] != self.config[key]["description"]:
-            return True
-        if self[key]["input_description"] != self.config[key]["input_description"]:
-            return True
-        return False
-
     def modify_mode(self):
-        num_key = {}
-        # 将序号与设置名对应
-        for key in bot_setting_configs:
-            num_key[bot_setting_configs[key]["num"]] = key
-
         print("---------- 修改设置 ----------")
         while True:
             print(self.list_all())
-            print()
             input_line = input(
                 "请输入需要修改的设置序号（输入exit以退出设置）：\n")
             if input_line.lower() == "exit":
@@ -182,144 +196,189 @@ class Setting(dict):
 
             try:
                 input_line = int(input_line)
-                input_line = num_key[input_line]
             except ValueError:
                 print("请输入正确的序号（输入exit以退出设置）\n")
                 continue
             except KeyError:
                 print("请输入正确的序号（输入exit以退出设置）\n")
                 continue
+            if input_line < 1 or input_line > len(self.config):
+                print("请输入正确的序号（输入exit以退出设置）\n")
+                continue
 
             try:
-                self.modify_setting(input_line)
+                self.change_setting(input_line)
             except errors.UserCancelled:
                 print()
         print()
 
+    def change_settings_list(self, keys: list) -> None:
+        for i in range(1, len(self.config)):
+            if self.config[i]["id"] in keys:
+                try:
+                    self.change_setting(i)
+                except errors.UserCancelled:
+                    continue
+
     def reset_setting(self):
-        self.clear()
+        self.setting.clear()
         self.initialize_setting()
 
 
-bot_setting_configs = {
-    "token": {
-        "num": 1,
+language_setting_configs = [
+    {
+        "config_name": "系统语言设定",
+        "version": "0.10.0"
+    },
+    {
+        "id": "language",
+        "name": "系统语言设定",
+        "type": "str",
+        "description": f"请选择系统的语言：\n{language.list_lang_code(indent=6)}",
+        "input_description": "请输入语言代码（示例：zh_cn）",
+        "dependent": None,
+        "regex": None,
+        "options": language.get_lang_code_list(),
+        "value": "None"
+    },
+]
+
+
+bot_setting_configs = [
+    {
+        "config_name": "系统设定",
+        "version": "0.10.0"
+    },
+    {
+        "id": "token",
         "name": "Discord机器人令牌",
         "type": "str",
         "description": "用于连接到对应Discord账户的认证秘钥，可以从Discord Developer Portal (https://discord.com/developers/applications) → 对应的Application → Bot → Token 处生成",
         "input_description": "请输入Discord机器人令牌",
         "dependent": None,
         "regex": None,
+        "options": None,
         "value": "None"
     },
-    "owner": {
-        "num": 2,
+    {
+        "id": "owner",
         "name": "所有者用户ID",
         "type": "str",
-        "description": "本机器人的所有者的纯数字ID，将获得全部权限，纯数字ID可以通过打开Discord开发者模式（位于 用户设置 → 高级设置 → 开发者模式）后，右键用户选择\"复制ID\"获得",
+        "description": "本机器人的所有者（最高管理员）的纯数字ID，将获得全部权限，纯数字ID可以通过打开Discord开发者模式（位于 用户设置 → 高级设置 → 开发者模式）后，右键用户选择\"复制ID\"获得",
         "input_description": "请输入给予本机器人最高管理权限的Discord用户的用户ID（纯数字ID）",
         "dependent": None,
         "regex": "\d+",
+        "options": None,
         "value": "000000000000000000"
     },
-    "log": {
-        "num": 3,
+    {
+        "id": "log",
         "name": "系统活动日志",
         "type": "bool",
         "description": "用于记录将各种活动（例如触发指令，添加音频）记录在本地的日志",
         "input_description": "请设置是否开启系统活动日志记录功能（错误日志始终开启）（输入yes为开启，输入no为关闭）",
         "dependent": None,
         "regex": None,
+        "options": None,
         "value": True
     },
-    "audio_library_max_cache": {
-        "num": 4,
+    {
+        "id": "audio_library_max_cache",
         "name": "音频库缓存上限",
         "type": "int",
         "description": "允许缓存在本地的音频数量上限，该上限为总上限（无论该机器人加入多少服务器），请根据您部署该机器人的设备的可用本地空间估算，当缓存数量超过该上限时将自动删除最久没有使用的音频",
         "input_description": "请设置服务器允许在本地音频库缓存的音频的数量上限",
         "dependent": None,
         "regex": None,
+        "options": None,
         "value": "200"
     },
-    "guild_past_list_max_cache": {
-        "num": 5,
+    {
+        "id": "guild_past_list_max_cache",
         "name": "历史播放列表上限",
         "type": "int",
         "description": "每个服务器记录历史播放音频的数量上限",
         "input_description": "请设置每个服务器历史播放音频列表记录上限",
         "dependent": None,
         "regex": None,
+        "options": None,
         "value": "50"
     },
-    "bot_name": {
-        "num": 6,
+    {
+        "id": "bot_name",
         "name": "机器人名称",
         "type": "str",
         "description": "该机器人的名称（当前版本暂无太多作用，机器人在Discord的用户名实际上为您在Discord Developer Portal设置的名称）",
         "input_description": "请设置机器人的名称",
         "dependent": None,
         "regex": None,
+        "options": None,
         "value": "机器人"
     },
-    "default_activity": {
-        "num": 7,
+    {
+        "id": "default_activity",
         "name": "机器人状态",
         "type": "str",
         "description": "机器人启动后显示在用户栏内机器人用户名下方的状态，显示格式为中文版：\"正在玩 <状态>\" 或英文版：\"Playing <状态>\"",
         "input_description": "请设置机器人启动时的默认状态",
         "dependent": None,
         "regex": None,
+        "options": None,
         "value": "Nothing"
     },
-    "auto_reboot": {
-        "num": 8,
+    {
+        "id": "auto_reboot",
         "name": "自动重启",
         "type": "bool",
         "description": "自动重启功能，在不方便管理机器人时确保不会因某些BUG卡死机器人（希望不会发生）",
         "input_description": "请设置是否开启自动重启功能（输入y为开启，输入n为关闭）",
         "dependent": None,
         "regex": None,
+        "options": None,
         "value": False
     },
-    "ar_time": {
-        "num": 9,
+    {
+        "id": "ar_time",
         "name": "自动重启时间",
         "type": "str",
         "description": "每日自动重启的时间",
         "input_description": "请设置自动重启时间（输入格式为\"小时:分钟:秒\"，示例：04:30:00）",
         "dependent": "auto_reboot",
         "regex": "([01]\d|2[0123]|\d):([012345]\d|\d):([012345]\d|\d)",
+        "options": None,
         "value": "00:00:00"
     },
-    "ar_announcement": {
-        "num": 10,
+    {
+        "id": "ar_announcement",
         "name": "自动重启通知",
         "type": "bool",
         "description": "在机器人准备重启时向所有机器人仍处于该服务器任意语音频道的服务器的第一个文字频道发送准备自动重启的通知（好长的句子）",
         "input_description": "请设置是否开启自动重启通知功能（输入y为开启，输入n为关闭）",
         "dependent": "auto_reboot",
         "regex": None,
+        "options": None,
         "value": False
     },
-    "ar_reminder": {
-        "num": 11,
+    {
+        "id": "ar_reminder",
         "name": "自动重启前通知",
         "type": "bool",
         "description": "在重启前任意时间提醒机器人将于何时重启，向所有机器人仍处于该服务器任意语音频道的服务器的第一个文字频道发送",
         "input_description": "请设置是否开启在自动重启前通知的功能（输入y为开启，输入n为关闭）",
         "dependent": "auto_reboot",
         "regex": None,
+        "options": None,
         "value": False
     },
-    "ar_reminder_time": {
-        "num": 12,
+    {
+        "id": "ar_reminder_time",
         "name": "自动重启前通知时间",
         "type": "str",
         "description": "每日自动重启前通知的时间",
         "input_description": "请设置自动重启提前通知时间（输入格式为\"小时:分钟:秒\"，示例：04:25:00）",
         "dependent": "ar_reminder",
         "regex": "([01]\d|2[0123]|\d):([012345]\d|\d):([012345]\d|\d)",
+        "options": None,
         "value": "23:55:00"
     },
-}
+]
