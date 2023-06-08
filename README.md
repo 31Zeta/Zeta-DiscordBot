@@ -17,8 +17,8 @@ A Discord Bot that based on Pycord.
 
 安装及使用 Install
 ----------  
-**需要Python3.8或更高版本**  
-**Require Python 3.8 or higher**
+**使用Python3.9开发，不保证更低版本运行效果**  
+**Developed on Python 3.9, I do not guarantee that lower Python versions will work**
 
 使用以下指令将本库克隆到本地：  
 Use following commands to clone this repo to local
