@@ -1,3 +1,4 @@
+import json.decoder
 import os
 import re
 import sys
@@ -36,6 +37,9 @@ class Setting:
             else:
                 self.load()
         except KeyError:
+            print("设置文件已损坏")
+            self.initialize_setting()
+        except json.decoder.JSONDecodeError:
             print("设置文件已损坏")
             self.initialize_setting()
         except errors.UserCancelled:
@@ -148,8 +152,12 @@ class Setting:
                 # 正则表达式检测
                 if regex is not None:
                     input_line = eval(f"{require_type}(\"{input_line}\")")
-                    if re.match(regex, input_line) is None:
+                    re_result = re.match(regex, input_line)
+                    if re_result is None:
                         raise ValueError
+                    else:
+                        start, end = re_result.span()
+                        input_line = input_line[start:end]
 
                 # 布尔值检测
                 if require_type == "bool":
@@ -242,7 +250,6 @@ language_setting_configs = [
         "value": "None"
     },
 ]
-
 
 bot_setting_configs = [
     {

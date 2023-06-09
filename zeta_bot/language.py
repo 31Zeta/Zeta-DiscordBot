@@ -58,19 +58,27 @@ class Lang:
 
     def get_string(self, str_id: str, lang_code=None, slash_n=False) -> str:
         """
-        返回对应lang_code中对应str_id的字符串，如果字符串不存在则返回str_id本身
+        返回对应lang_code中对应str_id的字符串，如lang_code不包含此字符串则尝试系统语言，
+        如果系统语言中字符串仍不存在则返回str_id本身
+        可使用slash_n来确定是否使用字符内的换行符
         """
         if lang_code is None:
             lang_code = self.system_language
 
         if lang_code in self.language_dict and str_id in self.language_dict[lang_code]:
-            # 是否使用内置换行符
-            if slash_n:
-                return self.language_dict[lang_code][str_id].replace('\\n', '\n')
-            else:
-                return self.language_dict[lang_code][str_id]
+            lang_code = lang_code
+
+        elif str_id in self.language_dict[self.system_language]:
+            lang_code = self.system_language
+
         else:
             return str_id
+
+        # 是否使用内置换行符
+        if slash_n:
+            return self.language_dict[lang_code][str_id].replace('\\n', '\n')
+        else:
+            return self.language_dict[lang_code][str_id]
 
     def printl(self, str_id: str, lang_code=None, slash_n=False):
         print(self.get_string(str_id, lang_code, slash_n))
