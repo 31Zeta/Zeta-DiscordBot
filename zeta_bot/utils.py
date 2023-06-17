@@ -2,6 +2,10 @@ import datetime
 import os
 import json
 
+from zeta_bot import (
+    errors
+)
+
 
 def time() -> str:
     """
@@ -59,9 +63,12 @@ def json_load(json_path: str) -> dict:
     """
     读取<json_path>的json文件
     """
-    with open(json_path, "r", encoding="utf-8") as file:
-        loaded_dict = json.loads(file.read())
-    return loaded_dict
+    try:
+        with open(json_path, "r", encoding="utf-8") as file:
+            loaded_dict = json.loads(file.read())
+        return loaded_dict
+    except json.decoder.JSONDecodeError:
+        raise errors.JsonFileError(json_path)
 
 
 def input_yes_no(description: str) -> bool:

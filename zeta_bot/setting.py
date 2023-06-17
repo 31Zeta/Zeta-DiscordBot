@@ -1,4 +1,3 @@
-import json.decoder
 import os
 import re
 import sys
@@ -39,7 +38,7 @@ class Setting:
         except KeyError:
             print("设置文件已损坏")
             self.initialize_setting()
-        except json.decoder.JSONDecodeError:
+        except errors.JsonFileError:
             print("设置文件已损坏")
             self.initialize_setting()
         except errors.UserCancelled:

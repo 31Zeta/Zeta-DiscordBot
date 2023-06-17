@@ -40,8 +40,7 @@ log_path = f"./logs/{log_name_time}.log"
 logger = log.Log(error_log_path, log_path, setting.value("log"))
 logger.rec_p("程序启动", "[系统]")
 
-utils.create_folder("./data/member")
-# member_library = member.MemberLibrary()
+member_lib = member.MemberLibrary()
 
 
 def start(mode: str) -> None:

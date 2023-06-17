@@ -1,14 +1,23 @@
 import discord
 import os
-from enum import Enum
 
-from zeta_bot import utils
+from zeta_bot import (
+    errors,
+    language,
+    utils,
+    decorators
+)
+
+# 多语言模块
+lang = language.Lang()
+_ = lang.get_string
+printl = lang.printl
 
 
 class Member:
     def __init__(self, ctx: discord.ApplicationContext):
         current_time = utils.time()
-        self.id = ctx.author.id
+        self.id = ctx.user.id
         self.path = f"./data/member/{self.id}"
 
         # 如果用户已存在
@@ -19,7 +28,7 @@ class Member:
 
         # 如果用户不存在则新建用户档案
         else:
-            self.name = ctx.author.name
+            self.name = ctx.author.name  # .name / .global_name
             # self.group = Normal
             self.guilds = {}
             self.data = {"first_contact": current_time, "play_counter": 0}
@@ -46,7 +55,6 @@ class Member:
         loaded_dict = utils.json_load(self.path)
         self.id = loaded_dict["id"]
         self.name = loaded_dict["name"]
-        self.group = eval(loaded_dict["group"])
         self.guilds = loaded_dict["guilds"]
         self.data = loaded_dict["data"]
         self.property = loaded_dict["property"]
@@ -64,57 +72,245 @@ class Member:
         pass
 
 
-class MemberLibrary(dict):
+@decorators.Singleton
+class MemberLibrary:
     """
-    类本身用于储存活跃的用户类，self.local用于管理本地.Members文件
+    用于管理本地用户文件以及#Members文件
     """
     def __init__(self):
-        super().__init__()
+        self.group_config_path = "./zeta_bot/group_permission_config.json"
+        if not os.path.exists(self.group_config_path):
+            utils.json_save(self.group_config_path, default_permission_config)
+        try:
+            self.group_config = utils.json_load(self.group_config_path)
+        except errors.JsonFileError:
+            raise errors.InitializationFailed("MemberLibrary", "权限组文件读取错误")
 
-        self.path = "./data/member/.Members.json"
-        if not os.path.exists(self.path):
-            utils.json_save(self.path, {})
-        self.local = {}
-        self.load_local()
+        utils.create_folder("./data/members")
+        self.root = "./data/members/"
+        self.members_file_path = f"{self.root}#Members.json"
+        self.group_list = list(self.group_config.keys())
 
-    def update_local(self, member: Member):
-        self.local[member.id] = member.name
-        self.save_local()
+        if not os.path.exists(self.members_file_path):
+            utils.json_save(self.members_file_path, {})
+        try:
+            self.members_file = utils.json_load(self.members_file_path)
+        except errors.JsonFileError:
+            pass
 
-    def save_local(self):
-        utils.json_save(self.path, self.local)
+    def save_members(self):
+        utils.json_save(self.members_file_path, self.members_file)
 
-    def load_local(self):
-        loaded_dict = utils.json_load(self.path)
-        for key in loaded_dict:
-            self.local[key] = loaded_dict[key]
+    def check(self, ctx: discord.ApplicationContext) -> None:
+        user_id = ctx.user.id
+        user_name = ctx.user.name
+        path = f"{self.root}{user_id}.json"
 
-    def get_member(self, ctx: discord.ApplicationContext) -> Member:
-        if ctx.author.id not in self:
-            member = Member(ctx)
-            self[ctx.author.id] = member
-        # 更新用户信息
-        self[ctx.author.id].update(ctx)
-        # 更新库本地文件
-        self.update_local(self[ctx.author.id])
-        return self[ctx.author.id]
+        # 如果用户文件存在
+        if os.path.exists(path):
+            user_dict = utils.json_load(path)
+            # 更新用户名
+            if user_name != user_dict["name"]:
+                user_dict["name"] = user_name
+            # 更新用户服务器数据
+            if ctx.guild.id not in user_dict["guilds"]:
+                user_dict["guilds"][ctx.guild.id] = {"nickname": ctx.user.nick, "language": lang.system_language}
+            # 更新用户此服务器的昵称
+            if ctx.user.nick != user_dict["guilds"][ctx.guild.id]["nickname"]:
+                user_dict["guilds"][ctx.guild.id]["nickname"] = ctx.user.nick
+            # 更新#Members文件
+            if user_id not in self.members_file or user_name != self.members_file[user_id]:
+                self.members_file[user_id] = user_name
+                self.save_members()
+            # 保存变动
+            utils.json_save(path, user_dict)
+
+        # 如果用户文件不存在
+        else:
+            temp_dict = {
+                "id": user_id,
+                "name": user_name,
+                "group": "standard",
+                "language": lang.system_language,
+                "guilds": {ctx.guild.id: {
+                    "nickname": ctx.user.nick},
+                    "language": lang.system_language
+                },
+                "data": {"first_contact": utils.time(), "play_counter": 0},
+                "property": {"playlists": []}
+            }
+            utils.json_save(path, temp_dict)
+            # 更新#Members文件
+            self.members_file[user_id] = user_name
+            self.save_members()
+
+    def allow(self, user_id, action: str) -> bool:
+        path = f"{self.root}{user_id}.json"
+        try:
+            user_dict = utils.json_load(path)
+            group = user_dict["group"]
+            return self.group_config[group][action]
+        except KeyError:
+            return False
+
+    def get_lang(self, ctx: discord.ApplicationContext) -> str:
+        user_id = ctx.user.id
+        path = f"{self.root}{user_id}.json"
+        user_dict = utils.json_load(path)
+        return user_dict["guilds"][ctx.guild.id]["language"]
+
+    def play_counter_increment(self, user_id) -> None:
+        path = f"{self.root}{user_id}.json"
+        user_dict = utils.json_load(path)
+        user_dict["data"]["play_counter"] += 1
+        utils.json_save(path, user_dict)
 
 
-group_permission_configs = {
-    "shutdown": False,
-    "reboot": False,
-    "change_user_group": False,
+permissions = {
+    "play": False,
+    "join": False,
+    "leave": False,
+    "skip": False,
+    "move": False,
+    "pause": False,
+    "resume": False,
+    "volume": False,
+    "list": False,
     "broadcast": False,
-    "blacklist": False,
+    "reboot": False,
+    "shutdown": False,
+    "change_member_group_from": {
+        "administrator": False,
+        "standard": False,
+        "restricted": False,
+        "banned": False,
+        "blocked": False,
+    },
+    "change_member_group_to": {
+        "administrator": False,
+        "standard": False,
+        "restricted": False,
+        "banned": False,
+        "blocked": False,
+    },
     "debug": False
 }
 
-class MemberGroup:
-
-    def __init__(self):
-        pass
-
-    def permission(self, action: str):
-        raise NotImplementedError
-
-
+default_permission_config = {
+    "administrator": {
+        "play": True,
+        "join": True,
+        "leave": True,
+        "skip": True,
+        "move": True,
+        "pause": True,
+        "resume": True,
+        "volume": True,
+        "list": True,
+        "broadcast": False,
+        "reboot": True,
+        "shutdown": False,
+        "change_member_group_from": {
+            "administrator": False,
+            "standard": True,
+            "restricted": True,
+            "banned": True,
+            "blocked": True,
+        },
+        "change_member_group_to": {
+            "administrator": False,
+            "standard": True,
+            "restricted": True,
+            "banned": True,
+            "blocked": True,
+        },
+        "debug": False
+    },
+    "standard": {
+        "play": True,
+        "join": True,
+        "leave": True,
+        "skip": True,
+        "move": True,
+        "pause": True,
+        "resume": True,
+        "volume": True,
+        "list": True,
+        "broadcast": False,
+        "reboot": False,
+        "shutdown": False,
+        "change_member_group_from": {
+            "administrator": False,
+            "standard": False,
+            "restricted": False,
+            "banned": False,
+            "blocked": False,
+        },
+        "change_member_group_to": {
+            "administrator": False,
+            "standard": False,
+            "restricted": False,
+            "banned": False,
+            "blocked": False,
+        },
+        "debug": False
+    },
+    "restricted": {
+        "play": True,
+        "join": False,
+        "leave": False,
+        "skip": False,
+        "move": False,
+        "pause": False,
+        "resume": False,
+        "volume": False,
+        "list": True,
+        "broadcast": False,
+        "reboot": False,
+        "shutdown": False,
+        "change_member_group_from": {
+            "administrator": False,
+            "standard": False,
+            "restricted": False,
+            "banned": False,
+            "blocked": False,
+        },
+        "change_member_group_to": {
+            "administrator": False,
+            "standard": False,
+            "restricted": False,
+            "banned": False,
+            "blocked": False,
+        },
+        "debug": False
+    },
+    "banned": {
+        "play": False,
+        "join": False,
+        "leave": False,
+        "skip": False,
+        "move": False,
+        "pause": False,
+        "resume": False,
+        "volume": False,
+        "list": False,
+        "broadcast": False,
+        "reboot": False,
+        "shutdown": False,
+        "change_member_group_from": {
+            "administrator": False,
+            "standard": False,
+            "restricted": False,
+            "banned": False,
+            "blocked": False,
+        },
+        "change_member_group_to": {
+            "administrator": False,
+            "standard": False,
+            "restricted": False,
+            "banned": False,
+            "blocked": False,
+        },
+        "debug": False
+    }
+}
