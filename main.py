@@ -19,12 +19,11 @@ from setting import Setting
 from errors import *
 
 
-version = "0.8.2"
+version = "0.8.3"
 py_cord_version = discord.__version__
-update_time = "2022.10.01"
-update_log = "0.8.2" \
-             "- 将帮助菜单超时时间调回正常时间" \
-             "- 修复无效的Bilibili链接无响应的问题"
+update_time = "2023.06.17"
+update_log = "0.8.3" \
+             "- 临时修复播放单一歌曲时产生的\"该应用程序未响应\"问题"
 
 intents = discord.Intents.all()
 
@@ -507,9 +506,9 @@ async def play(ctx, link="N/A"):
 
         # 单一视频 bili_single
         if info_dict["videos"] == 1 and "ugc_season" not in info_dict:
-            loading_msg = await ctx.send("正在加载Bilibili歌曲")
+            loading_msg = await ctx.respond("正在加载Bilibili歌曲")
             await play_bili(ctx, info_dict, "bili_single", 0)
-            await loading_msg.delete()
+            # await loading_msg.delete()
 
         # 合集视频 bili_collection
         elif "ugc_season" in info_dict:
@@ -545,9 +544,9 @@ async def play(ctx, link="N/A"):
 
         # 单一视频 ytb_single
         if url_type == "ytb_single":
-            loading_msg = await ctx.send("正在加载Youtube歌曲")
+            loading_msg = await ctx.respond("正在加载Youtube歌曲")
             await play_ytb(ctx, link, info_dict, url_type)
-            await loading_msg.delete()
+            # await loading_msg.delete()
 
         # 播放列表 ytb_playlist
         else:
