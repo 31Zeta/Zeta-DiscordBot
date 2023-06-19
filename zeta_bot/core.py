@@ -11,13 +11,16 @@ from zeta_bot import (
     utils,
     setting,
     log,
-    member
+    member,
+    help
 )
 
 version = "0.10.0"
-author = "炤铭Zeta"
+author = "炤铭Zeta (31Zeta)"
 python_path = sys.executable
 pycord_version = discord.__version__
+
+update_time = "2023.**.**"
 
 # 多语言模块
 lang = language.Lang()
@@ -38,7 +41,7 @@ log_name_time = startup_time.replace(":", "_")
 error_log_path = f"./logs/{log_name_time}_errors.log"
 log_path = f"./logs/{log_name_time}.log"
 logger = log.Log(error_log_path, log_path, setting.value("log"))
-logger.rec_p("程序启动", "[系统]")
+logger.rp("程序启动", "[系统]")
 
 member_lib = member.MemberLibrary()
 
@@ -81,6 +84,26 @@ async def on_application_command_error(ctx, exception):
     logger.on_application_command_error(ctx, exception)
 
 
+async def command_check(ctx: discord.ApplicationContext, operation: str) -> bool:
+    """
+    对指令触发进行日志记录，检测用户是否记录在案，检测用户是否有权限使用该条指令
+    """
+    member_lib.check(ctx)
+    user_group = member_lib.get_group(ctx.user.id)
+    # 如果用户是机器人所有者
+    if str(ctx.user.id) == setting.value("owner"):
+        logger.rp(f"用户 {ctx.user} 发送指令：<{operation}>", f"服务器：{ctx.guild}")
+        return True
+    elif member_lib.allow(ctx.user.id, operation):
+        logger.rp(f"用户 {ctx.user} 发送指令：<{operation}>", f"服务器：{ctx.guild}")
+        return True
+    else:
+        logger.rp(f"用户 {ctx.user} 发送指令：<{operation}>，{ctx.user} 所在用户组 [{user_group}] 权限不足，操作被拒绝",
+                  f"服务器：{ctx.guild}")
+        await ctx.respond("权限不足")
+        return False
+
+
 # 启动就绪时
 @bot.event
 async def on_ready():
@@ -90,7 +113,7 @@ async def on_ready():
 
     current_time = utils.time()
     print(f"---------- 准备就绪 ----------\n")
-    logger.rec_p(f"准备就绪 以{bot.user}的身份登录，登录时间：{current_time}", "[系统]")
+    logger.rp(f"登录完成：以{bot.user}的身份登录，登录时间：{current_time}", "[系统]")
 
     # 启动定时清理器
     # cleaner_loop.start()
@@ -105,7 +128,7 @@ async def on_ready():
         ar_timezone = "Asia/Shanghai"
         ar_time = utils.time_split(setting.value("ar_time"))
         scheduler_1.add_job(
-            auto_reboot_function, CronTrigger(
+            auto_reboot, CronTrigger(
                 timezone=ar_timezone, hour=ar_time[0],
                 minute=ar_time[1], second=ar_time[2]
             )
@@ -115,7 +138,7 @@ async def on_ready():
             # 设置自动重启提醒
             ar_r_time = utils.time_split(setting.value("ar_reminder_time"))
             scheduler_2.add_job(
-                auto_reboot_reminder_function, CronTrigger(
+                auto_reboot_reminder, CronTrigger(
                     timezone=ar_timezone, hour=ar_r_time[0],
                     minute=ar_r_time[1], second=ar_r_time[2]
                 )
@@ -124,7 +147,7 @@ async def on_ready():
         scheduler_1.start()
         scheduler_2.start()
 
-        logger.rec_p(
+        logger.rp(
             f"设置自动重启时间为 {ar_time[0]}时{ar_time[1]}分{ar_time[2]}秒", "[系统]"
         )
 
@@ -151,7 +174,7 @@ async def on_message(message):
         await message.channel.send(_("custom.reply_1"))
 
 
-async def auto_reboot_function():
+async def auto_reboot():
     """
     用于执行定时重启，如果<auto_reboot_announcement>为True则广播重启消息
     """
@@ -166,7 +189,7 @@ async def auto_reboot_function():
     os.execl(python_path, python_path, * sys.argv)
 
 
-async def auto_reboot_reminder_function():
+async def auto_reboot_reminder():
     """
     向机器人仍在语音频道中的所有服务器的第一个文字频道发送即将重启通知
     """
@@ -175,3 +198,53 @@ async def auto_reboot_reminder_function():
         voice_client = guild.voice_client
         if voice_client is not None:
             await guild.text_channels[0].send(f"注意：将在{ar_time}时自动重启")
+
+
+@bot.command(description="关于Zeta-Discord机器人")
+async def info(ctx: discord.ApplicationContext):
+    """
+    显示关于信息
+
+    :param ctx: 指令原句
+    :return:
+    """
+    if not command_check(ctx, "info"):
+        return
+
+    await ctx.respond(f"**Zeta-Discord机器人 [版本 {version}]**\n"
+                      f"   基于 Pycord v{pycord_version} 制作\n"
+                      f"   版本更新日期：**{update_time}**\n"
+                      f"   作者：炤铭Zeta (31Zeta)")
+
+
+@bot.command(description="帮助菜单")
+async def help(ctx: discord.ApplicationContext):
+    """
+    覆盖掉原有help指令, 向频道发送帮助菜单
+
+    :param ctx: 指令原句
+    :return:
+    """
+    if not command_check(ctx, "help"):
+        return
+
+    view = help.HelpMenuView(ctx)
+    await ctx.respond(content=view.catalog, view=view)
+
+
+# @bot.command(description="[管理员] 向机器人所在的所有服务器广播消息")
+async def broadcast(ctx: discord.ApplicationContext, message):
+    """
+    让机器人在所有服务器的第一个频道发送参数message
+
+    :param ctx: 指令原句
+    :param message: 需要发送的信息
+    :return:
+    """
+    if not command_check(ctx, "broadcast"):
+        return
+
+    for guild in bot.guilds:
+        await guild.text_channels[0].send(message)
+    await ctx.respond("已发送")
+

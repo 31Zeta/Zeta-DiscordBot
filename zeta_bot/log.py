@@ -29,15 +29,15 @@ class Log:
             filename=self.error_log_path, level=logging.WARNING
         )
 
-    def rec(self, content: str, position="") -> None:
+    def rec(self, content: str, level="") -> None:
         """
         Record
         记录运行日志
         """
         if self.log:
-            write_log(self.log_path, utils.time(), content, position)
+            write_log(self.log_path, utils.time(), content, level)
 
-    def rec_p(self, content: str, level=""):
+    def rp(self, content: str, level=""):
         """
         Record and print
         记录运行日志，并打印到控制台
@@ -69,16 +69,16 @@ def write_log(path: str, time: str, content: str, level="") -> None:
         log.write(f"{time} {level} {content}\n")
 
 
-def print_log(time: str, content: str, position="") -> None:
+def print_log(time: str, content: str, level="") -> None:
     """
     在控制台打印一条包含位置的信息，并记录在运行日志中
 
     :param time: 要记录的时间
     :param content: 要写入的信息
-    :param position: 位置信息
+    :param level: 位置信息
     :return:
     """
-    print(f"{time} {position}\n    {content}\n")
+    print(f"{time} {level}\n    {content}\n")
 
 
 def error(error_log_path, exception) -> None:
