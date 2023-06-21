@@ -69,7 +69,7 @@ class SettingChanged(RuntimeError):
         return "设置不匹配，设置选项可能发生过变更"
 
 
-class JsonFileError(RuntimeError):
+class JSONFileError(RuntimeError):
     def __init__(self, path):
         super().__init__()
         self.path = path

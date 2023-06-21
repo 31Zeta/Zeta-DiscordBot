@@ -180,33 +180,35 @@ class MemberLibrary:
     用于管理本地用户文件以及#Members文件
     """
     def __init__(self):
-        self.group_config_path = "./zeta_bot/group_permission_config.json"
+        self.root = "./data/members"
+        utils.create_folder(self.root)
+
+        self.group_config_path = "./data/group_permission_config.json"
+        # 如组权限文件不存在则创建默认文件
         if not os.path.exists(self.group_config_path):
             utils.json_save(self.group_config_path, default_permission_config)
         try:
             self.group_config = utils.json_load(self.group_config_path)
-        except errors.JsonFileError:
-            raise errors.InitializationFailed("MemberLibrary", "权限组文件读取错误")
+        except errors.JSONFileError:
+            raise errors.InitializationFailed("MemberLibrary", "组权限文件读取错误")
 
-        utils.create_folder("./data/members")
-        self.root = "./data/members/"
-        self.members_file_path = f"{self.root}#Members.json"
+        self.hashtag_file_path = f"{self.root}/#Members.json"
         self.group_list = list(self.group_config.keys())
 
-        if not os.path.exists(self.members_file_path):
-            utils.json_save(self.members_file_path, {})
+        if not os.path.exists(self.hashtag_file_path):
+            utils.json_save(self.hashtag_file_path, {})
         try:
-            self.members_file = utils.json_load(self.members_file_path)
-        except errors.JsonFileError:
-            pass
+            self.hashtag_file = utils.json_load(self.hashtag_file_path)
+        except errors.JSONFileError:
+            raise errors.JSONFileError
 
-    def save_members(self):
-        utils.json_save(self.members_file_path, self.members_file)
+    def save_hashtag_file(self):
+        utils.json_save(self.hashtag_file_path, self.hashtag_file)
 
     def check(self, ctx: discord.ApplicationContext) -> None:
         user_id = ctx.user.id
         user_name = ctx.user.name
-        path = f"{self.root}{user_id}.json"
+        path = f"{self.root}/{user_id}.json"
 
         # 如果用户文件存在
         if os.path.exists(path):
@@ -221,9 +223,9 @@ class MemberLibrary:
             if ctx.user.nick != user_dict["guilds"][ctx.guild.id]["nickname"]:
                 user_dict["guilds"][ctx.guild.id]["nickname"] = ctx.user.nick
             # 更新#Members文件
-            if user_id not in self.members_file or user_name != self.members_file[user_id]:
-                self.members_file[user_id] = user_name
-                self.save_members()
+            if user_id not in self.hashtag_file or user_name != self.hashtag_file[user_id]:
+                self.hashtag_file[user_id] = user_name
+                self.save_hashtag_file()
             # 保存变动
             utils.json_save(path, user_dict)
 
@@ -243,12 +245,12 @@ class MemberLibrary:
             }
             utils.json_save(path, temp_dict)
             # 更新#Members文件
-            self.members_file[user_id] = user_name
-            self.save_members()
+            self.hashtag_file[user_id] = user_name
+            self.save_hashtag_file()
 
     def allow(self, user_id, operation: str) -> bool:
 
-        path = f"{self.root}{user_id}.json"
+        path = f"{self.root}/{user_id}.json"
         try:
             user_dict = utils.json_load(path)
             group = user_dict["group"]
@@ -257,23 +259,23 @@ class MemberLibrary:
             return False
 
     def get_lang(self, user_id) -> str:
-        path = f"{self.root}{user_id}.json"
+        path = f"{self.root}/{user_id}.json"
         user_dict = utils.json_load(path)
         return user_dict["language"]
 
     def get_guild_lang(self, ctx: discord.ApplicationContext) -> str:
         user_id = ctx.user.id
-        path = f"{self.root}{user_id}.json"
+        path = f"{self.root}/{user_id}.json"
         user_dict = utils.json_load(path)
         return user_dict["guilds"][ctx.guild.id]["language"]
 
     def get_group(self, user_id) -> str:
-        path = f"{self.root}{user_id}.json"
+        path = f"{self.root}/{user_id}.json"
         user_dict = utils.json_load(path)
         return user_dict["group"]
 
     def play_counter_increment(self, user_id) -> None:
-        path = f"{self.root}{user_id}.json"
+        path = f"{self.root}/{user_id}.json"
         user_dict = utils.json_load(path)
         user_dict["data"]["play_counter"] += 1
         utils.json_save(path, user_dict)

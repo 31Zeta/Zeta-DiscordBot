@@ -1,7 +1,6 @@
 import discord
 import sys
 import os
-import time
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -120,14 +119,14 @@ async def on_ready():
     # print("定时清理器已启动\n")
 
     # 启动定时任务框架
-    scheduler_1 = AsyncIOScheduler()
-    scheduler_2 = AsyncIOScheduler()
+    scheduler_ar_1 = AsyncIOScheduler()
+    scheduler_ar_2 = AsyncIOScheduler()
 
     if setting.value("auto_reboot"):
         # 设置自动重启
         ar_timezone = "Asia/Shanghai"
         ar_time = utils.time_split(setting.value("ar_time"))
-        scheduler_1.add_job(
+        scheduler_ar_1.add_job(
             auto_reboot, CronTrigger(
                 timezone=ar_timezone, hour=ar_time[0],
                 minute=ar_time[1], second=ar_time[2]
@@ -137,15 +136,15 @@ async def on_ready():
         if setting.value("ar_reminder"):
             # 设置自动重启提醒
             ar_r_time = utils.time_split(setting.value("ar_reminder_time"))
-            scheduler_2.add_job(
+            scheduler_ar_2.add_job(
                 auto_reboot_reminder, CronTrigger(
                     timezone=ar_timezone, hour=ar_r_time[0],
                     minute=ar_r_time[1], second=ar_r_time[2]
                 )
             )
 
-        scheduler_1.start()
-        scheduler_2.start()
+        scheduler_ar_1.start()
+        scheduler_ar_2.start()
 
         logger.rp(
             f"设置自动重启时间为 {ar_time[0]}时{ar_time[1]}分{ar_time[2]}秒", "[系统]"
@@ -179,6 +178,7 @@ async def auto_reboot():
     用于执行定时重启，如果<auto_reboot_announcement>为True则广播重启消息
     """
     current_time = utils.time()
+    logger.rp(f"执行自动定时重启", "[系统]")
     # audio_library.save()
     # user_library.save()
     if setting.value("ar_announcement"):
@@ -194,6 +194,7 @@ async def auto_reboot_reminder():
     向机器人仍在语音频道中的所有服务器的第一个文字频道发送即将重启通知
     """
     ar_time = setting.value("ar_time")
+    logger.rp(f"发送自动重启通知", "[系统]")
     for guild in bot.guilds:
         voice_client = guild.voice_client
         if voice_client is not None:
@@ -248,3 +249,74 @@ async def broadcast(ctx: discord.ApplicationContext, message):
         await guild.text_channels[0].send(message)
     await ctx.respond("已发送")
 
+
+@bot.command(description="让机器人加入语音频道")
+async def join(ctx: discord.ApplicationContext, channel_name="N/A"):
+    """
+    让机器人加入指令发送者所在的语音频道并发送提示\n
+    如果机器人已经加入一个频道则转移到新频道并发送提示
+    如发送者未加入任何语音频道则发送提示
+
+    :param ctx: 指令原句
+    :param channel_name: 要加入的频道名称
+    :return:
+    """
+    if not command_check(ctx, "join"):
+        return
+
+    guild_initialize(ctx)
+
+    # 指令发送者未加入频道的情况
+    if channel_name == "N/A" and not ctx.user.voice:
+        console_message_log(ctx, f"频道加入失败，用户 {ctx.author} 发送指令时未加入任何语音频道")
+        await ctx.respond("您未加入任何语音频道")
+        return False
+
+    # 机器人已在一个语音频道的情况
+    elif ctx.guild.voice_client is not None:
+        # 未输入参数
+        if channel_name == "N/A":
+            channel = ctx.author.voice.channel
+        # 寻找与参数名称相同的频道
+        else:
+            channel = "N/A"
+            for ch in ctx.guild.channels:
+                if ch.type is discord.ChannelType.voice and \
+                        ch.name == channel_name:
+                    channel = ch
+
+            if channel == "N/A":
+                await ctx.respond("无效的语音频道名称")
+                return False
+
+        voice_client = ctx.guild.voice_client
+        await ctx.guild.voice_client.move_to(channel)
+
+        console_message_log(ctx, f"从频道 {voice_client.channel} "
+                                 f"转移到 {channel_name}")
+
+        await ctx.respond(f"转移频道：***{voice_client.channel}*** -> "
+                          f"***{channel.name}***")
+        return True
+
+    # 机器人未在语音频道的情况
+    else:
+        if channel_name == "N/A":
+            channel = ctx.author.voice.channel
+        else:
+            channel = "N/A"
+            for ch in ctx.guild.channels:
+                if ch.type is discord.ChannelType.voice and \
+                        ch.name == channel_name:
+                    channel = ch
+
+            if channel == "N/A":
+                await ctx.respond("无效的语音频道名称")
+                return False
+
+        await channel.connect()
+
+        console_message_log(ctx, f"加入频道 {channel.name}")
+
+        await ctx.respond(f"加入语音频道 -> ***{channel.name}***")
+        return True

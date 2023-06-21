@@ -1,5 +1,8 @@
 import os
-from zeta_bot import errors, decorators
+from zeta_bot import (
+    errors,
+    decorators
+)
 
 language_code_dict = {
     "zh_cn": "简体中文",

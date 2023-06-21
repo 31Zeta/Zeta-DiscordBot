@@ -38,7 +38,7 @@ class Setting:
         except KeyError:
             print("设置文件已损坏")
             self.initialize_setting()
-        except errors.JsonFileError:
+        except errors.JSONFileError:
             print("设置文件已损坏")
             self.initialize_setting()
         except errors.UserCancelled:
