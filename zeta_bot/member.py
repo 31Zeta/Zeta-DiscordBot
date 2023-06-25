@@ -183,7 +183,7 @@ class MemberLibrary:
         self.root = "./data/members"
         utils.create_folder(self.root)
 
-        self.group_config_path = "./data/group_permission_config.json"
+        self.group_config_path = "./configs/group_permission_config.json"
         # 如组权限文件不存在则创建默认文件
         if not os.path.exists(self.group_config_path):
             utils.json_save(self.group_config_path, default_permission_config)

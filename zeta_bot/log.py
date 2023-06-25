@@ -126,24 +126,3 @@ def application_command_error(log_path, error_log_path, ctx, exception) -> None:
     print_log(current_time, f"\033[0;31m发生错误：{exception}\n    详情请查看错误日志：根目录{error_log_path[1:]}\033[0m", f"\033[0;31m{ctx.guild}\033[0m")
     # 系统活动日志写入错误信息
     write_log(log_path, current_time, f"发生错误：{exception}，详情请查看错误日志：根目录{error_log_path[1:]}", f"{ctx.guild}")
-
-    # 向用户回复发生错误
-    try:
-        await ctx.respond("发生错误")
-    # 如果回复失败
-    except errors.NotFound as exception:
-        exception_formatted = traceback.format_exception(
-            type(exception), exception, exception.__traceback__
-        )
-        full_exception = ""
-        for line in exception_formatted:
-            full_exception += line
-        message = f"on_application_command_error内部发生错误"
-        logger = logging.getLogger()
-        logger.error(f"{current_time}\n{message}\n{full_exception}")
-        # 控制台输出错误信息
-        print(current_time + f" {ctx.guild}\n    \033[0;31m发生错误：{exception}\n"
-                             f"    详情请查看错误日志：根目录{error_log_path[1:]}\033[0m\n"
-              )
-        # 系统活动日志写入错误信息
-        write_log(log_path, current_time, f"[{ctx.guild}] 无法回复互动，发生错误：{exception}")

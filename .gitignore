@@ -22,3 +22,5 @@ members/
 data/
 log/
 logs/
+config/
+configs/

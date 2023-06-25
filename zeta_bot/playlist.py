@@ -30,6 +30,12 @@ class Playlist:
         """
         return self.name
 
+    def set_name(self, new_name: str) -> None:
+        """
+        修改当前播放列表的名称
+        """
+        self.name = new_name
+
     def get_audio(self, index=0) -> Union[audio.Audio, None]:
         """
         返回一个音频（类Audio），默认为列表中的第一个音频\n
