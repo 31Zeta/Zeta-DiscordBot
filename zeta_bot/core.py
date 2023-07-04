@@ -1,6 +1,7 @@
 import discord
 import sys
 import os
+import requests
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -103,14 +104,13 @@ async def command_check(ctx: discord.ApplicationContext) -> bool:
     operation = str(ctx.command)
     # 如果用户是机器人所有者
     if str(ctx.user.id) == setting.value("owner"):
-        logger.rp(f"用户 {ctx.user} 发送指令：<{operation}>", f"服务器：{ctx.guild}")
+        logger.rp(f"用户 {ctx.user} [用户组: 机器人所有者] 发送指令：<{operation}>", ctx.guild)
         return True
     elif member_lib.allow(ctx.user.id, operation):
-        logger.rp(f"用户 {ctx.user} 发送指令：<{operation}>", f"服务器：{ctx.guild}")
+        logger.rp(f"用户 {ctx.user} [用户组: {user_group}] 发送指令：<{operation}>", ctx.guild)
         return True
     else:
-        logger.rp(f"用户 {ctx.user} 发送指令：<{operation}>，{ctx.user} 所在用户组 [{user_group}] 权限不足，操作被拒绝",
-                  f"服务器：{ctx.guild}")
+        logger.rp(f"用户 {ctx.user} [用户组: {user_group}] 发送指令：<{operation}>，权限不足，操作已被拒绝", ctx.guild)
         await ctx.respond("权限不足")
         return False
 
@@ -224,9 +224,9 @@ async def debug(ctx: discord.ApplicationContext):
     if not await command_check(ctx):
         return
 
-    print(ctx.response)
-    print(type(ctx.response))
-    print(str(ctx.response))
+    print()
+    print(type())
+    print(str())
 
     await ctx.respond("测试结果已打印")
 
@@ -280,7 +280,7 @@ async def broadcast(ctx: discord.ApplicationContext, message) -> None:
     await ctx.respond("已发送")
 
 
-@bot.command(description=f"让{bot_name}加入语音频道")
+@bot.command(description=f"让 {bot_name} 加入语音频道")
 async def join(ctx: discord.ApplicationContext, channel_name=None) -> bool:
     """
     让机器人加入指令发送者所在的语音频道并发送提示\n
@@ -328,18 +328,26 @@ async def join(ctx: discord.ApplicationContext, channel_name=None) -> bool:
     if voice_client is None:
         await channel.connect()
         await ctx.respond(f"加入语音频道：-> ***{channel.name}***")
+
     # 机器人已经在一个频道的情况
     else:
+        # # 防止因退出频道自动删除正在播放的音频
+        # current_playlist = guild_lib.get_guild(ctx).get_playlist()
+        # if voice_client.is_playing():
+        #     current_audio = current_playlist.get_audio(0)
+        #     current_playlist.insert_audio(current_audio, 0)
+        #     guild_lib.get_guild(ctx).save()
+
         previous_channel = voice_client.channel
         await voice_client.disconnect(force=False)
         await channel.connect()
         await ctx.respond(f"转移语音频道：***{previous_channel}*** -> ***{channel.name}***")
 
-    logger.rp(f"加入频道 {channel.name}", ctx.guild)
+    logger.rp(f"加入语音频道：{channel.name}", ctx.guild)
     return True
 
 
-@bot.command(description=f"让{bot_name}离开语音频道")
+@bot.command(description=f"让 {bot_name} 离开语音频道")
 async def leave(ctx) -> None:
     """
     让机器人离开语音频道并发送提示
@@ -355,25 +363,160 @@ async def leave(ctx) -> None:
     voice_client = ctx.guild.voice_client
     current_playlist = guild_lib.get_guild(ctx).get_playlist()
 
-    # 防止因退出频道自动删除正在播放的音频
-    if voice_client.is_playing():
-        current_audio = current_playlist.get_audio(0)
-        current_playlist.insert_audio(current_audio, 0)
-        guild_lib.get_guild(ctx).save()
-
     if voice_client is not None:
+        # 防止因退出频道自动删除正在播放的音频
+        if voice_client.is_playing():
+            current_audio = current_playlist.get_audio(0)
+            current_playlist.insert_audio(current_audio, 0)
+            guild_lib.get_guild(ctx).save()
+
         last_channel = voice_client.channel
-        await voice_client.disconnect()
+        await voice_client.disconnect(force=False)
 
-        logger.rp(f"离开频道 {last_channel}", ctx.guild)
+        logger.rp(f"离开语音频道：{last_channel}", ctx.guild)
 
-        await ctx.respond(f"离开语音频道：***{last_channel}***")
+        await ctx.respond(f"离开语音频道：<- ***{last_channel}***")
 
     else:
-        await ctx.respond(f"{bot_name}没有连接到任何语音频道")
+        await ctx.respond(f"{bot_name} 没有连接到任何语音频道")
 
 
-@bot.command(description=f"调整{bot_name}的语音频道音量")
+# @bot.command(description="播放Bilibili或Youtube的音频", aliases=["p"])
+# async def play(ctx, link=None) -> None:
+#     """
+#     使机器人下载目标BV号或Youtube音频后播放并将其标题与文件路径记录进当前服务器的播放列表
+#     播放结束后调用play_next
+#     如果当前有歌曲正在播放，则将下载目标音频并将其标题与文件路径记录进当前服务器的播放列表
+#
+#     :param ctx: 指令原句
+#     :param link: 目标URL或BV号
+#     :return:
+#     """
+#     if not await command_check(ctx):
+#         return
+#
+#     # 用户记录增加音乐播放计数
+#     member_lib.play_counter_increment(ctx.user.id)
+#
+#     guild_lib.check(ctx)
+#
+#     # 检测机器人是否已经加入语音频道
+#     if ctx.guild.voice_client is None:
+#         logger.rp("机器人未在任何语音频道中，尝试加入语音频道", ctx.guild)
+#         join_result = await join(ctx)
+#         if not join_result:
+#             return
+#
+#     # 尝试恢复之前被停止的播放
+#     # await resume(ctx, play_call=True)
+#
+#     if link is None:
+#         logger.rp("用户未输入任何参数，指令无效", ctx.guild)
+#         await ctx.respond("请在在指令后打出您想要播放的链接或想要搜索的名称")
+#         return
+#
+#     # 检查输入的URL属于哪个网站
+#     source = utils.check_url_source(link)
+#     logger.rp(f"检测输入的链接为类型：{source}", ctx.guild)
+#
+#     # 如果指令中包含链接则提取链接
+#     if source is not None:
+#         link = utils.get_url_from_str(link, source)
+#
+#     # URL属于Bilibili
+#     if source == "bili_bvid" or source == "bili_url" or source == "bili_short_url":
+#         # 如果是Bilibili短链则获取重定向链接
+#         if source == "bili_short_url":
+#             try:
+#                 link = utils.get_redirect_url(link)
+#             except requests.exceptions.InvalidSchema:
+#                 await ctx.respond("链接异常")
+#                 logger.rp(f"链接重定向失败", ctx.guild)
+#
+#             console_message_log(ctx, f"获取的重定向链接为 {link}")
+#
+#         # 如果是URl则转换成BV号
+#         if source == "bili_url" or source == "bili_short_url":
+#             bvid = bili_get_bvid(link)
+#             if bvid == "error_bvid":
+#                 console_message_log(ctx, f"{link} 为无效的链接")
+#                 await ctx.respond("无效的Bilibili链接")
+#                 return
+#         else:
+#             bvid = link
+#
+#         # 获取Bilibili视频信息
+#         info_dict = await bili_get_info(bvid)
+#
+#         # 单一视频 bili_single
+#         if info_dict["videos"] == 1 and "ugc_season" not in info_dict:
+#             loading_msg = await ctx.respond("正在加载Bilibili歌曲")
+#             await play_bili(ctx, info_dict, "bili_single", 0)
+#             # await loading_msg.delete()
+#
+#         # 合集视频 bili_collection
+#         elif "ugc_season" in info_dict:
+#             await play_bili(ctx, info_dict, "bili_single", 0)
+#
+#             collection_title = info_dict["ugc_season"]["title"]
+#             message = f"此视频包含在合集 **{collection_title}** 中, 是否要查看此合集？\n"
+#             view = CheckBiliCollectionView(ctx, info_dict)
+#             await ctx.respond(message, view=view)
+#
+#         # 分P视频 bili_p
+#         else:
+#             message = "这是一个分p视频, 请选择要播放的分p:\n"
+#             for item in info_dict["pages"]:
+#                 p_num = item["page"]
+#                 p_title = item["part"]
+#                 p_duration = \
+#                     convert_duration_to_time(item["duration"])
+#                 message = message + f"    **[{p_num}]** {p_title}  " \
+#                                     f"[{p_duration}]\n"
+#
+#             menu_list = make_menu_list_10(message)
+#             view = EpisodeSelectView(ctx, "bili_p", info_dict, menu_list)
+#             await ctx.respond(f"{menu_list[0]}\n第[1]页，"
+#                               f"共[{len(menu_list)}]页\n已输入：",
+#                               view=view)
+#
+#     elif source == "ytb_url":
+#
+#         loading_msg = await ctx.send("正在获取Youtube视频信息")
+#         url_type, info_dict = ytb_get_info(link)
+#         await loading_msg.delete()
+#
+#         # 单一视频 ytb_single
+#         if url_type == "ytb_single":
+#             loading_msg = await ctx.respond("正在加载Youtube歌曲")
+#             await play_ytb(ctx, link, info_dict, url_type)
+#             # await loading_msg.delete()
+#
+#         # 播放列表 ytb_playlist
+#         else:
+#             message = "这是一个播放列表, 请选择要播放的集数:\n"
+#             counter = 1
+#             for item in info_dict["entries"]:
+#                 ep_num = counter
+#                 ep_title = item["fulltitle"]
+#                 ep_duration = \
+#                     convert_duration_to_time(item["duration"])
+#                 message = message + f"    **[{ep_num}]** {ep_title}  " \
+#                                     f"[{ep_duration}]\n"
+#                 counter += 1
+#
+#             menu_list = make_menu_list_10(message)
+#             view = EpisodeSelectView(ctx, "ytb_playlist", info_dict, menu_list)
+#             await ctx.respond(f"{menu_list[0]}\n第[1]页，"
+#                               f"共[{len(menu_list)}]页\n已输入：",
+#                               view=view)
+#
+#     else:
+#         if link != "N/A":
+#             await search_ytb(ctx, link)
+
+
+@bot.command(description=f"调整 {bot_name} 的语音频道音量")
 async def volume(ctx, volume_num=None) -> None:
     if not await command_check(ctx):
         return
@@ -390,8 +533,8 @@ async def volume(ctx, volume_num=None) -> None:
             current_volume = 200.0
         else:
             current_volume += 20.0
-        if voice_client.is_playing():
-            voice_client.source.volume = current_volume / 100.0
+        # if voice_client.is_playing():
+        #     voice_client.source.volume = current_volume / 100.0
 
         guild_lib.get_guild(ctx).set_voice_volume(current_volume)
         logger.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
@@ -402,8 +545,8 @@ async def volume(ctx, volume_num=None) -> None:
             current_volume = 0.0
         else:
             current_volume -= 20.0
-        if voice_client.is_playing():
-            voice_client.source.volume = current_volume / 100.0
+        # if voice_client.is_playing():
+        #     voice_client.source.volume = current_volume / 100.0
 
         guild_lib.get_guild(ctx).set_voice_volume(current_volume)
         logger.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
@@ -421,8 +564,8 @@ async def volume(ctx, volume_num=None) -> None:
 
         else:
             current_volume = volume_num
-            if voice_client.is_playing():
-                voice_client.source.volume = current_volume / 100.0
+            # if voice_client.is_playing():
+            #     voice_client.source.volume = current_volume / 100.0
             guild_lib.get_guild(ctx).set_voice_volume(current_volume)
             logger.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
             await ctx.respond(f"将音量设置为 **{current_volume}%**")

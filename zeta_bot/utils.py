@@ -1,6 +1,9 @@
 import datetime
 import os
 import json
+import re
+import requests
+from typing import Union
 
 from zeta_bot import (
     errors
@@ -136,3 +139,63 @@ def convert_duration_to_time_str(duration: int) -> str:
         return f"{minutes}:{seconds}"
 
     return f"{hour}:{minutes}:{seconds}"
+
+
+def check_url_source(url) -> str:
+
+    if re.search("bilibili\.com", url) is not None:
+        return "bili_url"
+
+    elif re.search("b23\.tv", url) is not None:
+        return "bili_short_url"
+
+    elif re.search("BV(\d|[a-zA-Z]){10}", url) is not None:
+        return "bili_bvid"
+
+    elif re.search("youtube\.com", url) is not None:
+        return "ytb_url"
+
+    else:
+        return "unknown"
+
+
+def get_url_from_str(input_str, url_type) -> Union[str, None]:
+
+    if url_type == "bili_url":
+        url_position = re.search("bilibili\.com[^ ]*", input_str).span()
+        url = "https://" + input_str[url_position[0]:url_position[1]]
+        return url
+
+    elif url_type == "bili_short_url":
+        url_position = re.search("b23\.tv[^ ]*", input_str).span()
+        url = "https://" + input_str[url_position[0]:url_position[1]]
+        return url
+
+    elif url_type == "bili_bvid":
+        bvid_position = re.search("BV(\d|[a-zA-Z]){10}", input_str).span()
+        bvid = input_str[bvid_position[0]:bvid_position[1]]
+        return bvid
+
+    elif url_type == "ytb_url":
+        url_position = re.search("youtube\.com[^ ]*", input_str).span()
+        url = "https://" + input_str[url_position[0]:url_position[1]]
+        return url
+
+    else:
+        return None
+
+
+def get_redirect_url(url) -> str:
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://www.bilibili.com/"
+    }
+
+    # 请求网页
+    response = requests.get(url, headers=headers)
+
+    # print(response.status_code)  # 打印响应的状态码
+    # print(response.url)  # 打印重定向后的网址
+
+    # 返回重定向后的网址
+    return str(response.url)

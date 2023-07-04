@@ -16,11 +16,24 @@ from zeta_bot import (
 
 
 class Guild:
-    def __init__(self, guild_id, guild_name, lib_root: str):
-        self.id = guild_id
-        self.name = guild_name
+    def __init__(self, guild: discord.guild, lib_root: str):
+        self.guild = guild
+        self.id = self.guild.id
+        self.name = self.guild.name
         self.lib_root = lib_root
-        self.playlist = playlist.Playlist(f"{self.name} 主播放列表")
+        self.root = f"{self.lib_root}/{self.guild.id}"
+        self.path = f"{self.root}/{self.guild.id}.json"
+        self.voice_client = self.guild.voice_client
+
+        if not os.path.exists(self.root):
+            utils.create_folder(self.root)
+
+        try:
+            self.load()
+        except FileNotFoundError:
+            self.playlist = playlist.Playlist(f"{self.name} 主播放列表")
+            self.save()
+
         self.voice_volume = 100.0
 
     def get_playlist(self) -> playlist.Playlist:
@@ -31,28 +44,22 @@ class Guild:
 
     def set_voice_volume(self, volume: Union[int, float]) -> None:
         self.voice_volume = float(volume)
+        if self.voice_client is not None and self.voice_client.is_playing():
+            self.voice_client.source.volume = self.voice_volume / 100.0
 
     def save(self) -> None:
-        utils.json_save(f"{self.lib_root}/{self.id}/{self.id}.json", self)
+        utils.json_save(self.path, self)
 
     def load(self) -> None:
-        loaded_dict = utils.json_load(f"{self.lib_root}/{self.id}/{self.id}.json")
-        self.name = loaded_dict["name"]
+        loaded_dict = utils.json_load(self.path)
         self.playlist = playlist.playlist_decoder(loaded_dict["playlist"])
 
     def encode(self) -> dict:
         return {
             "id": self.id,
             "name": self.name,
-            "lib_root": self.lib_root,
             "playlist": self.playlist
         }
-
-
-def guild_decoder(info_dict: dict) -> Guild:
-    new_guild = Guild(info_dict["id"], info_dict["name"], info_dict["lib_root"])
-    new_guild.playlist = playlist.playlist_decoder(info_dict["playlist"])
-    return new_guild
 
 
 @decorators.Singleton
@@ -77,40 +84,10 @@ class GuildLibrary:
     def check(self, ctx: discord.ApplicationContext) -> None:
         guild_id = ctx.guild.id
         guild_name = ctx.guild.name
-        guild_root = f"{self.root}/{guild_id}"
-        file_path = f"{guild_root}/{guild_id}.json"
-
-        # TODO 读取方式有问题，名称变动可能导致播放列表重新读取，需重写
-
-        # 如果服务器目录不存在
-        if not os.path.exists(guild_root):
-            utils.create_folder(guild_root)
-
-        # 如果服务器主文件存在
-        if os.path.exists(file_path):
-            loaded_dict = utils.json_load(file_path)
-            # 更新服务器名
-            if guild_name != loaded_dict["name"]:
-                loaded_dict["name"] = guild_name
-                # 保存变动
-                utils.json_save(file_path, loaded_dict)
-
-        # 如果服务器主文件不存在
-        else:
-            loaded_dict = {
-                "id": guild_id,
-                "name": guild_name,
-                "lib_root": self.root,
-                "playlist": playlist.Playlist(f"{guild_name} 主播放列表")
-            }
-            utils.json_save(file_path, loaded_dict)
 
         # 如果guild_dict中不存在本Discord服务器
         if guild_id not in self.guild_dict:
-            self.guild_dict[guild_id] = guild_decoder(loaded_dict)
-        # 如果guild_dict中存在本Discord服务器
-        else:
-            self.guild_dict[guild_id].load()
+            self.guild_dict[guild_id] = Guild(ctx.guild, self.root)
 
         # 更新#Guilds文件
         if guild_id not in self.hashtag_file or guild_name != self.hashtag_file[guild_id]:

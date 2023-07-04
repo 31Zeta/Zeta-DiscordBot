@@ -43,7 +43,7 @@ class Log:
         记录运行日志，并打印到控制台
         """
         current_time = utils.time()
-        print_log(current_time, content)
+        print_log(current_time, content, level)
         if self.log:
             write_log(self.log_path, current_time, content, level)
 
