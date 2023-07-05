@@ -36,6 +36,15 @@ class Playlist:
         """
         self.name = new_name
 
+    def get_list_info(self) -> list[tuple]:
+        """
+        返回一个包含当前播放列表音频信息的元组的列表
+        """
+        result = []
+        for item in self.playlist:
+            result.append((item.title, item.time_str))
+        return result
+
     def get_audio(self, index=0) -> Union[audio.Audio, None]:
         """
         返回一个音频（类Audio），默认为列表中的第一个音频\n

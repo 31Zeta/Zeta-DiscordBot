@@ -1,6 +1,7 @@
 import discord
 import sys
 import os
+import asyncio
 import requests
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -13,7 +14,9 @@ from zeta_bot import (
     log,
     member,
     guild,
-    help
+    help,
+    dl_bilibili,
+    dl_youtube
 )
 
 version = "0.10.0"
@@ -50,6 +53,8 @@ logger = log.Log(error_log_path, log_path, setting.value("log"))
 utils.create_folder("./data")
 member_lib = member.MemberLibrary()
 guild_lib = guild.GuildLibrary()
+
+utils.create_folder("./downloads")
 
 logger.rp("程序启动", "[系统]")
 
@@ -331,16 +336,8 @@ async def join(ctx: discord.ApplicationContext, channel_name=None) -> bool:
 
     # 机器人已经在一个频道的情况
     else:
-        # # 防止因退出频道自动删除正在播放的音频
-        # current_playlist = guild_lib.get_guild(ctx).get_playlist()
-        # if voice_client.is_playing():
-        #     current_audio = current_playlist.get_audio(0)
-        #     current_playlist.insert_audio(current_audio, 0)
-        #     guild_lib.get_guild(ctx).save()
-
         previous_channel = voice_client.channel
-        await voice_client.disconnect(force=False)
-        await channel.connect()
+        await voice_client.move_to(channel)
         await ctx.respond(f"转移语音频道：***{previous_channel}*** -> ***{channel.name}***")
 
     logger.rp(f"加入语音频道：{channel.name}", ctx.guild)
@@ -348,7 +345,7 @@ async def join(ctx: discord.ApplicationContext, channel_name=None) -> bool:
 
 
 @bot.command(description=f"让 {bot_name} 离开语音频道")
-async def leave(ctx) -> None:
+async def leave(ctx: discord.ApplicationContext) -> None:
     """
     让机器人离开语音频道并发送提示
 
@@ -381,143 +378,277 @@ async def leave(ctx) -> None:
         await ctx.respond(f"{bot_name} 没有连接到任何语音频道")
 
 
-# @bot.command(description="播放Bilibili或Youtube的音频", aliases=["p"])
-# async def play(ctx, link=None) -> None:
-#     """
-#     使机器人下载目标BV号或Youtube音频后播放并将其标题与文件路径记录进当前服务器的播放列表
-#     播放结束后调用play_next
-#     如果当前有歌曲正在播放，则将下载目标音频并将其标题与文件路径记录进当前服务器的播放列表
-#
-#     :param ctx: 指令原句
-#     :param link: 目标URL或BV号
-#     :return:
-#     """
-#     if not await command_check(ctx):
-#         return
-#
-#     # 用户记录增加音乐播放计数
-#     member_lib.play_counter_increment(ctx.user.id)
-#
-#     guild_lib.check(ctx)
-#
-#     # 检测机器人是否已经加入语音频道
-#     if ctx.guild.voice_client is None:
-#         logger.rp("机器人未在任何语音频道中，尝试加入语音频道", ctx.guild)
-#         join_result = await join(ctx)
-#         if not join_result:
-#             return
-#
-#     # 尝试恢复之前被停止的播放
-#     # await resume(ctx, play_call=True)
-#
-#     if link is None:
-#         logger.rp("用户未输入任何参数，指令无效", ctx.guild)
-#         await ctx.respond("请在在指令后打出您想要播放的链接或想要搜索的名称")
-#         return
-#
-#     # 检查输入的URL属于哪个网站
-#     source = utils.check_url_source(link)
-#     logger.rp(f"检测输入的链接为类型：{source}", ctx.guild)
-#
-#     # 如果指令中包含链接则提取链接
-#     if source is not None:
-#         link = utils.get_url_from_str(link, source)
-#
-#     # URL属于Bilibili
-#     if source == "bili_bvid" or source == "bili_url" or source == "bili_short_url":
-#         # 如果是Bilibili短链则获取重定向链接
-#         if source == "bili_short_url":
-#             try:
-#                 link = utils.get_redirect_url(link)
-#             except requests.exceptions.InvalidSchema:
-#                 await ctx.respond("链接异常")
-#                 logger.rp(f"链接重定向失败", ctx.guild)
-#
-#             console_message_log(ctx, f"获取的重定向链接为 {link}")
-#
-#         # 如果是URl则转换成BV号
-#         if source == "bili_url" or source == "bili_short_url":
-#             bvid = bili_get_bvid(link)
-#             if bvid == "error_bvid":
-#                 console_message_log(ctx, f"{link} 为无效的链接")
-#                 await ctx.respond("无效的Bilibili链接")
-#                 return
-#         else:
-#             bvid = link
-#
-#         # 获取Bilibili视频信息
-#         info_dict = await bili_get_info(bvid)
-#
-#         # 单一视频 bili_single
-#         if info_dict["videos"] == 1 and "ugc_season" not in info_dict:
-#             loading_msg = await ctx.respond("正在加载Bilibili歌曲")
-#             await play_bili(ctx, info_dict, "bili_single", 0)
-#             # await loading_msg.delete()
-#
-#         # 合集视频 bili_collection
-#         elif "ugc_season" in info_dict:
-#             await play_bili(ctx, info_dict, "bili_single", 0)
-#
-#             collection_title = info_dict["ugc_season"]["title"]
-#             message = f"此视频包含在合集 **{collection_title}** 中, 是否要查看此合集？\n"
-#             view = CheckBiliCollectionView(ctx, info_dict)
-#             await ctx.respond(message, view=view)
-#
-#         # 分P视频 bili_p
-#         else:
-#             message = "这是一个分p视频, 请选择要播放的分p:\n"
-#             for item in info_dict["pages"]:
-#                 p_num = item["page"]
-#                 p_title = item["part"]
-#                 p_duration = \
-#                     convert_duration_to_time(item["duration"])
-#                 message = message + f"    **[{p_num}]** {p_title}  " \
-#                                     f"[{p_duration}]\n"
-#
-#             menu_list = make_menu_list_10(message)
-#             view = EpisodeSelectView(ctx, "bili_p", info_dict, menu_list)
-#             await ctx.respond(f"{menu_list[0]}\n第[1]页，"
-#                               f"共[{len(menu_list)}]页\n已输入：",
-#                               view=view)
-#
-#     elif source == "ytb_url":
-#
-#         loading_msg = await ctx.send("正在获取Youtube视频信息")
-#         url_type, info_dict = ytb_get_info(link)
-#         await loading_msg.delete()
-#
-#         # 单一视频 ytb_single
-#         if url_type == "ytb_single":
-#             loading_msg = await ctx.respond("正在加载Youtube歌曲")
-#             await play_ytb(ctx, link, info_dict, url_type)
-#             # await loading_msg.delete()
-#
-#         # 播放列表 ytb_playlist
-#         else:
-#             message = "这是一个播放列表, 请选择要播放的集数:\n"
-#             counter = 1
-#             for item in info_dict["entries"]:
-#                 ep_num = counter
-#                 ep_title = item["fulltitle"]
-#                 ep_duration = \
-#                     convert_duration_to_time(item["duration"])
-#                 message = message + f"    **[{ep_num}]** {ep_title}  " \
-#                                     f"[{ep_duration}]\n"
-#                 counter += 1
-#
-#             menu_list = make_menu_list_10(message)
-#             view = EpisodeSelectView(ctx, "ytb_playlist", info_dict, menu_list)
-#             await ctx.respond(f"{menu_list[0]}\n第[1]页，"
-#                               f"共[{len(menu_list)}]页\n已输入：",
-#                               view=view)
-#
-#     else:
-#         if link != "N/A":
-#             await search_ytb(ctx, link)
+@bot.command(description="播放Bilibili或Youtube的音频", aliases=["p"])
+async def play(ctx: discord.ApplicationContext, link=None) -> None:
+    """
+    使机器人下载目标BV号或Youtube音频后播放并将其标题与文件路径记录进当前服务器的播放列表
+    播放结束后调用play_next
+    如果当前有歌曲正在播放，则将下载目标音频并将其标题与文件路径记录进当前服务器的播放列表
+
+    :param ctx: 指令原句
+    :param link: 目标URL或BV号
+    :return:
+    """
+    if not await command_check(ctx):
+        return
+
+    # 用户记录增加音乐播放计数
+    member_lib.play_counter_increment(ctx.user.id)
+
+    guild_lib.check(ctx)
+
+    # 检测机器人是否已经加入语音频道
+    if ctx.guild.voice_client is None:
+        logger.rp("机器人未在任何语音频道中，尝试加入语音频道", ctx.guild)
+        join_result = await join(ctx)
+        if not join_result:
+            return
+
+    # 尝试恢复之前被停止的播放
+    # await resume(ctx, play_call=True)
+
+    if link is None:
+        logger.rp("用户未输入任何参数，指令无效", ctx.guild)
+        await ctx.respond("请在在指令后打出您想要播放的链接或想要搜索的名称")
+        return
+
+    # 检查输入的URL属于哪个网站
+    source = utils.check_url_source(link)
+    logger.rp(f"检测输入的链接为类型：{source}", ctx.guild)
+
+    # 如果指令中包含链接则提取链接
+    if source is not None:
+        link = utils.get_url_from_str(link, source)
+
+    # URL属于Bilibili
+    if source == "bili_bvid" or source == "bili_url" or source == "bili_short_url":
+        # 如果是Bilibili短链则获取重定向链接
+        if source == "bili_short_url":
+            try:
+                link = utils.get_redirect_url(link)
+            except requests.exceptions.InvalidSchema:
+                await ctx.respond("链接异常")
+                logger.rp(f"链接重定向失败", ctx.guild)
+
+            logger.rp(f"获取的重定向链接为 {link}", ctx.guild)
+
+        # 如果是URl则转换成BV号
+        if source == "bili_url" or source == "bili_short_url":
+            bvid = utils.get_bvid_from_url(link)
+            if bvid is None:
+                logger.rp(f"{link} 为无效的链接", ctx.guild)
+                await ctx.respond("无效的Bilibili链接")
+                return
+        else:
+            bvid = link
+
+        # 获取Bilibili视频信息
+        info_dict = await dl_bilibili.get_info(bvid)
+
+        # 单一视频 bili_single
+        if info_dict["videos"] == 1 and "ugc_season" not in info_dict:
+            loading_msg = await ctx.respond("正在加载Bilibili歌曲")
+            loaded_audio = await play_bili(ctx, info_dict, "bili_single", 0)
+
+            # TODO 测试用，非最终显示语句
+            await loading_msg.edit(f"测试：加载 {loaded_audio.title}")
+
+        # 合集视频 bili_collection
+        elif "ugc_season" in info_dict:
+            await play_bili(ctx, info_dict, "bili_single", 0)
+
+            collection_title = info_dict["ugc_season"]["title"]
+            message = f"此视频包含在合集 **{collection_title}** 中, 是否要查看此合集？\n"
+            view = CheckBiliCollectionView(ctx, info_dict)
+            await ctx.respond(message, view=view)
+
+        # 分P视频 bili_p
+        else:
+            message = "这是一个分p视频, 请选择要播放的分p:\n"
+            for item in info_dict["pages"]:
+                p_num = item["page"]
+                p_title = item["part"]
+                p_time_str = utils.convert_duration_to_time_str(item["duration"])
+                message = message + f"    **[{p_num}]** {p_title}  [{p_time_str}]\n"
+
+            menu_list = make_menu_list_10(message)
+            view = EpisodeSelectView(ctx, "bili_p", info_dict, menu_list)
+            await ctx.respond(f"{menu_list[0]}\n第[1]页，"
+                              f"共[{len(menu_list)}]页\n已输入：",
+                              view=view)
+
+    elif source == "ytb_url":
+
+        loading_msg = await ctx.send("正在获取Youtube视频信息")
+        url_type, info_dict = dl_youtube.get_info(link)
+        await loading_msg.delete()
+
+        # 单一视频 ytb_single
+        if url_type == "ytb_single":
+            loading_msg = await ctx.respond("正在加载Youtube歌曲")
+            await play_ytb(ctx, link, info_dict, url_type)
+            # await loading_msg.delete()
+
+        # 播放列表 ytb_playlist
+        else:
+            message = "这是一个播放列表, 请选择要播放的集数:\n"
+            counter = 1
+            for item in info_dict["entries"]:
+                ep_num = counter
+                ep_title = item["fulltitle"]
+                ep_time_str = utils.convert_duration_to_time_str(item["duration"])
+                message = message + f"    **[{ep_num}]** {ep_title}  [{ep_time_str}]\n"
+                counter += 1
+
+            menu_list = make_menu_list_10(message)
+            view = EpisodeSelectView(ctx, "ytb_playlist", info_dict, menu_list)
+            await ctx.respond(f"{menu_list[0]}\n第[1]页，"
+                              f"共[{len(menu_list)}]页\n已输入：",
+                              view=view)
+
+    else:
+        if link != "N/A":
+            await search_ytb(ctx, link)
+
+
+async def play_next(ctx: discord.ApplicationContext):
+    """
+    播放下一首歌曲
+
+    :param ctx: 指令原句
+    :return:
+    """
+    voice_client = ctx.guild.voice_client
+    current_guild = guild_lib.get_guild(ctx)
+    current_playlist = current_guild.get_playlist()
+
+    logger.rp(f"触发play_next", ctx.guild)
+
+    if len(current_playlist) > 1:
+        # 移除上一首歌曲
+        current_playlist.remove_audio(0)
+        # 获取下一首歌曲
+        next_audio = current_playlist.get_audio(0)
+        title = next_audio.title
+        path = next_audio.path
+        duration = next_audio.duration
+
+        voice_client.play(
+            discord.PCMVolumeTransformer(
+                discord.FFmpegPCMAudio(
+                    executable=setting.value("ffmpeg_path"), source=path
+                )
+            ),
+            after=lambda e: asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
+        )
+        # voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
+
+        time_str = utils.convert_duration_to_time_str(duration)
+        logger.rp(f"开始播放：{title} [{time_str}] {path}", ctx.guild)
+        # console_message_log_list(ctx)
+
+        await ctx.send(f"正在播放：**{title} [{time_str}]**")
+
+    else:
+        current_playlist.remove_audio(0)
+        logger.rp("播放队列已结束", ctx.guild)
+        await ctx.send("播放队列已结束")
+
+
+async def play_bili(ctx: discord.ApplicationContext, info_dict, download_type="bili_single", num_option=0):
+    """
+    下载并播放来自Bilibili的视频的音频
+
+    :param ctx: 指令原句
+    :param info_dict: 目标的信息字典（使用bili_getinfo提取）
+    :param download_type: 下载模式（"bili_single"或"bili_p"）
+    :param num_option: 下载分集号（从0开始，默认为0即合集第1视频或者第1p）
+    :return: （歌曲标题，歌曲时长）
+    """
+
+    voice_client = ctx.guild.voice_client
+    current_guild = guild_lib.get_guild(ctx)
+    current_playlist = current_guild.get_playlist()
+
+    bvid = info_dict["bvid"]
+
+    audio = await dl_bilibili.audio_download(bvid, info_dict, "./downloads", download_type, num_option)
+
+    time_str = audio.get_time_str()
+
+    # 如果当前播放列表为空
+    if current_playlist.is_empty() and not voice_client.is_playing():
+
+        voice_client.play(
+            discord.PCMVolumeTransformer(
+                discord.FFmpegPCMAudio(
+                    executable=setting.value("ffmpeg_path"), source=audio.path
+                )
+            ),
+            after=lambda e: asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
+        )
+        # voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
+
+        logger.rp(f"开始播放：{audio.title} [{time_str}] {audio.path}", ctx.guild)
+        await ctx.send(f"正在播放：**{audio.title} [{time_str}]**")
+
+    # 如果播放列表不为空
+    elif download_type == "bili_single":
+        await ctx.send(f"已加入播放列表：**{audio.title} [{time_str}]**")
+
+    current_playlist.append_audio(audio)
+    logger.rp(f"歌曲 {audio.title} [{time_str}] 已加入播放列表", ctx.guild)
+
+    return audio
+
+
+async def play_ytb(ctx, url, info_dict, download_type="ytb_single"):
+    """
+    下载并播放来自Youtube的视频的音频
+
+    :param ctx: 指令原句
+    :param url: 目标URL
+    :param info_dict: 目标的信息字典（使用ytb_get_info提取）
+    :param download_type: 下载模式（"ytb_single"或"ytb_playlist"）
+    :return: （歌曲标题，歌曲时长）
+    """
+
+    voice_client = ctx.guild.voice_client
+    current_guild = guild_lib.get_guild(ctx)
+    current_playlist = current_guild.get_playlist()
+
+    audio = dl_youtube.audio_download(url, info_dict, "./downloads/", download_type)
+
+    duration_str = audio.get_time_str()
+
+    # 如果当前播放列表为空
+    if current_playlist.is_empty() and not voice_client.is_playing():
+
+        voice_client.play(
+            discord.PCMVolumeTransformer(
+                discord.FFmpegPCMAudio(
+                    executable=setting.value("ffmpeg_path"), source=audio.path
+                )
+            ), after=lambda e: asyncio.run_coroutine_threadsafe(
+                play_next(ctx), bot.loop)
+        )
+        # voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
+
+        logger.rp(f"开始播放：{audio.title} [{duration_str}] {audio.path}", ctx.guild)
+        await ctx.send(f"正在播放：**{audio.title} [{duration_str}]**")
+
+    # 如果播放列表不为空
+    elif download_type == "ytb_single":
+        await ctx.send(f"已加入播放列表：**{audio.title} [{duration_str}]**")
+
+    current_playlist.append_audio(audio)
+    logger.rp(f"歌曲 {audio.title} [{duration_str}] 已加入播放列表", ctx.guild)
+
+    return audio
 
 
 @bot.command(description=f"调整 {bot_name} 的语音频道音量")
-async def volume(ctx, volume_num=None) -> None:
+async def volume(ctx: discord.ApplicationContext, volume_num=None) -> None:
     if not await command_check(ctx):
         return
 

@@ -141,7 +141,7 @@ def convert_duration_to_time_str(duration: int) -> str:
     return f"{hour}:{minutes}:{seconds}"
 
 
-def check_url_source(url) -> str:
+def check_url_source(url) -> Union[str, None]:
 
     if re.search("bilibili\.com", url) is not None:
         return "bili_url"
@@ -156,7 +156,7 @@ def check_url_source(url) -> str:
         return "ytb_url"
 
     else:
-        return "unknown"
+        return None
 
 
 def get_url_from_str(input_str, url_type) -> Union[str, None]:
@@ -199,3 +199,39 @@ def get_redirect_url(url) -> str:
 
     # 返回重定向后的网址
     return str(response.url)
+
+
+def get_bvid_from_url(url):
+    """
+    提取目标地址对应的BV号
+
+    :param url: 目标地址
+    :return:
+    """
+    re_result = re.search("BV(\d|[a-zA-Z]){10}", url)
+
+    if re_result is None:
+        return None
+
+    bvid_start = re_result.span()[0]
+    bvid_end = re_result.span()[1]
+    result = url[bvid_start:bvid_end]
+
+    return result
+
+
+def make_playlist_page(list_info: list, num_per_page: int, indent: int = 0) -> list:
+    """
+    将<list_info>中的信息分割成每<num_per_page>一页
+    <indent>为每行字符串前缩进位数
+    """
+    result = []
+    counter = 0
+    while counter < len(list_info):
+        current_page = ""
+        for i in range(num_per_page):
+            current_tuple = list_info[counter]
+            current_page += f"{' ' * indent}[{counter + 1}] {current_tuple[0]} [{current_tuple[1]}]\n"
+            counter += 1
+        result.append(current_page)
+    return result

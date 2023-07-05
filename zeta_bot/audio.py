@@ -19,6 +19,24 @@ class Audio:
         else:
             return self.title
 
+    def get_title(self) -> str:
+        return self.title
+
+    def get_source(self) -> str:
+        return self.source
+
+    def get_source_id(self) -> str:
+        return self.source_id
+
+    def get_path(self) -> str:
+        return self.path
+
+    def get_duration(self) -> int:
+        return self.duration
+
+    def get_time_str(self) -> str:
+        return self.time_str
+
     def encode(self) -> dict:
         return {
             "title": self.title,

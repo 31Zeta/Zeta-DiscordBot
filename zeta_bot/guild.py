@@ -23,6 +23,8 @@ class Guild:
         self.lib_root = lib_root
         self.root = f"{self.lib_root}/{self.guild.id}"
         self.path = f"{self.root}/{self.guild.id}.json"
+
+        # TODO 检测是否会更新
         self.voice_client = self.guild.voice_client
 
         if not os.path.exists(self.root):
@@ -32,12 +34,19 @@ class Guild:
             self.load()
         except FileNotFoundError:
             self.playlist = playlist.Playlist(f"{self.name} 主播放列表")
+            self.playedlist = playlist.Playlist(f"{self.name} 历史播放列表")
             self.save()
 
         self.voice_volume = 100.0
 
     def get_playlist(self) -> playlist.Playlist:
         return self.playlist
+
+    def get_playedlist(self) -> playlist.Playlist:
+        return self.playedlist
+
+    def get_voice_client(self) -> discord.VoiceClient:
+        return self.voice_client
 
     def get_voice_volume(self) -> float:
         return self.voice_volume
@@ -58,7 +67,8 @@ class Guild:
         return {
             "id": self.id,
             "name": self.name,
-            "playlist": self.playlist
+            "playlist": self.playlist,
+            "playedlist": self.playedlist
         }
 
 
