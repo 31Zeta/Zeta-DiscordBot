@@ -42,7 +42,7 @@ class Playlist:
         """
         result = []
         for item in self.playlist:
-            result.append((item.title, item.time_str))
+            result.append((item._title, item._time_str))
         return result
 
     def get_audio(self, index=0) -> Union[audio.Audio, None]:
@@ -70,7 +70,7 @@ class Playlist:
             return None
         else:
             target_audio = self.playlist.pop(index)
-            self.duration -= target_audio.duration
+            self.duration -= target_audio._duration
             return target_audio
 
     def append_audio(self, new_audio: audio.Audio) -> bool:
@@ -82,7 +82,7 @@ class Playlist:
         """
         if self.limitation is None or len(self.playlist) + 1 <= self.limitation:
             self.playlist.append(new_audio)
-            self.duration += new_audio.duration
+            self.duration += new_audio._duration
             return True
         else:
             return False
@@ -97,7 +97,7 @@ class Playlist:
         """
         if self.limitation is None or len(self.playlist) + 1 <= self.limitation:
             self.playlist.insert(index, new_audio)
-            self.duration += new_audio.duration
+            self.duration += new_audio._duration
             return True
         else:
             return False
@@ -133,10 +133,10 @@ class Playlist:
         """
         target_audio = self.get_audio(index)
         if target_audio is not None:
-            target_path = target_audio.path
+            target_path = target_audio._path
             counter = 0
             for item in self.playlist:
-                if item.path == target_path:
+                if item._path == target_path:
                     counter += 1
                     if counter > 1:
                         return True
@@ -153,7 +153,7 @@ class Playlist:
         """
         target_audio = self.get_audio(index)
         if target_audio is not None:
-            self.duration -= self.get_audio(index).duration
+            self.duration -= self.get_audio(index)._duration
             del self.playlist[index]
 
     def remove_all(self) -> None:

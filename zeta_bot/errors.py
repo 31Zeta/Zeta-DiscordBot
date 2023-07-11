@@ -1,5 +1,9 @@
 from discord.errors import *
 
+"""
+虽然没必要，就是写着玩
+"""
+
 
 class InitializationFailed(RuntimeError):
     def __init__(self, name, description):
@@ -75,4 +79,23 @@ class JSONFileError(RuntimeError):
         self.path = path
 
     def __str__(self):
-        return f"Json文件{self.path}已损坏"
+        return f"Json文件<{self.path}>已损坏"
+
+
+class KeyAlreadyExists(RuntimeError):
+    def __init__(self, key):
+        super().__init__()
+        self.key = key
+
+    def __str__(self):
+        return f"键值<{self.key}>已经存在"
+
+
+class KeyNotFound(RuntimeError):
+    """就是不用KeyError啊哈哈"""
+    def __init__(self, key):
+        super().__init__()
+        self.key = key
+
+    def __str__(self):
+        return f"键值<{self.key}>不存在"

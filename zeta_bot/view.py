@@ -5,8 +5,11 @@ from zeta_bot import (
     language,
     log,
     utils,
-    playlist
+    playlist,
+    guild
 )
+
+guild_lib = guild.GuildLibrary()
 
 # 多语言模块
 lang = language.Lang()

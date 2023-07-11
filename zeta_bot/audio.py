@@ -6,45 +6,42 @@ from zeta_bot import (
 class Audio:
 
     def __init__(self, title: str, source: str, source_id: str, path: str, duration: int) -> None:
-        self.title = title
-        self.source = source
-        self.source_id = source_id
-        self.path = path
-        self.duration = duration
-        self.time_str = utils.convert_duration_to_time_str(duration)
+        self._title = title
+        self._source = source
+        self._source_id = source_id
+        self._path = path
+        self._duration = duration
+        self._time_str = utils.convert_duration_to_time_str(duration)
 
     def __str__(self) -> str:
-        if self.time_str != "N/A":
-            return f"{self.title} [{self.time_str}]"
-        else:
-            return self.title
+        return f"{self._title} [{self._time_str}]"
 
     def get_title(self) -> str:
-        return self.title
+        return self._title
 
     def get_source(self) -> str:
-        return self.source
+        return self._source
 
     def get_source_id(self) -> str:
-        return self.source_id
+        return self._source_id
 
     def get_path(self) -> str:
-        return self.path
+        return self._path
 
     def get_duration(self) -> int:
-        return self.duration
+        return self._duration
 
     def get_time_str(self) -> str:
-        return self.time_str
+        return self._time_str
 
     def encode(self) -> dict:
         return {
-            "title": self.title,
-            "source": self.source,
-            "source_id": self.source_id,
-            "path": self.path,
-            "duration": self.duration,
-            "time_str": self.time_str
+            "title": self._title,
+            "source": self._source,
+            "source_id": self._source_id,
+            "path": self._path,
+            "duration": self._duration,
+            "time_str": self._time_str
         }
 
 

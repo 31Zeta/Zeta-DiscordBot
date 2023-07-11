@@ -451,7 +451,7 @@ async def play(ctx: discord.ApplicationContext, link=None) -> None:
             loaded_audio = await play_bili(ctx, info_dict, "bili_single", 0)
 
             # TODO 测试用，非最终显示语句
-            await loading_msg.edit(f"测试：加载 {loaded_audio.title}")
+            await loading_msg.edit(f"测试：加载 {loaded_audio._title}")
 
         # 合集视频 bili_collection
         elif "ugc_season" in info_dict:
@@ -529,9 +529,9 @@ async def play_next(ctx: discord.ApplicationContext):
         current_playlist.remove_audio(0)
         # 获取下一首歌曲
         next_audio = current_playlist.get_audio(0)
-        title = next_audio.title
-        path = next_audio.path
-        duration = next_audio.duration
+        title = next_audio._title
+        path = next_audio._path
+        duration = next_audio._duration
 
         voice_client.play(
             discord.PCMVolumeTransformer(
@@ -582,22 +582,22 @@ async def play_bili(ctx: discord.ApplicationContext, info_dict, download_type="b
         voice_client.play(
             discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(
-                    executable=setting.value("ffmpeg_path"), source=audio.path
+                    executable=setting.value("ffmpeg_path"), source=audio._path
                 )
             ),
             after=lambda e: asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
         )
         # voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
 
-        logger.rp(f"开始播放：{audio.title} [{time_str}] {audio.path}", ctx.guild)
-        await ctx.send(f"正在播放：**{audio.title} [{time_str}]**")
+        logger.rp(f"开始播放：{audio._title} [{time_str}] {audio._path}", ctx.guild)
+        await ctx.send(f"正在播放：**{audio._title} [{time_str}]**")
 
     # 如果播放列表不为空
     elif download_type == "bili_single":
-        await ctx.send(f"已加入播放列表：**{audio.title} [{time_str}]**")
+        await ctx.send(f"已加入播放列表：**{audio._title} [{time_str}]**")
 
     current_playlist.append_audio(audio)
-    logger.rp(f"歌曲 {audio.title} [{time_str}] 已加入播放列表", ctx.guild)
+    logger.rp(f"歌曲 {audio._title} [{time_str}] 已加入播放列表", ctx.guild)
 
     return audio
 
@@ -627,22 +627,22 @@ async def play_ytb(ctx, url, info_dict, download_type="ytb_single"):
         voice_client.play(
             discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(
-                    executable=setting.value("ffmpeg_path"), source=audio.path
+                    executable=setting.value("ffmpeg_path"), source=audio._path
                 )
             ), after=lambda e: asyncio.run_coroutine_threadsafe(
                 play_next(ctx), bot.loop)
         )
         # voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
 
-        logger.rp(f"开始播放：{audio.title} [{duration_str}] {audio.path}", ctx.guild)
-        await ctx.send(f"正在播放：**{audio.title} [{duration_str}]**")
+        logger.rp(f"开始播放：{audio._title} [{duration_str}] {audio._path}", ctx.guild)
+        await ctx.send(f"正在播放：**{audio._title} [{duration_str}]**")
 
     # 如果播放列表不为空
     elif download_type == "ytb_single":
-        await ctx.send(f"已加入播放列表：**{audio.title} [{duration_str}]**")
+        await ctx.send(f"已加入播放列表：**{audio._title} [{duration_str}]**")
 
     current_playlist.append_audio(audio)
-    logger.rp(f"歌曲 {audio.title} [{duration_str}] 已加入播放列表", ctx.guild)
+    logger.rp(f"歌曲 {audio._title} [{duration_str}] 已加入播放列表", ctx.guild)
 
     return audio
 
