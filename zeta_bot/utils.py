@@ -250,9 +250,6 @@ class DoubleLinkedNode:
     def __str__(self):
         return self.item.__str__()
 
-    def __repr__(self):
-        return str(id(self))[-4:]
-
 
 class DoubleLinkedListDict:
     """
