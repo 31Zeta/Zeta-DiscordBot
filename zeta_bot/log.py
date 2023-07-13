@@ -3,6 +3,7 @@ import logging
 
 from zeta_bot import (
     errors,
+    decorators,
     language,
     utils
 )
@@ -13,20 +14,21 @@ _ = lang.get_string
 printl = lang.printl
 
 
+@decorators.Singleton
 class Log:
     def __init__(self, error_log_path: str, log_path: str, log: bool) -> None:
-        self.log = log
-        self.log_path = log_path
-        self.error_log_path = error_log_path
+        self._log = log
+        self._log_path = log_path
+        self._error_log_path = error_log_path
 
-        with open(self.error_log_path, "a", encoding="utf-8"):
+        with open(self._error_log_path, "a", encoding="utf-8"):
             pass
-        if self.log:
-            with open(self.log_path, "a", encoding="utf-8"):
+        if self._log:
+            with open(self._log_path, "a", encoding="utf-8"):
                 pass
 
         logging.basicConfig(
-            filename=self.error_log_path, level=logging.WARNING
+            filename=self._error_log_path, level=logging.WARNING
         )
 
     def rec(self, content: str, level="") -> None:
@@ -34,8 +36,8 @@ class Log:
         Record
         记录运行日志
         """
-        if self.log:
-            write_log(self.log_path, utils.time(), content, level)
+        if self._log:
+            write_log(self._log_path, utils.time(), content, level)
 
     def rp(self, content: str, level=""):
         """
@@ -44,15 +46,15 @@ class Log:
         """
         current_time = utils.time()
         print_log(current_time, content, level)
-        if self.log:
-            write_log(self.log_path, current_time, content, level)
+        if self._log:
+            write_log(self._log_path, current_time, content, level)
 
     def on_error(self, exception) -> None:
-        error(self.error_log_path, exception)
+        error(self._error_log_path, exception)
 
     def on_application_command_error(self, ctx, exception) -> None:
         application_command_error(
-            self.log_path, self.error_log_path, ctx, exception)
+            self._log_path, self._error_log_path, ctx, exception)
 
 
 def write_log(path: str, time: str, content: str, level="") -> None:
@@ -65,6 +67,7 @@ def write_log(path: str, time: str, content: str, level="") -> None:
     :param level: 位置信息
     :return:
     """
+    content = content.replace("\n", " ")
     with open(path, "a", encoding="utf-8") as log:
         log.write(f"{time} {level} {content}\n")
 
@@ -78,7 +81,13 @@ def print_log(time: str, content: str, level="") -> None:
     :param level: 位置信息
     :return:
     """
-    print(f"{time} {level}\n    {content}\n")
+    formatted_content = ""
+    for character in content:
+        formatted_content += character
+        if character == "\n":
+            formatted_content += "    "
+
+    print(f"{time} {level}\n    {formatted_content}\n")
 
 
 def error(error_log_path, exception) -> None:

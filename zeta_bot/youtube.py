@@ -2,9 +2,13 @@ from __future__ import unicode_literals
 from yt_dlp import YoutubeDL
 from youtubesearchpython import VideosSearch
 from zeta_bot import (
+    log,
+    utils,
     audio
 )
 # import asyncio
+
+logger = log.Log()
 
 
 def get_info(ytb_url):
@@ -23,35 +27,13 @@ def get_info(ytb_url):
         return "ytb_playlist", info_dict
 
 
-def legal_name(name_str: str) -> str:
-    """
-    将字符串转换为合法的文件名
-
-    :param name_str: 原文件名
-    :return: 转换后文件名
-    """
-
-    name_str = name_str.replace("\\", "_")
-    name_str = name_str.replace("/", "_")
-    name_str = name_str.replace(":", "_")
-    name_str = name_str.replace("*", "_")
-    name_str = name_str.replace("?", "_")
-    name_str = name_str.replace("\"", "_")
-    name_str = name_str.replace("<", "_")
-    name_str = name_str.replace(">", "_")
-    name_str = name_str.replace("|", "_")
-
-    return name_str
-
-
-def audio_download(ytb_url, info_dict, download_path,
-                       download_type="ytb_single") -> audio.Audio:
+def audio_download(ytb_url, info_dict, download_path, download_type="ytb_single") -> audio.Audio:
 
     if download_path.endswith("/"):
         download_path = download_path.rstrip("/")
 
     video_title = info_dict["title"]
-    video_path_title = legal_name(video_title)
+    video_path_title = utils.legal_name(video_title)
     video_name_extension = info_dict["ext"]
     video_duration = info_dict["duration"]
 

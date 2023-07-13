@@ -62,6 +62,7 @@ class Guild:
     def load(self) -> None:
         loaded_dict = utils.json_load(self.path)
         self.playlist = playlist.playlist_decoder(loaded_dict["playlist"])
+        self.playedlist = playlist.playlist_decoder(loaded_dict["playedlist"])
 
     def encode(self) -> dict:
         return {

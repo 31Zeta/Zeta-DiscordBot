@@ -3,6 +3,7 @@ import sys
 import os
 import asyncio
 import requests
+from typing import Any, Union
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -15,8 +16,10 @@ from zeta_bot import (
     member,
     guild,
     help,
-    dl_bilibili,
-    dl_youtube
+    audio,
+    file_management,
+    bilibili,
+    youtube
 )
 
 version = "0.10.0"
@@ -54,7 +57,13 @@ utils.create_folder("./data")
 member_lib = member.MemberLibrary()
 guild_lib = guild.GuildLibrary()
 
+# 设置下载文件管理
 utils.create_folder("./downloads")
+audio_lib_main = file_management.AudioFileManagement(
+    "./downloads",
+    "主音频文件管理模块",
+    setting.value("audio_library_storage_size")
+)
 
 logger.rp("程序启动", "[系统]")
 
@@ -217,7 +226,7 @@ async def auto_reboot_reminder():
         if voice_client is not None:
             await current_guild.text_channels[0].send(f"注意：将在{ar_time}时自动重启")
 
-
+import time
 @bot.command(description="[管理员] 测试指令")
 async def debug(ctx: discord.ApplicationContext):
     """
@@ -229,11 +238,32 @@ async def debug(ctx: discord.ApplicationContext):
     if not await command_check(ctx):
         return
 
-    print()
-    print(type())
-    print(str())
+    # start_test = await ctx.respond("开始测试")
+    # print(type(start_test))
+    #
+    # new_msg = await start_test.edit_original_response(content="测试回复已被修改")
+    # print(type(new_msg))
+    #
+    # new_msg_2 = await new_msg.edit(content="测试回复已被二次修改")
+    # print(type(new_msg_2))
+    #
+    # end_test = await ctx.send("测试结果已打印")
+    # print(type(end_test))
 
-    await ctx.respond("测试结果已打印")
+    start_test = await ctx.respond("开始测试")
+    print(type(start_test))
+
+    if isinstance(start_test, discord.Interaction):
+        print("转换类型")
+        start_test = await start_test.original_response()
+    print(type(start_test))
+
+    time.sleep(3)
+
+    if isinstance(start_test, discord.InteractionMessage):
+        print("类型符合，开始修改")
+        new_msg = await start_test.edit(content="测试回复已被修改")
+        print(type(new_msg))
 
 
 @bot.command(description="关于Zeta-Discord机器人")
@@ -443,7 +473,7 @@ async def play(ctx: discord.ApplicationContext, link=None) -> None:
             bvid = link
 
         # 获取Bilibili视频信息
-        info_dict = await dl_bilibili.get_info(bvid)
+        info_dict = await bilibili.get_info(bvid)
 
         # 单一视频 bili_single
         if info_dict["videos"] == 1 and "ugc_season" not in info_dict:
@@ -480,7 +510,7 @@ async def play(ctx: discord.ApplicationContext, link=None) -> None:
     elif source == "ytb_url":
 
         loading_msg = await ctx.send("正在获取Youtube视频信息")
-        url_type, info_dict = dl_youtube.get_info(link)
+        url_type, info_dict = youtube.get_info(link)
         await loading_msg.delete()
 
         # 单一视频 ytb_single
@@ -511,43 +541,63 @@ async def play(ctx: discord.ApplicationContext, link=None) -> None:
             await search_ytb(ctx, link)
 
 
-async def play_next(ctx: discord.ApplicationContext):
+async def play_audio(
+        ctx: discord.ApplicationContext, target_audio: audio.Audio,
+        response: Union[discord.Interaction, discord.InteractionMessage, None] = None
+) -> None:
     """
-    播放下一首歌曲
+    在<ctx>中的音频端播放音频<target_audio>，如果<single>为True则发送单曲加入成功通知
+    <response>为用来编辑的加载信息，如果为None则发送新的通知
 
     :param ctx: 指令原句
-    :return:
+    :param target_audio: 需要播放的音频
+    :param response: 用于编辑的加载信息
     """
+    # 将Interaction转换为InteractionMessage
+    if isinstance(response, discord.Interaction):
+        response = await response.original_response()
+
     voice_client = ctx.guild.voice_client
+    current_guild = guild_lib.get_guild(ctx)
+
+    voice_client.play(
+        discord.PCMVolumeTransformer(
+            discord.FFmpegPCMAudio(
+                executable=setting.value("ffmpeg_path"), source=target_audio.get_path()
+            )
+        ),
+        after=lambda e: asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
+    )
+    voice_client.source.volume = current_guild.get_voice_volume() / 100.0
+
+    logger.rp(
+        f"开始播放：{target_audio.get_title()} [{target_audio.get_time_str()}] 路径: {target_audio.get_path()}",
+        ctx.guild
+    )
+
+    if isinstance(response, discord.InteractionMessage):
+        await response.edit(f"正在播放：**{target_audio.get_title()} [{target_audio.get_time_str()}]**")
+    else:
+        await ctx.send(f"正在播放：**{target_audio.get_title()} [{target_audio.get_time_str()}]**")
+
+
+async def play_next(ctx: discord.ApplicationContext) -> None:
+    """
+    播放列表中的下一个音频
+
+    :param ctx: 指令原句
+    """
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
     logger.rp(f"触发play_next", ctx.guild)
 
     if len(current_playlist) > 1:
-        # 移除上一首歌曲
+        # 移除上一个音频
         current_playlist.remove_audio(0)
-        # 获取下一首歌曲
+        # 获取下一个音频
         next_audio = current_playlist.get_audio(0)
-        title = next_audio._title
-        path = next_audio._path
-        duration = next_audio._duration
-
-        voice_client.play(
-            discord.PCMVolumeTransformer(
-                discord.FFmpegPCMAudio(
-                    executable=setting.value("ffmpeg_path"), source=path
-                )
-            ),
-            after=lambda e: asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
-        )
-        # voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
-
-        time_str = utils.convert_duration_to_time_str(duration)
-        logger.rp(f"开始播放：{title} [{time_str}] {path}", ctx.guild)
-        # console_message_log_list(ctx)
-
-        await ctx.send(f"正在播放：**{title} [{time_str}]**")
+        await play_audio(ctx, next_audio, response=None)
 
     else:
         current_playlist.remove_audio(0)
@@ -555,7 +605,8 @@ async def play_next(ctx: discord.ApplicationContext):
         await ctx.send("播放队列已结束")
 
 
-async def play_bili(ctx: discord.ApplicationContext, info_dict, download_type="bili_single", num_option=0):
+async def play_bili(ctx: discord.ApplicationContext, info_dict, download_type="bili_single", num_option=0,
+                    response: Union[discord.Interaction, discord.InteractionMessage, None] = None):
     """
     下载并播放来自Bilibili的视频的音频
 
@@ -563,8 +614,12 @@ async def play_bili(ctx: discord.ApplicationContext, info_dict, download_type="b
     :param info_dict: 目标的信息字典（使用bili_getinfo提取）
     :param download_type: 下载模式（"bili_single"或"bili_p"）
     :param num_option: 下载分集号（从0开始，默认为0即合集第1视频或者第1p）
-    :return: （歌曲标题，歌曲时长）
+    :param response: 用于编辑的加载信息
+    :return: 播放的音频
     """
+    # 将Interaction转换为InteractionMessage
+    if isinstance(response, discord.Interaction):
+        response = await response.original_response()
 
     voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
@@ -572,37 +627,29 @@ async def play_bili(ctx: discord.ApplicationContext, info_dict, download_type="b
 
     bvid = info_dict["bvid"]
 
-    audio = await dl_bilibili.audio_download(bvid, info_dict, "./downloads", download_type, num_option)
+    new_audio = await audio_lib_main.audio_download_bilibili(bvid, info_dict, download_type, num_option)
 
-    time_str = audio.get_time_str()
+    if new_audio is not None:
 
-    # 如果当前播放列表为空
-    if current_playlist.is_empty() and not voice_client.is_playing():
+        # 如果当前播放列表为空
+        if current_playlist.is_empty() and not voice_client.is_playing():
+            await play_audio(ctx, new_audio, response=response)
 
-        voice_client.play(
-            discord.PCMVolumeTransformer(
-                discord.FFmpegPCMAudio(
-                    executable=setting.value("ffmpeg_path"), source=audio._path
-                )
-            ),
-            after=lambda e: asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
-        )
-        # voice_client.source.volume = volume_dict[ctx.guild.id] / 100.0
+        # 如果播放列表不为空
+        elif download_type == "bili_single":
+            if isinstance(response, discord.InteractionMessage):
+                await response.edit(f"已加入播放列表：**{new_audio.get_title()} [{new_audio.get_time_str()}]**")
+            else:
+                await ctx.send(f"已加入播放列表：**{new_audio.get_title()} [{new_audio.get_time_str()}]**")
 
-        logger.rp(f"开始播放：{audio._title} [{time_str}] {audio._path}", ctx.guild)
-        await ctx.send(f"正在播放：**{audio._title} [{time_str}]**")
-
-    # 如果播放列表不为空
-    elif download_type == "bili_single":
-        await ctx.send(f"已加入播放列表：**{audio._title} [{time_str}]**")
-
-    current_playlist.append_audio(audio)
-    logger.rp(f"歌曲 {audio._title} [{time_str}] 已加入播放列表", ctx.guild)
+        current_playlist.append_audio(new_audio)
+        logger.rp(f"歌曲 {new_audio.get_title()} [{new_audio.get_time_str()}] 已加入播放列表", ctx.guild)
 
     return audio
 
 
-async def play_ytb(ctx, url, info_dict, download_type="ytb_single"):
+async def play_ytb(ctx, url, info_dict, download_type="ytb_single",
+                   response: Union[discord.Interaction, discord.InteractionMessage, None] = None):
     """
     下载并播放来自Youtube的视频的音频
 
@@ -610,14 +657,18 @@ async def play_ytb(ctx, url, info_dict, download_type="ytb_single"):
     :param url: 目标URL
     :param info_dict: 目标的信息字典（使用ytb_get_info提取）
     :param download_type: 下载模式（"ytb_single"或"ytb_playlist"）
+    :param response: 用于编辑的加载信息
     :return: （歌曲标题，歌曲时长）
     """
+    # 将Interaction转换为InteractionMessage
+    if isinstance(response, discord.Interaction):
+        response = await response.original_response()
 
     voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
-    audio = dl_youtube.audio_download(url, info_dict, "./downloads/", download_type)
+    audio = youtube.audio_download(url, info_dict, "./downloads/", download_type)
 
     duration_str = audio.get_time_str()
 

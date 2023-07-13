@@ -5,6 +5,7 @@ import time
 
 from zeta_bot import (
     errors,
+    log,
     language,
     utils
 )
@@ -17,21 +18,21 @@ printl = lang.printl
 
 class Setting:
     def __init__(self, path: str, config: dict, required=False) -> None:
-        self.path = path
-        self.setting = {}
-        self.config = config
+        self._path = path
+        self._setting = {}
+        self._config = config
 
         # 加载配置
-        self.name = self.config[0]["config_name"]
-        self.version = self.config[0]["version"]
-        self.setting["config_name"] = self.name
-        self.setting["version"] = self.version
-        for i in range(1, len(self.config)):
-            self.setting[self.config[i]["id"]] = self.config[i]["value"]
+        self._name = self._config[0]["config_name"]
+        self._version = self._config[0]["version"]
+        self._setting["config_name"] = self._name
+        self._setting["version"] = self._version
+        for i in range(1, len(self._config)):
+            self._setting[self._config[i]["id"]] = self._config[i]["value"]
 
         try:
             # 检测设置文件是否存在
-            if not os.path.exists(self.path):
+            if not os.path.exists(self._path):
                 self.initialize_setting()
             else:
                 self.load()
@@ -48,20 +49,20 @@ class Setting:
                 sys.exit()
 
     def save(self) -> None:
-        utils.json_save(self.path, self.setting)
+        utils.json_save(self._path, self._setting)
 
     def load(self):
         """
         读取self.path的文件，并将其中的设置选项加入到self.setting中
         """
-        loaded_dict = utils.json_load(self.path)
+        loaded_dict = utils.json_load(self._path)
 
         # 读取loaded_dict
         loaded_name = loaded_dict["config_name"]
         loaded_version = loaded_dict["version"]
-        for key in self.setting:
+        for key in self._setting:
             if key in loaded_dict:
-                self.setting[key] = loaded_dict[key]
+                self._setting[key] = loaded_dict[key]
             else:
                 print("发现新增设置")
                 try:
@@ -69,18 +70,18 @@ class Setting:
                 except errors.UserCancelled:
                     raise errors.UserCancelled
 
-        if loaded_version != self.version:
+        if loaded_version != self._version:
             print("版本变更导致以前已有的设置内容可能发生变动，请问您是否要重新检查所有的设置选项？")
             input_line = input("（输入yes为是，输入skip为暂时跳过，输入no为否且下次不再提醒）\n")
             input_option = input_line.lower()
             if input_option == "true" or input_option == "yes" or \
                     input_option == "y":
-                self.setting["version"] = self.version
+                self._setting["version"] = self._version
                 self.save()
                 self.modify_mode()
             elif input_option == "false" or input_option == "no" or \
                     input_option == "n":
-                self.setting["version"] = self.version
+                self._setting["version"] = self._version
                 self.save()
             elif input_option == "skip":
                 pass
@@ -88,22 +89,22 @@ class Setting:
                 print("请输入yes，skip或者no")
 
     def value(self, key: str) -> any:
-        return self.setting[key]
+        return self._setting[key]
 
     def list_all(self) -> str:
-        result = self.name + "\n"
-        for i in range(1, len(self.config)):
+        result = self._name + "\n"
+        for i in range(1, len(self._config)):
             num_str = f"[{i}] "
             # 对齐数字
             if i < 10:
                 num_str += " "
-            result += num_str + self.config[i]["name"] + "\n"
+            result += num_str + self._config[i]["name"] + "\n"
         return result
 
     def initialize_setting(self):
-        print(f"开始进行{self.name}的初始设置\n在任意步骤中输入exit以退出设置：")
-        print(self.name)
-        for i in range(1, len(self.config)):
+        print(f"开始进行{self._name}的初始设置\n在任意步骤中输入exit以退出设置：")
+        print(self._name)
+        for i in range(1, len(self._config)):
             try:
                 self.change_setting(i)
             except errors.UserCancelled:
@@ -112,8 +113,8 @@ class Setting:
         print("\n所有设置已保存\n")
 
     def find_index(self, key) -> int:
-        for i in range(1, len(self.config)):
-            if key == self.config[i]["id"]:
+        for i in range(1, len(self._config)):
+            if key == self._config[i]["id"]:
                 return i
         return -1
 
@@ -121,30 +122,30 @@ class Setting:
         """
         修改一项设置，如果<self.__config>中不包含此项设置则直接返回
         """
-        if index < 1 or index > len(self.config) - 1:
+        if index < 1 or index > len(self._config) - 1:
             return
 
         done = False
         # 保存原始值
-        original_value = self.setting[self.config[index]["id"]]
+        original_value = self._setting[self._config[index]["id"]]
 
         # 检查依赖项
-        if self.config[index]["dependent"] is not None and self.setting[self.config[index]["dependent"]] is False:
+        if self._config[index]["dependent"] is not None and self._setting[self._config[index]["dependent"]] is False:
             done = True
 
-        name = self.config[index]["name"]
-        description = self.config[index]["description"]
-        input_description = self.config[index]["input_description"]
-        regex = self.config[index]["regex"]
-        require_type = self.config[index]["type"]
-        options = self.config[index]["options"]
+        name = self._config[index]["name"]
+        description = self._config[index]["description"]
+        input_description = self._config[index]["input_description"]
+        regex = self._config[index]["regex"]
+        require_type = self._config[index]["type"]
+        options = self._config[index]["options"]
         while not done:
             input_line = input(
                 f"\n{name}\n    - {description}\n{input_description}:\n"
             )
 
             if input_line.lower() == "exit":
-                self.setting[self.config[index]["id"]] = original_value
+                self._setting[self._config[index]["id"]] = original_value
                 raise errors.UserCancelled
 
             try:
@@ -187,7 +188,7 @@ class Setting:
                 time.sleep(1)
 
             else:
-                self.setting[self.config[index]["id"]] = input_line
+                self._setting[self._config[index]["id"]] = input_line
                 done = True
 
         self.save()
@@ -209,7 +210,7 @@ class Setting:
             except KeyError:
                 print("请输入正确的序号（输入exit以退出设置）\n")
                 continue
-            if input_line < 1 or input_line > len(self.config):
+            if input_line < 1 or input_line > len(self._config):
                 print("请输入正确的序号（输入exit以退出设置）\n")
                 continue
 
@@ -220,15 +221,15 @@ class Setting:
         print()
 
     def change_settings_list(self, keys: list) -> None:
-        for i in range(1, len(self.config)):
-            if self.config[i]["id"] in keys:
+        for i in range(1, len(self._config)):
+            if self._config[i]["id"] in keys:
                 try:
                     self.change_setting(i)
                 except errors.UserCancelled:
                     continue
 
     def reset_setting(self):
-        self.setting.clear()
+        self._setting.clear()
         self.initialize_setting()
 
 
@@ -289,7 +290,7 @@ bot_setting_configs = [
         "value": True
     },
     {
-        "id": "audio_library_max_cache",
+        "id": "audio_library_storage_size",
         "name": "音频库缓存上限",
         "type": "int",
         "description": "允许缓存在本地的音频数量上限，该上限为总上限（无论该机器人加入多少服务器），请根据您部署该机器人的设备的可用本地空间估算，当缓存数量超过该上限时将自动删除最久没有使用的音频",
@@ -300,7 +301,7 @@ bot_setting_configs = [
         "value": "200"
     },
     {
-        "id": "guild_past_list_max_cache",
+        "id": "guild_past_list_size",
         "name": "历史播放列表上限",
         "type": "int",
         "description": "每个服务器记录历史播放音频的数量上限",
