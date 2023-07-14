@@ -16,6 +16,9 @@ class Audio:
     def __str__(self) -> str:
         return f"{self._title} [{self._time_str}]"
 
+    def __repr__(self) -> str:
+        return f"<Audio对象：{self._title}>"
+
     def get_title(self) -> str:
         return self._title
 

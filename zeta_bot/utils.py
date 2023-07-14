@@ -23,7 +23,14 @@ def time() -> str:
     return str(datetime.datetime.now())[:19]
 
 
-def create_folder(path: str):
+def time_datetime() -> datetime.datetime:
+    """
+    :return: 当前时间的datetime
+    """
+    return datetime.datetime.now()
+
+
+def create_folder(path: str) -> None:
     """
     检测在指定目录是否存在文件夹，如果不存在则创建
     """
@@ -31,6 +38,14 @@ def create_folder(path: str):
         name = path[path.rfind("/") + 1:]
         os.mkdir(path)
         print(f"创建{name}文件夹")
+
+
+def path_exists(path: str) -> bool:
+    """
+    检测指定目录或者文件是否存在
+    重新包装os.path.exists
+    """
+    return os.path.exists(path)
 
 
 def json_save(json_path: str, saving_item) -> None:
@@ -292,6 +307,9 @@ class DoubleLinkedNode:
     def __str__(self):
         return self.item.__str__()
 
+    def __iter__(self):
+        return self
+
 
 class DoubleLinkedListDict:
     """
@@ -319,6 +337,17 @@ class DoubleLinkedListDict:
             current = current.next
             counter += 1
         return str(result)
+
+    def __iter__(self):
+        self.next = self._head
+        return self
+
+    def __next__(self):
+        current = self.next
+        if current is None:
+            raise StopIteration
+        self.next = current.next
+        return current.item
 
     def is_empty(self) -> bool:
         """
@@ -750,11 +779,12 @@ class DoubleLinkedListDict:
         return linked_list
 
 
-def double_linked_list_dict_decoder(info_list: list) -> DoubleLinkedListDict:
+def double_linked_list_dict_decoder(info_list: list, force=False) -> DoubleLinkedListDict:
     """
     通过读取到的列表重建双向链表字典，但是节点内部的对象仍需单独重建
+    可以通过先读取encode返回的列表，将列表中所有对象重建后放入新的列表，将新的列表传入此方法（列表中每个元素为字典，包含键"item"和"key"）
     """
     new_list_dict = DoubleLinkedListDict()
     for item in info_list:
-        new_list_dict.append(item["item"], item["key"])
+        new_list_dict.append(item["item"], item["key"], force=force)
     return new_list_dict

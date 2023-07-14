@@ -86,8 +86,16 @@ async def get_title_duration(bvid):
     return title, duration
 
 
-async def audio_download(bvid: str, info_dict: dict, download_path: str,
-                         download_type="bili_single", num_p=0) -> audio.Audio:
+async def audio_download(info_dict: dict, download_path: str, download_type="bili_single", num_p=0) -> audio.Audio:
+    """
+    使用bilibili_api，下载来自哔哩哔哩的音频
+    需要处理以下异常：
+        - bilibili_api.ResponseCodeException 接口无响应（视频不存在）
+        - bilibili_api.ArgsException 参数错误（bvid错误）
+        - httpx.ConnectTimeout 无响应（可重试）
+        - httpx.RemoteProtocolError 无响应（可重试）
+    """
+    bvid = info_dict["bvid"]
     # 实例化 Credential 类
     credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
     # 实例化 Video 类
@@ -118,12 +126,15 @@ async def audio_download(bvid: str, info_dict: dict, download_path: str,
 
     # print(current_time + f"\n    开始下载: {title}.mp3\n下载进度:")
 
+    # 处理 bilibili_api.exceptions.ArgsException.ArgsException: bvid 提供错误，必须是以 BV 开头的纯字母和数字组成的 12 位字符串（大小写敏感）。
+    # bilibili_api.exceptions.ResponseCodeException.ResponseCodeException
+
     async with aiohttp.ClientSession() as sess:
         # 下载音频流
         async with sess.get(audio_url, headers=headers) as resp:
             length = resp.headers.get('content-length')
             size = utils.convert_byte(int(length))
-            logger.rp(f"开始下载：{title}.mp3    大小：{size[0]} {size[1]}", f"[{level}]")
+            logger.rp(f"开始下载：{title}.mp3 大小：{size[0]} {size[1]}", f"[{level}]")
             with open(path, 'wb') as f:
                 process = 0
                 while True:
@@ -132,8 +143,9 @@ async def audio_download(bvid: str, info_dict: dict, download_path: str,
                         break
 
                     process += len(chunk)
-                    # print(f'\r    {process} / {length}', end="")
                     f.write(chunk)
+                    # 旧版进度显示
+                    # print(f'\r    {process} / {length}', end="")
 
     # print("\n\n" + current_time + f"\n    下载完成\n")
 
@@ -141,6 +153,7 @@ async def audio_download(bvid: str, info_dict: dict, download_path: str,
     logger.rp(
         f"下载完成\n"
         f"文件名：{title}.mp3\n"
+        f"来源：{bvid}\n"
         f"路径：{download_path}\n"
         f"大小：{size[0]} {size[1]}\n"
         f"时长：{utils.convert_duration_to_time_str(duration)}",

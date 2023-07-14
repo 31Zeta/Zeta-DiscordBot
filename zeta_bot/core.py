@@ -59,9 +59,10 @@ guild_lib = guild.GuildLibrary()
 
 # 设置下载文件管理
 utils.create_folder("./downloads")
-audio_lib_main = file_management.AudioFileManagement(
+audio_lib_main = file_management.AudioFileLibrary(
     "./downloads",
-    "主音频文件管理模块",
+    "./data/audio_lib_main.json",
+    "主音频文件库",
     setting.value("audio_library_storage_size")
 )
 
@@ -133,16 +134,12 @@ async def command_check(ctx: discord.ApplicationContext) -> bool:
 @bot.event
 async def on_ready():
     """
-    当机器人启动完成时调用
+    当机器人启动完成时自动调用
     """
 
     current_time = utils.time()
     print(f"\n---------- 准备就绪 ----------\n")
     logger.rp(f"登录完成：以{bot.user}的身份登录，登录时间：{current_time}", "[系统]")
-
-    # 启动定时清理器
-    # cleaner_loop.start()
-    # print("定时清理器已启动\n")
 
     # 启动定时任务框架
     scheduler_ar_1 = AsyncIOScheduler()
@@ -625,9 +622,7 @@ async def play_bili(ctx: discord.ApplicationContext, info_dict, download_type="b
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
-    bvid = info_dict["bvid"]
-
-    new_audio = await audio_lib_main.audio_download_bilibili(bvid, info_dict, download_type, num_option)
+    new_audio = await audio_lib_main.download_bilibili(info_dict, download_type, num_option)
 
     if new_audio is not None:
 
