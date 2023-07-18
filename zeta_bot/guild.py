@@ -36,6 +36,14 @@ class Guild:
             self.playlist = playlist.Playlist(f"{self.name} 主播放列表")
             self.playedlist = playlist.Playlist(f"{self.name} 历史播放列表")
             self.save()
+        except KeyError:
+            self.playlist = playlist.Playlist(f"{self.name} 主播放列表")
+            self.playedlist = playlist.Playlist(f"{self.name} 历史播放列表")
+            self.save()
+        except errors.JSONFileError:
+            self.playlist = playlist.Playlist(f"{self.name} 主播放列表")
+            self.playedlist = playlist.Playlist(f"{self.name} 历史播放列表")
+            self.save()
 
         self.voice_volume = 100.0
 

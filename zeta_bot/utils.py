@@ -201,16 +201,16 @@ def convert_byte(byte: int) -> Tuple[float, str]:
 def check_url_source(url) -> Union[str, None]:
 
     if re.search("bilibili\.com", url) is not None:
-        return "bili_url"
+        return "bilibili_url"
 
     elif re.search("b23\.tv", url) is not None:
-        return "bili_short_url"
+        return "bilibili_short_url"
 
     elif re.search("BV(\d|[a-zA-Z]){10}", url) is not None:
-        return "bili_bvid"
+        return "bilibili_bvid"
 
     elif re.search("youtube\.com", url) is not None:
-        return "ytb_url"
+        return "youtube_url"
 
     else:
         return None
@@ -218,22 +218,22 @@ def check_url_source(url) -> Union[str, None]:
 
 def get_url_from_str(input_str, url_type) -> Union[str, None]:
 
-    if url_type == "bili_url":
+    if url_type == "bilibili_url":
         url_position = re.search("bilibili\.com[^ ]*", input_str).span()
         url = "https://" + input_str[url_position[0]:url_position[1]]
         return url
 
-    elif url_type == "bili_short_url":
+    elif url_type == "bilibili_short_url":
         url_position = re.search("b23\.tv[^ ]*", input_str).span()
         url = "https://" + input_str[url_position[0]:url_position[1]]
         return url
 
-    elif url_type == "bili_bvid":
+    elif url_type == "bilibili_bvid":
         bvid_position = re.search("BV(\d|[a-zA-Z]){10}", input_str).span()
         bvid = input_str[bvid_position[0]:bvid_position[1]]
         return bvid
 
-    elif url_type == "ytb_url":
+    elif url_type == "youtube_url":
         url_position = re.search("youtube\.com[^ ]*", input_str).span()
         url = "https://" + input_str[url_position[0]:url_position[1]]
         return url
@@ -242,7 +242,7 @@ def get_url_from_str(input_str, url_type) -> Union[str, None]:
         return None
 
 
-def get_redirect_url(url) -> str:
+def get_redirect_url_bilibili(url) -> str:
     headers = {
         "User-Agent": "Mozilla/5.0",
         "Referer": "https://www.bilibili.com/"
@@ -277,17 +277,20 @@ def get_bvid_from_url(url):
     return result
 
 
-def make_playlist_page(list_info: list, num_per_page: int, indent: int = 0) -> list:
+def make_playlist_page(info_list: list, num_per_page: int, indent: int = 0) -> list:
     """
     将<list_info>中的信息分割成每<num_per_page>一页
+    <list_info>需为一个列表，每个元素是一个元组，元组包含两个元素，第一个将直接显示，第二个将在中括号内显示
     <indent>为每行字符串前缩进位数
     """
     result = []
     counter = 0
-    while counter < len(list_info):
+    while counter < len(info_list):
         current_page = ""
         for i in range(num_per_page):
-            current_tuple = list_info[counter]
+            if counter >= len(info_list):
+                break
+            current_tuple = info_list[counter]
             current_page += f"{' ' * indent}[{counter + 1}] {current_tuple[0]} [{current_tuple[1]}]\n"
             counter += 1
         result.append(current_page)

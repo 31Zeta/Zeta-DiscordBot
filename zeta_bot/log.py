@@ -16,16 +16,16 @@ printl = lang.printl
 
 @decorators.Singleton
 class Log:
-    def __init__(self, error_log_path: str, log_path: str, log: bool) -> None:
-        self._log = log
+    def __init__(self, error_log_path: str, log_path: str, running_log: bool) -> None:
+        self._running_log = running_log
         self._log_path = log_path
         self._error_log_path = error_log_path
 
         with open(self._error_log_path, "a", encoding="utf-8"):
-            pass
-        if self._log:
+            self.rp(f"错误日志文件路径：{self._error_log_path}", "[日志记录器]")
+        if self._running_log:
             with open(self._log_path, "a", encoding="utf-8"):
-                pass
+                self.rp(f"运行日志文件路径：{self._log_path}", "[日志记录器]")
 
         logging.basicConfig(
             filename=self._error_log_path, level=logging.WARNING
@@ -36,7 +36,7 @@ class Log:
         Record
         记录运行日志
         """
-        if self._log:
+        if self._running_log:
             write_log(self._log_path, utils.time(), content, level)
 
     def rp(self, content: str, level=""):
@@ -46,15 +46,14 @@ class Log:
         """
         current_time = utils.time()
         print_log(current_time, content, level)
-        if self._log:
+        if self._running_log:
             write_log(self._log_path, current_time, content, level)
 
     def on_error(self, exception) -> None:
         error(self._error_log_path, exception)
 
     def on_application_command_error(self, ctx, exception) -> None:
-        application_command_error(
-            self._log_path, self._error_log_path, ctx, exception)
+        application_command_error(self._log_path, self._error_log_path, ctx, exception)
 
 
 def write_log(path: str, time: str, content: str, level="") -> None:

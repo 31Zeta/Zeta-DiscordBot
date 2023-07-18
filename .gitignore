@@ -5,10 +5,11 @@ venv/
 *.iml
 *.log
 *.class
-zeta_bot/bin/ffmpeg
-zeta_bot/bin/ffmpeg.exe
+bin/ffmpeg
+bin/ffmpeg.exe
 zeta_bot/data/
 /code_test.py
+bin/
 audio/
 audios/
 download/

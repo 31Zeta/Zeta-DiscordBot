@@ -8,8 +8,6 @@ from zeta_bot import (
 )
 # import asyncio
 
-logger = log.Log()
-
 
 def get_info(ytb_url):
     ydl_opts = {

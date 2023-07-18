@@ -18,9 +18,6 @@ FFMPEG_PATH = "./zeta_bot/bin/ffmpeg"
 # logger = log.Log()
 level = "哔哩哔哩模块"
 
-# TODO DEBUG ONLY
-logger = log.Log("./test_error_log.log", "./test_log.log", True)
-
 
 async def get_info(bvid) -> dict:
     """
@@ -95,6 +92,9 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
         - httpx.ConnectTimeout 无响应（可重试）
         - httpx.RemoteProtocolError 无响应（可重试）
     """
+    # 获取日志记录器
+    logger = log.Log()
+
     bvid = info_dict["bvid"]
     # 实例化 Credential 类
     credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
@@ -144,6 +144,7 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
 
                     process += len(chunk)
                     f.write(chunk)
+                    # TODO 添加聊天界面进度显示
                     # 旧版进度显示
                     # print(f'\r    {process} / {length}', end="")
 
