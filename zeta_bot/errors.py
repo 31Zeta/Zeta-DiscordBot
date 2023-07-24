@@ -99,3 +99,12 @@ class KeyNotFound(RuntimeError):
 
     def __str__(self):
         return f"键值<{self.key}>不存在"
+
+
+class StorageFull(RuntimeError):
+    def __init__(self, library_name):
+        super().__init__()
+        self.library_name = library_name
+
+    def __str__(self):
+        return f"{self.library_name} 已满"

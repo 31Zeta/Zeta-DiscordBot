@@ -104,8 +104,8 @@ class AudioFileLibrary:
         # 如果库满，尝试删除最不常使用的文件
         if self.storage_full():
             if not self._delete_least_used_file():
-                self.logger.rp(f"{self._name}已满且无法清除文件，下载失败", f"[{self._name}]")
-                return None
+                self.logger.rp(f"{self._name}已满且无法清除文件，下载失败", f"[{self._name}]", is_error=True)
+                raise errors.StorageFull(self._name)
 
         # 下载
         new_audio = await bilibili.audio_download(info_dict, self._root, download_type, num_option)
@@ -121,8 +121,8 @@ class AudioFileLibrary:
         if self.storage_full():
             # 如果库满，尝试删除最不常使用的文件
             if not self._delete_least_used_file():
-                self.logger.rp(f"{self._name}已满且无法清除文件，下载失败", f"[{self._name}]")
-                return None
+                self.logger.rp(f"{self._name}已满且无法清除文件，下载失败", f"[{self._name}]", is_error=True)
+                raise errors.StorageFull(self._name)
 
         new_audio = youtube.audio_download(url, info_dict, self._root, download_type)
 

@@ -194,10 +194,10 @@ class Playlist:
     def encode(self) -> dict:
         return {
             "name": self._name,
-            "playlist": self._playlist,
-            "duration": self._duration,
+            "owner": self._owner,
             "limitation": self._limitation,
-            "owner": self._owner
+            "duration": self._duration,
+            "playlist": self._playlist
         }
 
 

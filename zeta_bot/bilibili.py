@@ -1,5 +1,8 @@
 from bilibili_api import video, Credential
 import aiohttp
+import discord
+from typing import Union
+
 from zeta_bot import (
     log,
     utils,
@@ -83,15 +86,20 @@ async def get_title_duration(bvid):
     return title, duration
 
 
-async def audio_download(info_dict: dict, download_path: str, download_type="bili_single", num_p=0) -> audio.Audio:
+async def audio_download(info_dict: dict, download_path: str, download_type="bilibili_single", num_p=0,
+                         response: Union[discord.Interaction, discord.InteractionMessage, None] = None) -> audio.Audio:
     """
     使用bilibili_api，下载来自哔哩哔哩的音频
     需要处理以下异常：
         - bilibili_api.ResponseCodeException 接口无响应（视频不存在）
         - bilibili_api.ArgsException 参数错误（bvid错误）
-        - httpx.ConnectTimeout 无响应（可重试）
-        - httpx.RemoteProtocolError 无响应（可重试）
+        - httpx.ConnectTimeout 连接超时（可重试）
+        - httpx.RemoteProtocolError 服务器违反了协议（可重试）
     """
+    # 将Interaction转换为InteractionMessage
+    if isinstance(response, discord.Interaction):
+        response = await response.original_response()
+
     # 获取日志记录器
     logger = log.Log()
 
@@ -101,7 +109,7 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
     # 实例化 Video 类
     v = video.Video(bvid=bvid, credential=credential)
 
-    if download_type == "bili_p":
+    if download_type == "bilibili_p":
         title = info_dict["pages"][num_p]["part"]
     # 普通下载
     else:
@@ -144,7 +152,7 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
 
                     process += len(chunk)
                     f.write(chunk)
-                    # TODO 添加聊天界面进度显示
+                    # TODO 待定 可以添加聊天界面进度显示
                     # 旧版进度显示
                     # print(f'\r    {process} / {length}', end="")
 

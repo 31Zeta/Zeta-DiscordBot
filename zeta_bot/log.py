@@ -39,13 +39,13 @@ class Log:
         if self._running_log:
             write_log(self._log_path, utils.time(), content, level)
 
-    def rp(self, content: str, level=""):
+    def rp(self, content: str, level="", is_error=False):
         """
         Record and print
         记录运行日志，并打印到控制台
         """
         current_time = utils.time()
-        print_log(current_time, content, level)
+        print_log(current_time, content, level, is_error)
         if self._running_log:
             write_log(self._log_path, current_time, content, level)
 
@@ -71,13 +71,14 @@ def write_log(path: str, time: str, content: str, level="") -> None:
         log.write(f"{time} {level} {content}\n")
 
 
-def print_log(time: str, content: str, level="") -> None:
+def print_log(time: str, content: str, level="", is_error=False) -> None:
     """
     在控制台打印一条包含位置的信息，并记录在运行日志中
 
     :param time: 要记录的时间
     :param content: 要写入的信息
     :param level: 位置信息
+    :param is_error: 此条日志是否是一个报错信息
     :return:
     """
     formatted_content = ""
@@ -86,7 +87,10 @@ def print_log(time: str, content: str, level="") -> None:
         if character == "\n":
             formatted_content += "    "
 
-    print(f"{time} {level}\n    {formatted_content}\n")
+    if not is_error:
+        print(f"{time} {level}\n    {formatted_content}\n")
+    else:
+        print(f"{time} {level}\n\033[0;31m    {formatted_content}\033[0m\n")
 
 
 def error(error_log_path, exception) -> None:
