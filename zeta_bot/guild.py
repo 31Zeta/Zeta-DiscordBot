@@ -67,8 +67,6 @@ class Guild:
 
     def set_voice_volume(self, volume: Union[int, float]) -> None:
         self.voice_volume = float(volume)
-        if self._voice_client is not None and self._voice_client.is_playing():
-            self._voice_client.source.volume = self.voice_volume / 100.0
 
     def save(self) -> None:
         utils.json_save(self._path, self)
@@ -94,6 +92,7 @@ class GuildLibrary:
         utils.create_folder(self.root)
         self.guild_dict = {}
         self.hashtag_file_path = f"{self.root}/#Guilds.json"
+        # TODO hashtag文件内名称键重复两遍
 
         # 检查#Guilds文件
         if not os.path.exists(self.hashtag_file_path):

@@ -11,7 +11,7 @@ from zeta_bot import (
 
 class Playlist:
 
-    def __init__(self, name: str, limitation=None, owner=None):
+    def __init__(self, name: str, limitation: Union[int, None] = None, owner=None):
         self._name = name
         self._playlist: list[audio.Audio] = []
         self._duration = 0

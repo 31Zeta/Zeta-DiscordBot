@@ -277,11 +277,12 @@ def get_bvid_from_url(url):
     return result
 
 
-def make_playlist_page(info_list: list, num_per_page: int, indent: int = 0) -> list:
+def make_playlist_page(info_list: list, num_per_page: int, starts_with: dict) -> list:
     """
     将<list_info>中的信息分割成每<num_per_page>一页
     <list_info>需为一个列表，每个元素是一个元组，元组包含两个元素，第一个将直接显示，第二个将在中括号内显示
-    <indent>为每行字符串前缩进位数
+    <starts_with>为一个字典，保存了每行开头添加的字符串，键为行数（从0开始），值为要添加的字符串
+    键None保存添加到每一行前的字符串，如某行前不想添加字符则将对应行号键的值设为一个空字符串，如不添加任何字符串则向<starts_with>传入空字典{}
     """
     result = []
     counter = 0
@@ -291,7 +292,16 @@ def make_playlist_page(info_list: list, num_per_page: int, indent: int = 0) -> l
             if counter >= len(info_list):
                 break
             current_tuple = info_list[counter]
-            current_page += f"{' ' * indent}[{counter + 1}] {current_tuple[0]} [{current_tuple[1]}]\n"
+
+            # 从字典<starts_with>中查找此行是否存在
+            if counter in starts_with:
+                current_starts_with = starts_with[counter]
+            elif None in starts_with:
+                current_starts_with = starts_with[None]
+            else:
+                current_starts_with = ""
+
+            current_page += f"{current_starts_with}[{counter + 1}] {current_tuple[0]} [{current_tuple[1]}]\n"
             counter += 1
         result.append(current_page)
     return result

@@ -188,8 +188,7 @@ async def on_ready():
     # 设置机器人状态
     bot_activity_type = discord.ActivityType.playing
     await bot.change_presence(
-        activity=discord.Activity(type=bot_activity_type,
-                                  name=setting.value("default_activity")))
+        activity=discord.Activity(type=bot_activity_type, name=setting.value("default_activity")))
 
 
 # 文字频道中收到信息时
@@ -203,6 +202,9 @@ async def on_message(message):
     """
     if message.author == bot.user:
         return
+
+    if message.content.startswith(bot_name):
+        await message.channel.send("我在")
 
     if message.content.startswith("test"):
         await message.channel.send(_("custom.reply_1"))
@@ -653,7 +655,7 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
             p_time_str = utils.convert_duration_to_time_str(item["duration"])
             p_info_list.append((p_title, p_time_str))
 
-        menu_list = utils.make_playlist_page(p_info_list, 10, indent=0)
+        menu_list = utils.make_playlist_page(p_info_list, 10, {})
         view = EpisodeSelectView(ctx, "bilibili_p", info_dict, menu_list)
         await send_edit(ctx, response,
                         f"这是一个分p视频, 请选择要播放的分p:\n{menu_list[0]}\n第[1]页，共[{len(menu_list)}]页\n已输入：",
@@ -880,7 +882,7 @@ async def list(ctx):
     if current_playlist.is_empty():
         await ctx.respond("当前播放列表为空")
     else:
-        playlist_list = utils.make_playlist_page(current_playlist.get_list_info(), 10, indent=2)
+        playlist_list = utils.make_playlist_page(current_playlist.get_list_info(), 10, {None: "      ", 0: "▶  "})
 
         view = PlaylistMenu(ctx, current_playlist)
         await ctx.respond(
@@ -1070,33 +1072,36 @@ async def volume(ctx: discord.ApplicationContext, volume_num=None) -> None:
     if not await command_check(ctx):
         return
 
+    voice_client = ctx.guild.voice_client
     guild_lib.check(ctx, audio_lib_main)
     current_volume = guild_lib.get_guild(ctx).get_voice_volume()
 
     if volume_num is None:
         await ctx.respond(f"当前音量为 **{current_volume}%**")
 
-    elif volume_num == "up" or volume_num == "u":
+    elif volume_num == "up" or volume_num == "u" or volume_num == "+" or volume_num == "＋":
         if current_volume + 20.0 >= 200:
             current_volume = 200.0
         else:
             current_volume += 20.0
-        # if voice_client.is_playing():
-        #     voice_client.source.volume = current_volume / 100.0
 
+        if voice_client.is_playing():
+            voice_client.source.volume = current_volume / 100.0
         guild_lib.get_guild(ctx).set_voice_volume(current_volume)
+
         logger.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
         await ctx.respond(f"将音量提升至 **{current_volume}%**")
 
-    elif volume_num == "down" or volume_num == "d":
+    elif volume_num == "down" or volume_num == "d" or volume_num == "-":
         if current_volume - 20.0 <= 0.0:
             current_volume = 0.0
         else:
             current_volume -= 20.0
-        # if voice_client.is_playing():
-        #     voice_client.source.volume = current_volume / 100.0
 
+        if voice_client.is_playing():
+            voice_client.source.volume = current_volume / 100.0
         guild_lib.get_guild(ctx).set_voice_volume(current_volume)
+
         logger.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
         await ctx.respond(f"将音量降低至 **{current_volume}%**")
 
@@ -1112,11 +1117,42 @@ async def volume(ctx: discord.ApplicationContext, volume_num=None) -> None:
 
         else:
             current_volume = volume_num
-            # if voice_client.is_playing():
-            #     voice_client.source.volume = current_volume / 100.0
+
+            if voice_client.is_playing():
+                voice_client.source.volume = current_volume / 100.0
             guild_lib.get_guild(ctx).set_voice_volume(current_volume)
+
             logger.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
             await ctx.respond(f"将音量设置为 **{current_volume}%**")
+
+
+@bot.command(description="[管理员] 重启机器人")
+async def reboot(ctx):
+    """
+    重启程序
+    """
+    if not await command_check(ctx):
+        return
+
+    guild_lib.save_all()
+    # TODO Guild播放列表有音频时重启，无法保存Guild文件（文件为空）
+
+    await ctx.respond("正在重启")
+    os.execl(python_path, python_path, * sys.argv)
+
+
+@bot.command(description="[管理员] 关闭机器人")
+async def shutdown(ctx):
+    """
+    退出程序
+    """
+    if not await command_check(ctx):
+        return
+
+    guild_lib.save_all()
+
+    await ctx.respond("正在关闭")
+    await bot.close()
 
 
 class PlaylistMenu(View):
@@ -1125,7 +1161,7 @@ class PlaylistMenu(View):
         super().__init__(timeout=timeout)
         self.ctx = ctx
         self.playlist = playlist_1
-        self.playlist_pages = utils.make_playlist_page(self.playlist.get_list_info(), 10, indent=2)
+        self.playlist_pages = utils.make_playlist_page(self.playlist.get_list_info(), 10, {None: "      ", 0: "▶  "})
         self.playlist_duration = self.playlist.get_time_str()
         self.page_num = 0
         self.occur_time = utils.time()
@@ -1134,7 +1170,7 @@ class PlaylistMenu(View):
                           f"{self.playlist_pages[0]}\n第[1]页，共[{len(self.playlist_pages)}]页\n"
 
     def refresh_pages(self):
-        self.playlist_pages = utils.make_playlist_page(self.playlist.get_list_info(), 10, indent=2)
+        self.playlist_pages = utils.make_playlist_page(self.playlist.get_list_info(), 10, {None: "      ", 0: "▶  "})
         self.first_page = f">>> **{self.playlist.get_name()}**\n  [总时长：{self.playlist_duration}]\n\n" \
                           f"{self.playlist_pages[0]}\n第[1]页，共[{len(self.playlist_pages)}]页\n"
         self.playlist_duration = self.playlist.get_time_str()
@@ -1687,7 +1723,7 @@ class CheckBilibiliCollectionView(View):
             ep_time_str = utils.convert_duration_to_time_str(item["arc"]["duration"])
             ep_info_list.append((ep_title, ep_time_str))
 
-        menu_list = utils.make_playlist_page(ep_info_list, 10, indent=0)
+        menu_list = utils.make_playlist_page(ep_info_list, 10, {})
         view = EpisodeSelectView(self.ctx, "bilibili_collection", self.info_dict, menu_list)
         await self.ctx.send(f"{menu_list[0]}\n第[1]页，共["
                             f"{len(menu_list)}]页\n已输入：",
@@ -1698,7 +1734,7 @@ class CheckBilibiliCollectionView(View):
 
     @discord.ui.button(label="关闭", style=discord.ButtonStyle.grey,
                        custom_id="button_cancel")
-    async def button_close_callback(self, button):
+    async def button_close_callback(self, button, interaction):
         button.disabled = False
         self.finish = True
         self.clear_items()
