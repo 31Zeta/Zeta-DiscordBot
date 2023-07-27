@@ -73,8 +73,9 @@ class Guild:
 
     def load(self) -> None:
         loaded_dict = utils.json_load(self._path)
-        self.playlist = guild_playlist_decoder(self, self._audio_file_library, loaded_dict["playlist"])
         self.playedlist = playlist.playlist_decoder(loaded_dict["playedlist"])
+        self.playlist = GuildPlaylist(self, self._audio_file_library)
+        guild_playlist_loader(self.playlist, loaded_dict["playlist"])
 
     def encode(self) -> dict:
         return {
@@ -136,6 +137,9 @@ class GuildPlaylist(playlist.Playlist):
         super().__init__(f"{guild.get_name()} 主播放列表", limitation, None)
         self._guild = guild
         self._file_library = file_library
+
+    def get_file_library(self):
+        return self._file_library
 
     def pop_audio(self, index=0) -> Union[audio.Audio, None]:
         """
@@ -202,11 +206,12 @@ class GuildPlaylist(playlist.Playlist):
             self._guild.save()
 
 
-def guild_playlist_decoder(
-        guild: Guild, file_library: file_management.AudioFileLibrary, info_dict: dict) -> GuildPlaylist:
-    new_playlist = GuildPlaylist(guild, file_library, info_dict["limitation"])
+def guild_playlist_loader(guild_playlist: GuildPlaylist, info_dict: dict) -> None:
+    """
+    GuildPlaylist加载器，传入一个GuildPlaylist以及它的encode()生成的字典，重建并加入字典中的Audio，在AudioFileLibrary锁定这些Audio
+    """
+    file_library = guild_playlist.get_file_library()
     for item in info_dict["playlist"]:
         current_audio = audio.audio_decoder(item)
-        new_playlist.append_audio(current_audio)
+        guild_playlist.append_audio(current_audio)
         file_library.lock_audio(current_audio)
-    return new_playlist

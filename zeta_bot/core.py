@@ -1,12 +1,11 @@
-import bilibili_api
 import discord
 import sys
 import os
 import asyncio
-
 import httpx
 import requests
 import platform
+import bilibili_api
 from typing import Any, Union
 from discord.ui import Button, View
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -40,6 +39,8 @@ if platform.system().lower() == "windows":
 else:
     ffmpeg_path = "./bin/ffmpeg"
 
+print(f"\n---------- 程序启动 ----------\n")
+
 # 多语言模块
 lang = language.Lang()
 _ = lang.get_string
@@ -64,8 +65,6 @@ error_log_path = f"./logs/{log_name_time}_errors.log"
 log_path = f"./logs/{log_name_time}.log"
 logger = log.Log(error_log_path, log_path, setting.value("log"))
 
-logger.rp("程序启动", "[系统]")
-
 # 设置用户和Discord服务器管理
 utils.create_folder("./data")
 member_lib = member.MemberLibrary()
@@ -79,6 +78,8 @@ audio_lib_main = file_management.AudioFileLibrary(
     "主音频文件库",
     setting.value("audio_library_storage_size")
 )
+
+logger.rp("初始化完成", "[系统]")
 
 
 def start(mode: str) -> None:
@@ -150,7 +151,6 @@ async def on_ready():
     """
 
     current_time = utils.time()
-    print(f"\n---------- 准备就绪 ----------\n")
     logger.rp(f"登录完成：以{bot.user}的身份登录，登录时间：{current_time}", "[系统]")
 
     # 启动定时任务框架
@@ -260,70 +260,136 @@ async def debug(ctx: discord.ApplicationContext):
     if not await command_check(ctx):
         return
 
-    # start_test = await ctx.respond("开始测试")
-    # print(type(start_test))
-    #
-    # new_msg = await start_test.edit_original_response(content="测试回复已被修改")
-    # print(type(new_msg))
-    #
-    # new_msg_2 = await new_msg.edit(content="测试回复已被二次修改")
-    # print(type(new_msg_2))
-    #
-    # end_test = await ctx.send("测试结果已打印")
-    # print(type(end_test))
+    guild_lib.check(ctx, audio_lib_main)
+    print(guild_lib.guild_dict.keys())
 
-    await ctx.respond("开始测试")
-    # print(type(start_test))
-    #
-    # if isinstance(start_test, discord.Interaction):
-    #     print("转换类型")
-    #     start_test = await start_test.original_response()
-    # print(type(start_test))
-    #
-    # time.sleep(3)
-    #
-    # if isinstance(start_test, discord.InteractionMessage):
-    #     print("类型符合，开始修改")
-    #     new_msg = await start_test.edit(content="测试回复已被修改")
-    #     print(type(new_msg))
-
-    await ctx.respond("二次发送")
+    await ctx.respond("测试结果已打印")
 
 
 @bot.command(description="关于Zeta-Discord机器人")
 async def info(ctx: discord.ApplicationContext) -> None:
+    if not await command_check(ctx):
+        return
+    await info_callback(ctx)
+
+
+@bot.command(description="帮助菜单")
+async def help(ctx: discord.ApplicationContext) -> None:
+    if not await command_check(ctx):
+        return
+    await help_callback(ctx)
+
+
+# @bot.command(description="[管理员] 向机器人所在的所有服务器广播消息")
+async def broadcast(ctx: discord.ApplicationContext, message) -> None:
+    if not await command_check(ctx):
+        return
+    await broadcast_callback(ctx, message)
+
+
+@bot.command(description=f"让 {bot_name} 加入语音频道")
+async def join(ctx: discord.ApplicationContext, channel_name=None) -> bool:
+    if not await command_check(ctx):
+        return False
+    return await join_callback(ctx, channel_name, command_call=True)
+
+
+@bot.command(description=f"让 {bot_name} 离开语音频道")
+async def leave(ctx: discord.ApplicationContext) -> None:
+    if not await command_check(ctx):
+        return
+    await leave_callback(ctx)
+
+
+@bot.command(description="播放Bilibili或Youtube的音频", aliases=["p"])
+async def play(ctx: discord.ApplicationContext, link=None) -> None:
+    if not await command_check(ctx):
+        return
+    await play_callback(ctx, link)
+
+
+@bot.command(description="暂停正在播放的音频")
+async def pause(ctx: discord.ApplicationContext):
+    if not await command_check(ctx):
+        return
+    await pause_callback(ctx)
+
+
+@bot.command(description="继续播放暂停的或被意外中断的音频", aliases=["restart"])
+async def resume(ctx: discord.ApplicationContext):
+    if not await command_check(ctx):
+        return
+    await resume_callback(ctx, command_call=True)
+
+
+@bot.command(description="显示当前播放列表")
+async def list(ctx: discord.ApplicationContext):
+    if not await command_check(ctx):
+        return
+    await list_callback(ctx)
+
+
+@bot.command(description="跳过正在播放或播放列表中的音频")
+async def skip(ctx: discord.ApplicationContext,
+               first_number: Union[int, None] = None, second_number: Union[int, None] = None):
+    if not await command_check(ctx):
+        return
+    await skip_callback(ctx, first_number, second_number)
+
+
+@bot.command(description="移动播放列表中音频的位置")
+async def move(ctx, from_number: Union[int, None] = None, to_number: Union[int, None] = None):
+    if not await command_check(ctx):
+        return
+    await move_callback(ctx, from_number, to_number)
+
+
+@bot.command(description=f"调整 {bot_name} 的语音频道音量")
+async def volume(ctx: discord.ApplicationContext, volume_num=None) -> None:
+    if not await command_check(ctx):
+        return
+    await volume_callback(ctx, volume_num)
+
+
+@bot.command(description="[管理员] 重启机器人")
+async def reboot(ctx):
+    if not await command_check(ctx):
+        return
+    await reboot_callback(ctx)
+
+
+@bot.command(description="[管理员] 关闭机器人")
+async def shutdown(ctx):
+    if not await command_check(ctx):
+        return
+    await shutdown_callback(ctx)
+
+
+async def info_callback(ctx: discord.ApplicationContext) -> None:
     """
     显示关于信息
 
     :param ctx: 指令原句
     :return:
     """
-    if not await command_check(ctx):
-        return
-
     await ctx.respond(f"**Zeta-Discord机器人 [版本 {version}]**\n"
                       f"   基于 Pycord v{pycord_version} 制作\n"
                       f"   版本更新日期：**{update_time}**\n"
                       f"   作者：炤铭Zeta (31Zeta)")
 
 
-@bot.command(description="帮助菜单")
-async def help(ctx: discord.ApplicationContext) -> None:
+async def help_callback(ctx: discord.ApplicationContext) -> None:
     """
     覆盖掉原有help指令, 向频道发送帮助菜单
 
     :param ctx: 指令原句
     :return:
     """
-    if not await command_check(ctx):
-        return
-
     view = help.HelpMenuView(ctx)
     await ctx.respond(content=view.catalog, view=view)
 
 
-# @bot.command(description="[管理员] 向机器人所在的所有服务器广播消息")
-async def broadcast(ctx: discord.ApplicationContext, message) -> None:
+async def broadcast_callback(ctx: discord.ApplicationContext, message) -> None:
     """
     让机器人在所有服务器的第一个频道发送参数message
 
@@ -339,8 +405,7 @@ async def broadcast(ctx: discord.ApplicationContext, message) -> None:
     await ctx.respond("已发送")
 
 
-@bot.command(description=f"让 {bot_name} 加入语音频道")
-async def join(ctx: discord.ApplicationContext, channel_name=None, function_call: bool = False) -> bool:
+async def join_callback(ctx: discord.ApplicationContext, channel_name=None, command_call: bool = False) -> bool:
     """
     让机器人加入指令发送者所在的语音频道并发送提示\n
     如果机器人已经加入一个频道则转移到新频道并发送提示
@@ -348,12 +413,9 @@ async def join(ctx: discord.ApplicationContext, channel_name=None, function_call
 
     :param ctx: 指令原句
     :param channel_name: 要加入的频道名称
-    :param function_call 该指令是否是由其他函数调用
+    :param command_call: 该指令是否是由用户指令调用
     :return: 布尔值，是否成功加入频道
     """
-    if not function_call and not await command_check(ctx):
-        return False
-
     guild_lib.check(ctx, audio_lib_main)
 
     channel = None
@@ -387,29 +449,27 @@ async def join(ctx: discord.ApplicationContext, channel_name=None, function_call
     # 机器人未在任何语音频道的情况
     if voice_client is None:
         await channel.connect()
-        await ctx.respond(f"加入语音频道：->  ***{channel.name}***")
+        if command_call:
+            await ctx.respond(f"加入语音频道：->  ***{channel.name}***")
 
     # 机器人已经在一个频道的情况
     else:
         previous_channel = voice_client.channel
         await voice_client.move_to(channel)
-        await ctx.respond(f"转移语音频道：***{previous_channel}***  ->  ***{channel.name}***")
+        if command_call:
+            await ctx.respond(f"转移语音频道：***{previous_channel}***  ->  ***{channel.name}***")
 
     logger.rp(f"加入语音频道：{channel.name}", ctx.guild)
     return True
 
 
-@bot.command(description=f"让 {bot_name} 离开语音频道")
-async def leave(ctx: discord.ApplicationContext) -> None:
+async def leave_callback(ctx: discord.ApplicationContext) -> None:
     """
     让机器人离开语音频道并发送提示
 
     :param ctx: 指令原句
     :return:
     """
-    if not await command_check(ctx):
-        return
-
     guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
@@ -432,8 +492,7 @@ async def leave(ctx: discord.ApplicationContext) -> None:
         await ctx.respond(f"{bot_name} 没有连接到任何语音频道")
 
 
-@bot.command(description="播放Bilibili或Youtube的音频", aliases=["p"])
-async def play(ctx: discord.ApplicationContext, link=None) -> None:
+async def play_callback(ctx: discord.ApplicationContext, link=None) -> None:
     """
     使机器人下载目标BV号或Youtube音频后播放并将其标题与文件路径记录进当前服务器的播放列表
     播放结束后调用play_next
@@ -443,9 +502,6 @@ async def play(ctx: discord.ApplicationContext, link=None) -> None:
     :param link: 目标URL或BV号
     :return:
     """
-    if not await command_check(ctx):
-        return
-
     # 用户记录增加音乐播放计数
     member_lib.play_counter_increment(ctx.user.id)
 
@@ -454,12 +510,12 @@ async def play(ctx: discord.ApplicationContext, link=None) -> None:
     # 检测机器人是否已经加入语音频道
     if ctx.guild.voice_client is None:
         logger.rp("机器人未在任何语音频道中，尝试加入语音频道", ctx.guild)
-        join_result = await join(ctx, function_call=True)
+        join_result = await join_callback(ctx, command_call=False)
         if not join_result:
             return
 
     # 尝试恢复之前被停止的播放
-    await resume(ctx, play_call=True)
+    await resume_callback(ctx, command_call=False)
 
     if link is None:
         logger.rp("用户未输入任何参数，指令无效", ctx.guild)
@@ -779,23 +835,19 @@ async def search_ytb(ctx, input_name):
     # await ctx.respond(message, view=view)
 
 
-@bot.command(description="暂停正在播放的音频")
-async def pause(ctx):
+async def pause_callback(ctx):
     """
     暂停播放
 
     :param ctx: 指令原句
     :return:
     """
-    if not await command_check(ctx):
-        return
-
     guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
 
     if voice_client is not None and voice_client.is_playing():
-        if ctx.author.voice and voice_client.channel == ctx.author.voice.channel:
+        if ctx.user.voice and voice_client.channel == ctx.user.voice.channel:
             voice_client.pause()
             logger.rp("暂停播放", ctx.guild)
             await ctx.respond("暂停播放")
@@ -808,18 +860,14 @@ async def pause(ctx):
         await ctx.respond("未在播放任何音乐")
 
 
-@bot.command(description="继续播放暂停的或被意外中断的音频", aliases=["restart"])
-async def resume(ctx, play_call=False):
+async def resume_callback(ctx, command_call: bool = False):
     """
     恢复播放
 
     :param ctx: 指令原句
-    :param play_call: 是否是由play指令调用来尝试恢复播放
+    :param command_call: 该函数是否是由用户指令调用
     :return:
     """
-    if not await command_check(ctx):
-        return
-
     guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
@@ -828,7 +876,7 @@ async def resume(ctx, play_call=False):
 
     # 未加入语音频道的情况
     if voice_client is None:
-        if not play_call:
+        if command_call:
             logger.rp("收到resume指令时机器人没有加入任何语音频道", ctx.guild)
             await ctx.respond(f"{setting.value('bot_name')}尚未加入任何语音频道")
 
@@ -844,7 +892,7 @@ async def resume(ctx, play_call=False):
 
     # 没有被暂停并且正在播放的情况
     elif voice_client.is_playing():
-        if not play_call:
+        if command_call:
             logger.rp("收到resume指令时机器人正在播放音乐", ctx.guild)
             await ctx.respond("当前正在播放音乐")
 
@@ -858,22 +906,18 @@ async def resume(ctx, play_call=False):
         await ctx.respond(f"恢复上次中断的播放列表")
 
     else:
-        if not play_call:
+        if command_call:
             logger.rp("收到resume指令时机器人没有任何被暂停的音乐", ctx.guild)
             await ctx.respond("当前没有任何被暂停的音乐")
 
 
-@bot.command(description="显示当前播放列表")
-async def list(ctx):
+async def list_callback(ctx: discord.ApplicationContext):
     """
     将当前服务器播放列表发送到服务器文字频道中
 
     :param ctx: 指令原句
     :return:
     """
-    if not await command_check(ctx):
-        return
-
     guild_lib.check(ctx, audio_lib_main)
 
     current_guild = guild_lib.get_guild(ctx)
@@ -892,8 +936,7 @@ async def list(ctx):
         )
 
 
-@bot.command(description="跳过正在播放或播放列表中的音频")
-async def skip(ctx, first_number=None, second_number=None):
+async def skip_callback(ctx, first_number: Union[int, None] = None, second_number: Union[int, None] = None):
     """
     使机器人跳过指定的歌曲，并删除对应歌曲的文件
 
@@ -902,9 +945,8 @@ async def skip(ctx, first_number=None, second_number=None):
     :param second_number: 跳过最终曲目的序号
     :return:
     """
-    if not await command_check(ctx):
-        return
-
+    # TODO 机器人未在语音频道时需要禁用该功能（因为会导致voice_client为None）
+    # TODO skip指令全面debug，当前指令无效
     guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
@@ -982,18 +1024,14 @@ async def skip(ctx, first_number=None, second_number=None):
         await ctx.respopnd("当前播放列表已为空")
 
 
-@bot.command(description="移动播放列表中音频的位置")
-async def move(ctx, from_number=-1, to_number=-1):
-    if not await command_check(ctx):
-        return
-
+async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Union[int, None] = None):
     guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
-    if from_number == -1 or to_number == -1:
+    if from_number is None or to_number is None:
         await ctx.respond("请输入想要移动的歌曲序号以及想要移动到的位置")
 
     # 两个参数相同的情况
@@ -1067,11 +1105,7 @@ async def clear(ctx):
     await ctx.respond("播放列表已清空")
 
 
-@bot.command(description=f"调整 {bot_name} 的语音频道音量")
-async def volume(ctx: discord.ApplicationContext, volume_num=None) -> None:
-    if not await command_check(ctx):
-        return
-
+async def volume_callback(ctx: discord.ApplicationContext, volume_num=None) -> None:
     voice_client = ctx.guild.voice_client
     guild_lib.check(ctx, audio_lib_main)
     current_volume = guild_lib.get_guild(ctx).get_voice_volume()
@@ -1126,29 +1160,21 @@ async def volume(ctx: discord.ApplicationContext, volume_num=None) -> None:
             await ctx.respond(f"将音量设置为 **{current_volume}%**")
 
 
-@bot.command(description="[管理员] 重启机器人")
-async def reboot(ctx):
+async def reboot_callback(ctx):
     """
     重启程序
     """
-    if not await command_check(ctx):
-        return
-
     guild_lib.save_all()
-    # TODO Guild播放列表有音频时重启，无法保存Guild文件（文件为空）
 
     await ctx.respond("正在重启")
+
     os.execl(python_path, python_path, * sys.argv)
 
 
-@bot.command(description="[管理员] 关闭机器人")
-async def shutdown(ctx):
+async def shutdown_callback(ctx):
     """
     退出程序
     """
-    if not await command_check(ctx):
-        return
-
     guild_lib.save_all()
 
     await ctx.respond("正在关闭")

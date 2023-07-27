@@ -22,10 +22,10 @@ class Log:
         self._error_log_path = error_log_path
 
         with open(self._error_log_path, "a", encoding="utf-8"):
-            self.rp(f"错误日志文件路径：{self._error_log_path}", "[日志记录器]")
+            self.rp(f"生成初始日志文件：{self._error_log_path}", "[日志记录器]")
         if self._running_log:
             with open(self._log_path, "a", encoding="utf-8"):
-                self.rp(f"运行日志文件路径：{self._log_path}", "[日志记录器]")
+                self.rp(f"生成初始日志文件：{self._log_path}", "[日志记录器]")
 
         logging.basicConfig(
             filename=self._error_log_path, level=logging.WARNING
