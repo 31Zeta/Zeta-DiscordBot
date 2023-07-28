@@ -7,6 +7,8 @@ import requests
 import platform
 import bilibili_api
 from typing import Any, Union
+from discord.ext import commands
+from discord.commands import option
 from discord.ui import Button, View
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -190,6 +192,8 @@ async def on_ready():
     await bot.change_presence(
         activity=discord.Activity(type=bot_activity_type, name=setting.value("default_activity")))
 
+    logger.rp(f"启动完成", "[系统]")
+
 
 # 文字频道中收到信息时
 @bot.event
@@ -249,116 +253,143 @@ async def send_edit(ctx: discord.ApplicationContext, response, content: str, vie
         await ctx.send(content, view=view)
 
 
-@bot.command(description="[管理员] 测试指令")
-async def debug(ctx: discord.ApplicationContext):
+@bot.slash_command(name="debug", description="[管理员] 测试指令")
+# @option("input_1", description="测试用输入变量 1", autocomplete=get_debug_list_1)
+# @option("input_2", description="测试用输入变量 2", choices=["测试选项1", "测试选项2", "测试选项3"])
+async def debug(ctx, input_1: str):
     """
     测试用指令
-
-    :param ctx: 指令原句
-    :return:
     """
     if not await command_check(ctx):
         return
 
-    guild_lib.check(ctx, audio_lib_main)
-    print(guild_lib.guild_dict.keys())
+    await ctx.respond(f"输入1：{input_1}")
+    print(await get_main_playlist(ctx))
 
-    await ctx.respond("测试结果已打印")
+    # await ctx.respond("测试结果已打印")
 
 
-@bot.command(description="关于Zeta-Discord机器人")
+@bot.slash_command(description="关于Zeta-Discord机器人")
 async def info(ctx: discord.ApplicationContext) -> None:
     if not await command_check(ctx):
         return
     await info_callback(ctx)
 
 
-@bot.command(description="帮助菜单")
+@bot.slash_command(description="帮助菜单")
 async def help(ctx: discord.ApplicationContext) -> None:
     if not await command_check(ctx):
         return
     await help_callback(ctx)
 
 
-# @bot.command(description="[管理员] 向机器人所在的所有服务器广播消息")
+# @bot.slash_command(description="[管理员] 向机器人所在的所有服务器广播消息")
 async def broadcast(ctx: discord.ApplicationContext, message) -> None:
     if not await command_check(ctx):
         return
     await broadcast_callback(ctx, message)
 
 
-@bot.command(description=f"让 {bot_name} 加入语音频道")
-async def join(ctx: discord.ApplicationContext, channel_name=None) -> bool:
+@bot.slash_command(description=f"让{bot_name}加入语音频道")
+@option(
+    "channel", discord.VoiceChannel,
+    description=f"要让{bot_name}加入的频道，如果不选择则加入指令发送者所在的频道",
+    required=False
+)
+async def join(ctx: discord.ApplicationContext, channel: Union[discord.VoiceChannel, None]) -> bool:
     if not await command_check(ctx):
         return False
-    return await join_callback(ctx, channel_name, command_call=True)
+    return await join_callback(ctx, channel, command_call=True)
 
 
-@bot.command(description=f"让 {bot_name} 离开语音频道")
+@bot.slash_command(description=f"让{bot_name}离开语音频道")
 async def leave(ctx: discord.ApplicationContext) -> None:
     if not await command_check(ctx):
         return
     await leave_callback(ctx)
 
 
-@bot.command(description="播放Bilibili或Youtube的音频", aliases=["p"])
+@bot.slash_command(description="播放来自哔哩哔哩或Youtube的音频")
+@option(
+    "link",
+    description="要播放的音频（视频）的链接或者哔哩哔哩BV号",
+    required=True
+)
 async def play(ctx: discord.ApplicationContext, link=None) -> None:
     if not await command_check(ctx):
         return
     await play_callback(ctx, link)
 
 
-@bot.command(description="暂停正在播放的音频")
+@bot.slash_command(description="暂停正在播放的音频")
 async def pause(ctx: discord.ApplicationContext):
     if not await command_check(ctx):
         return
     await pause_callback(ctx)
 
 
-@bot.command(description="继续播放暂停的或被意外中断的音频", aliases=["restart"])
+@bot.slash_command(description="继续播放暂停的或被意外中断的音频")
 async def resume(ctx: discord.ApplicationContext):
     if not await command_check(ctx):
         return
     await resume_callback(ctx, command_call=True)
 
 
-@bot.command(description="显示当前播放列表")
+@bot.slash_command(description="显示当前播放列表")
 async def list(ctx: discord.ApplicationContext):
     if not await command_check(ctx):
         return
     await list_callback(ctx)
 
 
-@bot.command(description="跳过正在播放或播放列表中的音频")
+async def get_main_playlist(ctx: discord.AutocompleteContext):
+    return guild_lib.get_guild(ctx).get_playlist().get_audio_str_list()
+
+
+# TODO 选项未完成
+@bot.slash_command(description="跳过正在播放或播放列表中的音频")
+@option(
+    "first_number",
+    description="需要跳过的音频或者其序号",
+    required=False,
+    autocomplete=get_main_playlist,
+)
+@option(
+    "second_number", int,
+    description="需要跳过的音频或者其序号",
+    required=False,
+    autocomplete=get_main_playlist,
+    min_value=1
+)
 async def skip(ctx: discord.ApplicationContext,
-               first_number: Union[int, None] = None, second_number: Union[int, None] = None):
+               first_number=None, second_number=None):
     if not await command_check(ctx):
         return
     await skip_callback(ctx, first_number, second_number)
 
 
-@bot.command(description="移动播放列表中音频的位置")
+@bot.slash_command(description="移动播放列表中音频的位置")
 async def move(ctx, from_number: Union[int, None] = None, to_number: Union[int, None] = None):
     if not await command_check(ctx):
         return
     await move_callback(ctx, from_number, to_number)
 
 
-@bot.command(description=f"调整 {bot_name} 的语音频道音量")
+@bot.slash_command(description=f"调整{bot_name}的语音频道音量")
 async def volume(ctx: discord.ApplicationContext, volume_num=None) -> None:
     if not await command_check(ctx):
         return
     await volume_callback(ctx, volume_num)
 
 
-@bot.command(description="[管理员] 重启机器人")
+@bot.slash_command(description="[管理员] 重启机器人")
 async def reboot(ctx):
     if not await command_check(ctx):
         return
     await reboot_callback(ctx)
 
 
-@bot.command(description="[管理员] 关闭机器人")
+@bot.slash_command(description="[管理员] 关闭机器人")
 async def shutdown(ctx):
     if not await command_check(ctx):
         return
@@ -405,23 +436,22 @@ async def broadcast_callback(ctx: discord.ApplicationContext, message) -> None:
     await ctx.respond("已发送")
 
 
-async def join_callback(ctx: discord.ApplicationContext, channel_name=None, command_call: bool = False) -> bool:
+async def join_callback(
+        ctx: discord.ApplicationContext, channel: discord.VoiceChannel = None, command_call: bool = False) -> bool:
     """
     让机器人加入指令发送者所在的语音频道并发送提示\n
     如果机器人已经加入一个频道则转移到新频道并发送提示
     如发送者未加入任何语音频道发送提示
 
     :param ctx: 指令原句
-    :param channel_name: 要加入的频道名称
+    :param channel: 要加入的频道
     :param command_call: 该指令是否是由用户指令调用
     :return: 布尔值，是否成功加入频道
     """
     guild_lib.check(ctx, audio_lib_main)
 
-    channel = None
-
     # 未输入参数的情况
-    if channel_name is None:
+    if channel is None:
         # 指令发送者未加入频道的情况
         if not ctx.user.voice:
             logger.rp(f"频道加入失败，用户 {ctx.user} 发送指令时未加入任何语音频道", ctx.guild)
@@ -431,18 +461,6 @@ async def join_callback(ctx: discord.ApplicationContext, channel_name=None, comm
         # 目标频道设定为指令发送者所在的频道
         else:
             channel = ctx.user.voice.channel
-
-    # 输入了频道名称参数的情况
-    else:
-        for ch in ctx.guild.channels:
-            if ch.type is discord.ChannelType.voice and ch.name == channel_name:
-                channel = ch
-                break
-
-        # 搜索后未找到同名频道的情况
-        if channel is None:
-            await ctx.respond("无效的语音频道名称")
-            return False
 
     voice_client = ctx.guild.voice_client
 
@@ -477,9 +495,8 @@ async def leave_callback(ctx: discord.ApplicationContext) -> None:
 
     if voice_client is not None:
         # 防止因退出频道自动删除正在播放的音频
-        if voice_client.is_playing():
-            current_audio = current_playlist.get_audio(0)
-            current_playlist.insert_audio(current_audio, 0)
+        current_audio = current_playlist.get_audio(0)
+        current_playlist.insert_audio(current_audio, 0)
 
         last_channel = voice_client.channel
         await voice_client.disconnect(force=False)
@@ -492,7 +509,7 @@ async def leave_callback(ctx: discord.ApplicationContext) -> None:
         await ctx.respond(f"{bot_name} 没有连接到任何语音频道")
 
 
-async def play_callback(ctx: discord.ApplicationContext, link=None) -> None:
+async def play_callback(ctx: discord.ApplicationContext, link) -> None:
     """
     使机器人下载目标BV号或Youtube音频后播放并将其标题与文件路径记录进当前服务器的播放列表
     播放结束后调用play_next
@@ -516,11 +533,6 @@ async def play_callback(ctx: discord.ApplicationContext, link=None) -> None:
 
     # 尝试恢复之前被停止的播放
     await resume_callback(ctx, command_call=False)
-
-    if link is None:
-        logger.rp("用户未输入任何参数，指令无效", ctx.guild)
-        await ctx.respond("请在在指令后打出您想要播放的链接或想要搜索的名称")
-        return
 
     # 检查输入的URL属于哪个网站
     source = utils.check_url_source(link)
@@ -685,9 +697,6 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
         await send_edit(ctx, response, "服务器协议错误，请稍后再试")
         logger.rp("触发异常httpx.RemoteProtocolError，服务器协议错误", ctx.guild, is_error=True)
         return
-    except errors.StorageFull:
-        await send_edit(ctx, response, "机器人当前处理音乐较多，请稍后再试")
-        return
 
     # 单一视频 bilibili_single
     if info_dict["videos"] == 1 and "ugc_season" not in info_dict:
@@ -711,7 +720,7 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
             p_time_str = utils.convert_duration_to_time_str(item["duration"])
             p_info_list.append((p_title, p_time_str))
 
-        menu_list = utils.make_playlist_page(p_info_list, 10, {})
+        menu_list = utils.make_playlist_page(p_info_list, 10, {}, {})
         view = EpisodeSelectView(ctx, "bilibili_p", info_dict, menu_list)
         await send_edit(ctx, response,
                         f"这是一个分p视频, 请选择要播放的分p:\n{menu_list[0]}\n第[1]页，共[{len(menu_list)}]页\n已输入：",
@@ -729,7 +738,11 @@ async def add_bilibili_audio(ctx, info_dict, audio_type, num_option: int = 0,
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
-    new_audio = await audio_lib_main.download_bilibili(info_dict, audio_type, num_option)
+    try:
+        new_audio = await audio_lib_main.download_bilibili(info_dict, audio_type, num_option)
+    except errors.StorageFull:
+        await send_edit(ctx, response, "机器人当前处理音频过多，请稍后再试")
+        return
 
     if new_audio is not None:
 
@@ -874,15 +887,24 @@ async def resume_callback(ctx, command_call: bool = False):
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
+    # 播放列表为空的情况
+    if current_playlist.is_empty():
+        logger.rp("收到resume指令时服务器主播放列表内没有任何音频", ctx.guild)
+        await ctx.respond(f"播放列表中没有任何音频，可以使用/play指令来添加来自哔哩哔哩或者YouTube的音频")
+        return
+
     # 未加入语音频道的情况
     if voice_client is None:
-        if command_call:
-            logger.rp("收到resume指令时机器人没有加入任何语音频道", ctx.guild)
-            await ctx.respond(f"{setting.value('bot_name')}尚未加入任何语音频道")
+        logger.rp("机器人未在任何语音频道中，尝试加入语音频道", ctx.guild)
+        join_result = await join_callback(ctx, command_call=False)
+        if not join_result:
+            return
+        else:
+            voice_client = ctx.guild.voice_client
 
     # 被暂停播放的情况
-    elif voice_client.is_paused():
-        if ctx.author.voice and voice_client.channel == ctx.author.voice.channel:
+    if voice_client.is_paused():
+        if ctx.user.voice and voice_client.channel == ctx.user.voice.channel:
             voice_client.resume()
             logger.rp("恢复播放", ctx.guild)
             await ctx.respond("恢复播放")
@@ -893,8 +915,8 @@ async def resume_callback(ctx, command_call: bool = False):
     # 没有被暂停并且正在播放的情况
     elif voice_client.is_playing():
         if command_call:
-            logger.rp("收到resume指令时机器人正在播放音乐", ctx.guild)
-            await ctx.respond("当前正在播放音乐")
+            logger.rp("收到resume指令时机器人正在播放音频", ctx.guild)
+            await ctx.respond(f"{bot_name}正在频道{voice_client.channel}播放音频")
 
     # 没有被暂停，没有正在播放，并且播放列表中存在歌曲的情况
     elif not current_playlist.is_empty():
@@ -926,11 +948,13 @@ async def list_callback(ctx: discord.ApplicationContext):
     if current_playlist.is_empty():
         await ctx.respond("当前播放列表为空")
     else:
-        playlist_list = utils.make_playlist_page(current_playlist.get_list_info(), 10, {None: "      ", 0: "▶  "})
+        playlist_list = utils.make_playlist_page(current_playlist.get_list_info(), 10,
+                                                 {None: ">       ", 0: "> ▶  **"}, {0: "**"})
 
         view = PlaylistMenu(ctx, current_playlist)
         await ctx.respond(
-            content=f">>> **{current_playlist.get_name()}**\n  [总时长：{current_playlist.get_time_str()}]\n\n"
+            content=f"## {current_playlist.get_name()}\n"
+                    f"    [列表长度：{len(current_playlist)} | 总时长：{current_playlist.get_time_str()}]\n\n"
                     f"{playlist_list[0]}\n第[1]页，共[{len(playlist_list)}]页\n",
             view=view
         )
@@ -945,8 +969,6 @@ async def skip_callback(ctx, first_number: Union[int, None] = None, second_numbe
     :param second_number: 跳过最终曲目的序号
     :return:
     """
-    # TODO 机器人未在语音频道时需要禁用该功能（因为会导致voice_client为None）
-    # TODO skip指令全面debug，当前指令无效
     guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
@@ -958,7 +980,11 @@ async def skip_callback(ctx, first_number: Union[int, None] = None, second_numbe
         if first_number is None and second_number is None:
             current_audio = current_playlist.get_audio(0)
             title = current_audio.get_title()
-            voice_client.stop()
+
+            if voice_client is not None:
+                voice_client.stop()
+            else:
+                current_playlist.remove_audio(0)
 
             logger.rp(f"第1个音频 {title} 已被用户 {ctx.user} 移出播放队列", ctx.guild)
             await ctx.respond(f"已跳过当前音频：**{title}**")
@@ -972,7 +998,11 @@ async def skip_callback(ctx, first_number: Union[int, None] = None, second_numbe
             elif int(first_number) == 1:
                 current_audio = current_playlist.get_audio(0)
                 title = current_audio.get_title()
-                voice_client.stop()
+
+                if voice_client is not None:
+                    voice_client.stop()
+                else:
+                    current_playlist.remove_audio(0)
 
                 logger.rp(f"第1个音频 {title} 已被用户 {ctx.user} 移出播放队列", ctx.guild)
                 await ctx.respond(f"已跳过当前音频：**{title}**")
@@ -999,7 +1029,11 @@ async def skip_callback(ctx, first_number: Union[int, None] = None, second_numbe
             if first_number == 1:
                 for i in range(second_number, first_number, -1):
                     current_playlist.remove_audio(i - 1)
-                voice_client.stop()
+
+                if voice_client is not None:
+                    voice_client.stop()
+                else:
+                    current_playlist.remove_audio(0)
 
                 logger.rp(f"第{first_number}到第{second_number}个音频被用户 {ctx.author} 移出播放队列", ctx.guild)
                 await ctx.respond(f"第{first_number}到第{second_number}个音频已被移出播放队列")
@@ -1187,18 +1221,24 @@ class PlaylistMenu(View):
         super().__init__(timeout=timeout)
         self.ctx = ctx
         self.playlist = playlist_1
-        self.playlist_pages = utils.make_playlist_page(self.playlist.get_list_info(), 10, {None: "      ", 0: "▶  "})
+        self.playlist_pages = utils.make_playlist_page(self.playlist.get_list_info(), 10,
+                                                       {None: ">       ", 0: "> ▶  **"}, {0: "**"})
         self.playlist_duration = self.playlist.get_time_str()
         self.page_num = 0
         self.occur_time = utils.time()
         # 保留当前第一页作为超时后显示的内容
-        self.first_page = f">>> **{self.playlist.get_name()}**\n  [总时长：{self.playlist_duration}]\n\n" \
-                          f"{self.playlist_pages[0]}\n第[1]页，共[{len(self.playlist_pages)}]页\n"
+        self.first_page = f"## {self.playlist.get_name()}\n" \
+                          f"    [列表长度：{len(self.playlist)} | 总时长：{self.playlist.get_time_str()}]\n\n" \
+                          f"{self.playlist_pages[0]}\n" \
+                          f"第[1]页，共[{len(self.playlist_pages)}]页\n"
 
     def refresh_pages(self):
-        self.playlist_pages = utils.make_playlist_page(self.playlist.get_list_info(), 10, {None: "      ", 0: "▶  "})
-        self.first_page = f">>> **{self.playlist.get_name()}**\n  [总时长：{self.playlist_duration}]\n\n" \
-                          f"{self.playlist_pages[0]}\n第[1]页，共[{len(self.playlist_pages)}]页\n"
+        self.playlist_pages = utils.make_playlist_page(self.playlist.get_list_info(), 10,
+                                                       {None: ">       ", 0: "> ▶  **"}, {0: "**"})
+        self.first_page = f"## {self.playlist.get_name()}\n" \
+                          f"    [列表长度：{len(self.playlist)} | 总时长：{self.playlist.get_time_str()}]\n\n" \
+                          f"{self.playlist_pages[0]}\n" \
+                          f"第[1]页，共[{len(self.playlist_pages)}]页\n"
         self.playlist_duration = self.playlist.get_time_str()
 
     @discord.ui.button(label="上一页", style=discord.ButtonStyle.grey,
@@ -1213,9 +1253,11 @@ class PlaylistMenu(View):
         else:
             self.page_num -= 1
         await msg.edit_message(
-            content=f">>> **{self.playlist.get_name()}**\n  [总时长：{self.playlist_duration}]\n\n"
-                    f"{self.playlist_pages[self.page_num]}\n第[{self.page_num + 1}]页，"
-                    f"共[{len(self.playlist_pages)}]页\n", view=self
+            content=f"## {self.playlist.get_name()}\n"
+                    f"    [列表长度：{len(self.playlist)} | 总时长：{self.playlist.get_time_str()}]\n\n"
+                    f"{self.playlist_pages[self.page_num]}\n"
+                    f"第[{self.page_num + 1}]页，共[{len(self.playlist_pages)}]页\n",
+            view=self
         )
 
     @discord.ui.button(label="下一页", style=discord.ButtonStyle.grey,
@@ -1230,9 +1272,10 @@ class PlaylistMenu(View):
         else:
             self.page_num += 1
         await msg.edit_message(
-            content=f">>> **{self.playlist.get_name()}**\n  [总时长：{self.playlist_duration}]\n\n"
-                    f"{self.playlist_pages[self.page_num]}\n第[{self.page_num + 1}]页，"
-                    f"共[{len(self.playlist_pages)}]页\n",
+            content=f"## {self.playlist.get_name()}\n"
+                    f"    [列表长度：{len(self.playlist)} | 总时长：{self.playlist.get_time_str()}]\n\n"
+                    f"{self.playlist_pages[self.page_num]}\n"
+                    f"第[{self.page_num + 1}]页，共[{len(self.playlist_pages)}]页\n",
             view=self
         )
 
@@ -1242,11 +1285,11 @@ class PlaylistMenu(View):
         button.disabled = False
         msg = interaction.response
         self.refresh_pages()
-
         await msg.edit_message(
-            content=f">>> **{self.playlist.get_name()}**\n  [总时长：{self.playlist_duration}]\n\n"
-                    f"{self.playlist_pages[self.page_num]}\n第[{self.page_num + 1}]页，"
-                    f"共[{len(self.playlist_pages)}]页\n",
+            content=f"## {self.playlist.get_name()}\n"
+                    f"    [列表长度：{len(self.playlist)} | 总时长：{self.playlist.get_time_str()}]\n\n"
+                    f"{self.playlist_pages[self.page_num]}\n"
+                    f"第[{self.page_num + 1}]页，共[{len(self.playlist_pages)}]页\n",
             view=self
         )
 
@@ -1260,6 +1303,7 @@ class PlaylistMenu(View):
         await self.ctx.delete()
 
     async def on_timeout(self):
+        self.refresh_pages()
         self.clear_items()
         await self.ctx.edit(content=self.first_page, view=self)
         logger.rp(f"{self.occur_time}生成的播放列表菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
@@ -1749,7 +1793,7 @@ class CheckBilibiliCollectionView(View):
             ep_time_str = utils.convert_duration_to_time_str(item["arc"]["duration"])
             ep_info_list.append((ep_title, ep_time_str))
 
-        menu_list = utils.make_playlist_page(ep_info_list, 10, {})
+        menu_list = utils.make_playlist_page(ep_info_list, 10, {}, {})
         view = EpisodeSelectView(self.ctx, "bilibili_collection", self.info_dict, menu_list)
         await self.ctx.send(f"{menu_list[0]}\n第[1]页，共["
                             f"{len(menu_list)}]页\n已输入：",

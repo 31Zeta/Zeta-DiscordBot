@@ -7,7 +7,6 @@ from zeta_bot import (
     language,
     decorators,
     utils,
-    setting,
     log,
     file_management,
     member,
@@ -25,7 +24,6 @@ class Guild:
         self._root = f"{self._lib_root}/{self._guild.id}"
         self._path = f"{self._root}/{self._guild.id}.json"
         self._audio_file_library = audio_file_library
-        self._voice_client = self._guild.voice_client
 
         if not os.path.exists(self._root):
             utils.create_folder(self._root)
@@ -59,9 +57,6 @@ class Guild:
     def get_playedlist(self) -> playlist.Playlist:
         return self.playedlist
 
-    def get_voice_client(self) -> discord.VoiceClient:
-        return self._voice_client
-
     def get_voice_volume(self) -> float:
         return self.voice_volume
 
@@ -89,46 +84,54 @@ class Guild:
 @decorators.Singleton
 class GuildLibrary:
     def __init__(self):
-        self.root = "./data/guilds"
-        utils.create_folder(self.root)
-        self.guild_dict = {}
-        self.hashtag_file_path = f"{self.root}/#Guilds.json"
+        self._root = "./data/guilds"
+        utils.create_folder(self._root)
+        self._guild_dict = {}
+        self._hashtag_file_path = f"{self._root}/#Guilds.json"
+        self._logger = log.Log()
         # TODO hashtag文件内名称键重复两遍
 
         # 检查#Guilds文件
-        if not os.path.exists(self.hashtag_file_path):
-            utils.json_save(self.hashtag_file_path, {})
+        if not os.path.exists(self._hashtag_file_path):
+            utils.json_save(self._hashtag_file_path, {})
         try:
-            self.hashtag_file = utils.json_load(self.hashtag_file_path)
+            self.hashtag_file = utils.json_load(self._hashtag_file_path)
         except errors.JSONFileError:
             raise errors.JSONFileError
 
     def save_hashtag_file(self):
-        utils.json_save(self.hashtag_file_path, self.hashtag_file)
+        utils.json_save(self._hashtag_file_path, self.hashtag_file)
 
     def check(self, ctx: discord.ApplicationContext, audio_file_library: file_management.AudioFileLibrary) -> None:
         guild_id = ctx.guild.id
         guild_name = ctx.guild.name
 
         # 如果guild_dict中不存在本Discord服务器
-        if guild_id not in self.guild_dict:
-            self.guild_dict[guild_id] = Guild(ctx.guild, self.root, audio_file_library)
+        if guild_id not in self._guild_dict:
+            self._guild_dict[guild_id] = Guild(ctx.guild, self._root, audio_file_library)
 
         # 更新#Guilds文件
         if guild_id not in self.hashtag_file or guild_name != self.hashtag_file[guild_id]:
             self.hashtag_file[guild_id] = guild_name
             self.save_hashtag_file()
 
-    def get_guild(self, ctx: discord.ApplicationContext) -> Union[Guild, None]:
-        guild_id = ctx.guild.id
-        if guild_id in self.guild_dict:
-            return self.guild_dict[guild_id]
+    def get_guild(self, ctx: Union[discord.ApplicationContext, discord.AutocompleteContext]) -> Union[Guild, None]:
+        if isinstance(ctx, discord.ApplicationContext):
+            guild_id = ctx.guild.id
+        else:
+            # isinstance ctx → discord.AutocompleteContext
+            guild_id = ctx.interaction.guild.id
+
+        if guild_id in self._guild_dict:
+            return self._guild_dict[guild_id]
         else:
             return None
 
     def save_all(self) -> None:
-        for key in self.guild_dict:
-            self.guild_dict[key].save()
+        self._logger.rp("开始保存各Discord服务器数据", "[Discord服务器库]")
+        for key in self._guild_dict:
+            self._guild_dict[key].save()
+        self._logger.rp("各Discord服务器数据保存完毕", "[Discord服务器库]")
 
 
 class GuildPlaylist(playlist.Playlist):

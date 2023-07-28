@@ -19,7 +19,7 @@ class AudioFileLibrary:
         self._storage_size = storage_size
         self._name = name
 
-        self.logger = log.Log()
+        self._logger = log.Log()
 
         if utils.path_exists(self._path):
             try:
@@ -49,18 +49,18 @@ class AudioFileLibrary:
             new_audio = audio.audio_decoder(audio_dict)
             temp_list.append({"item": new_audio, "key": key})
         self._dl_list = utils.double_linked_list_dict_decoder(temp_list, force=True)
-        self.logger.rp(f"成功加载库文件：{self._path}", f"[{self._name}]")
+        self._logger.rp(f"成功加载库文件：{self._path}", f"[{self._name}]")
 
     def _reset_library(self) -> None:
         """
         **警告**
         将会删除目录下所有文件并重新建立双向链表字典
         """
-        self.logger.rp(f"开始重置库{self._name}", f"[{self._name}]")
+        self._logger.rp(f"开始重置库{self._name}", f"[{self._name}]")
         for name in os.listdir(self._root):
             if os.path.isfile(f"{self._root}/{name}"):
                 os.remove(f"{self._root}/{name}")
-                self.logger.rp(f"删除文件：{name}", f"[{self._name}]")
+                self._logger.rp(f"删除文件：{name}", f"[{self._name}]")
 
         self._dl_list = utils.DoubleLinkedListDict()
         self.save()
@@ -86,10 +86,10 @@ class AudioFileLibrary:
         target_audio = self._dl_list.index_pop(0)
         if target_audio not in self._using:
             os.remove(target_audio.get_path())
-            self.logger.rp(f"超出{self._name}容量限制，删除文件：{target_audio.get_path()}", f"[{self._name}]")
+            self._logger.rp(f"超出{self._name}容量限制，删除文件：{target_audio.get_path()}", f"[{self._name}]")
             return True
         else:
-            self.logger.rp(f"文件正在使用中，无法删除文件：{target_audio.get_path}", f"[{self._name}]")
+            self._logger.rp(f"文件正在使用中，无法删除文件：{target_audio.get_path()}", f"[{self._name}]")
             return False
 
     async def download_bilibili(self, info_dict, download_type: str, num_option: int = 0) -> Union[audio.Audio, None]:
@@ -97,14 +97,14 @@ class AudioFileLibrary:
         # 如果文件已经存在
         if bvid in self._dl_list:
             exists_audio = self._dl_list.key_get(bvid)
-            self.logger.rp(f"音频已存在：{exists_audio.get_title()}\n路径：{exists_audio.get_path()}", f"[{self._name}]")
+            self._logger.rp(f"音频已存在：{exists_audio.get_title()}\n路径：{exists_audio.get_path()}", f"[{self._name}]")
             self._append_audio(exists_audio)
             return exists_audio
 
         # 如果库满，尝试删除最不常使用的文件
         if self.storage_full():
             if not self._delete_least_used_file():
-                self.logger.rp(f"{self._name}已满且无法清除文件，下载失败", f"[{self._name}]", is_error=True)
+                self._logger.rp(f"{self._name}已满且无法清除文件，下载失败", f"[{self._name}]", is_error=True)
                 raise errors.StorageFull(self._name)
 
         # 下载
@@ -121,7 +121,7 @@ class AudioFileLibrary:
         if self.storage_full():
             # 如果库满，尝试删除最不常使用的文件
             if not self._delete_least_used_file():
-                self.logger.rp(f"{self._name}已满且无法清除文件，下载失败", f"[{self._name}]", is_error=True)
+                self._logger.rp(f"{self._name}已满且无法清除文件，下载失败", f"[{self._name}]", is_error=True)
                 raise errors.StorageFull(self._name)
 
         new_audio = youtube.audio_download(url, info_dict, self._root, download_type)

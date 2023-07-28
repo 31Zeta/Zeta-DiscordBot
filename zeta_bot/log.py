@@ -135,6 +135,7 @@ def application_command_error(log_path, error_log_path, ctx, exception) -> None:
     logger.error(f"{current_time}\n{message}\n{full_exception}")
 
     # 控制台输出错误信息
-    print_log(current_time, f"\033[0;31m发生错误：{exception}\n    详情请查看错误日志：根目录{error_log_path[1:]}\033[0m", f"\033[0;31m{ctx.guild}\033[0m")
+    print_log(current_time,
+              f"\033[0;31m发生错误：{exception}\n    详情请查看错误日志：根目录{error_log_path[1:]}\033[0m", f"{ctx.guild}")
     # 系统活动日志写入错误信息
     write_log(log_path, current_time, f"发生错误：{exception}，详情请查看错误日志：根目录{error_log_path[1:]}", f"{ctx.guild}")

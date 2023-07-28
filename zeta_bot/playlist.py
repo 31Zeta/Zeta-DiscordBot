@@ -45,6 +45,12 @@ class Playlist:
             result.append((item.get_title(), item.get_time_str()))
         return result
 
+    def get_audio_str_list(self) -> List[str]:
+        temp_list = []
+        for audio_item in self._playlist:
+            temp_list.append(audio_item.__str__())
+        return temp_list
+
     def get_audio(self, index=0) -> Union[audio.Audio, None]:
         """
         返回一个音频（类Audio），默认为列表中的第一个音频\n
