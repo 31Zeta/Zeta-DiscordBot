@@ -19,11 +19,11 @@ from setting import Setting
 from errors import *
 
 
-version = "0.8.3"
+version = "0.8.4"
 py_cord_version = discord.__version__
-update_time = "2023.06.17"
-update_log = "0.8.3" \
-             "- 临时修复播放单一歌曲时产生的\"该应用程序未响应\"问题"
+update_time = "2023.09.12"
+update_log = "0.8.4" \
+             "- 添加YouTube短链youtu.be的支持"
 
 intents = discord.Intents.all()
 
@@ -536,7 +536,7 @@ async def play(ctx, link="N/A"):
                               f"共[{len(menu_list)}]页\n已输入：",
                               view=view)
 
-    elif source == "ytb_url":
+    elif source == "ytb_url" or "ytb_short_url":
 
         loading_msg = await ctx.send("正在获取Youtube视频信息")
         url_type, info_dict = ytb_get_info(link)

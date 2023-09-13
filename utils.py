@@ -52,6 +52,9 @@ def check_url_source(url) -> str:
     elif re.search("youtube\.com", url) is not None:
         return "ytb_url"
 
+    elif re.search("youtu\.be", url) is not None:
+        return "ytb_short_url"
+
     else:
         return "unknown"
 
@@ -75,6 +78,11 @@ def get_url_from_str(input_str, url_type) -> str:
 
     elif url_type == "ytb_url":
         url_position = re.search("youtube\.com[^ ]*", input_str).span()
+        url = "https://" + input_str[url_position[0]:url_position[1]]
+        return url
+
+    elif url_type == "ytb_short_url":
+        url_position = re.search("youtu\.be[^ ]*", input_str).span()
         url = "https://" + input_str[url_position[0]:url_position[1]]
         return url
 
