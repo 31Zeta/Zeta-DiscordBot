@@ -85,8 +85,12 @@ class AudioFileLibrary:
     def _delete_least_used_file(self) -> bool:
         target_audio = self._dl_list.index_pop(0)
         if target_audio not in self._using:
-            os.remove(target_audio.get_path())
-            self._logger.rp(f"超出{self._name}容量限制，删除文件：{target_audio.get_path()}", f"[{self._name}]")
+            try:
+                os.remove(target_audio.get_path())
+            except FileNotFoundError:
+                self._logger.rp(f"超出{self._name}容量限制，尝试删除文件：{target_audio.get_path()}，但是文件已不存在", f"[{self._name}]")
+            else:
+                self._logger.rp(f"超出{self._name}容量限制，删除文件：{target_audio.get_path()}", f"[{self._name}]")
             return True
         else:
             self._logger.rp(f"文件正在使用中，无法删除文件：{target_audio.get_path()}", f"[{self._name}]")

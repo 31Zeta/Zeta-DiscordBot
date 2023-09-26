@@ -13,16 +13,13 @@ def get_info(ytb_url):
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': "./downloads/" + '/%(title)s.%(ext)s',
+        'extract_flat': True
     }
 
     with YoutubeDL(ydl_opts) as ydl:
         info_dict = ydl.extract_info(ytb_url, download=False)
 
-    if "_type" not in info_dict:
-        return "ytb_single", info_dict
-
-    else:
-        return "ytb_playlist", info_dict
+    return info_dict
 
 
 def audio_download(ytb_url, info_dict, download_path, download_type="ytb_single") -> audio.Audio:

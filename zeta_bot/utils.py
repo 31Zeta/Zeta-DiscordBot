@@ -156,6 +156,15 @@ def convert_duration_to_time_str(duration: int) -> str:
     :return:
     """
 
+    if duration is None:
+        return f"00:00:00"
+
+    if not isinstance(duration, int):
+        try:
+            duration = int(duration)
+        except ValueError:
+            return f"00:00:00"
+
     if duration <= 0:
         return f"00:00:00"
 
@@ -211,6 +220,9 @@ def check_url_source(url) -> Union[str, None]:
 
     elif re.search("youtube\.com", url) is not None:
         return "youtube_url"
+
+    elif re.search("youtu\.be", url) is not None:
+        return "youtube_short_url"
 
     else:
         return None
@@ -277,7 +289,8 @@ def get_bvid_from_url(url):
     return result
 
 
-def make_playlist_page(info_list: list, num_per_page: int, starts_with: dict, ends_with: dict) -> list:
+def make_playlist_page(
+        info_list: list, num_per_page: int, starts_with: dict, ends_with: dict, fill_lines=False) -> list:
     """
     将<list_info>中的信息分割成每<num_per_page>一页
     <list_info>需为一个列表，每个元素是一个元组，元组包含两个元素，第一个将直接显示，第二个将在中括号内显示
@@ -285,7 +298,7 @@ def make_playlist_page(info_list: list, num_per_page: int, starts_with: dict, en
     键None保存添加到每一行前的字符串，如某行前不想添加字符则将对应行号键的值设为一个空字符串，如不添加任何字符串则向<starts_with>传入空字典{}
     <ends_with>为一个字典，保存了每行结尾添加的字符串，键为行数（从0开始），值为要添加的字符串
     键None保存添加到每一行后的字符串，如某行后不想添加字符则将对应行号键的值设为一个空字符串，如不添加任何字符串则向<starts_with>传入空字典{}
-
+    如果<fill_lines>为True，则将最后一页用空行填齐
     """
     result = []
     counter = 0
@@ -315,6 +328,12 @@ def make_playlist_page(info_list: list, num_per_page: int, starts_with: dict, en
                 f"{current_starts_with}[{counter + 1}] {current_tuple[0]} [{current_tuple[1]}]{current_ends_with}\n"
             counter += 1
         result.append(current_page)
+
+    if fill_lines:
+        while counter % num_per_page != 0:
+            result[-1] += "\n"
+            counter += 1
+
     return result
 
 
