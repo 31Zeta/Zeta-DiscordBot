@@ -15,7 +15,7 @@ class AudioFileLibrary:
     def __init__(self, root: str, path: str, name: str = "音频文件管理模块", storage_size: int = 100):
         self._root = root
         self._path = path
-        self._using = set()
+        self._using = {}
         self._storage_size = storage_size
         self._name = name
 
@@ -30,6 +30,10 @@ class AudioFileLibrary:
                 self._reset_library()
         else:
             self._reset_library()
+
+    # TODO DEBUG ONLY
+    def debug_print_using(self):
+        print(self._using)
 
     def __len__(self):
         return len(self._dl_list)
@@ -71,27 +75,48 @@ class AudioFileLibrary:
     def storage_full(self) -> bool:
         return len(self._dl_list) >= self._storage_size
 
-    def lock_audio(self, target_audio: audio.Audio) -> None:
-        self._using.add(target_audio)
+    def lock_audio(self, key, target_audio: audio.Audio) -> None:
+        """
+        将音频锁定，<key>代表某一部分需要使用该音频，当一个音频不被任何部分使用时才可完全解锁
+        :param key: 代表一个部分锁定该音频
+        :param target_audio: 需要被锁定的音频
+        """
+        if target_audio not in self._using:
+            self._using[target_audio] = set()
+        self._using[target_audio].add(key)
 
-    def unlock_audio(self, target_audio: audio.Audio) -> None:
+    def unlock_audio(self, key, target_audio: audio.Audio) -> None:
+        """
+        将音频从音频库中解锁，<key>代表某一部分需要使用该音频，当一个音频不被任何部分使用时才可完全解锁
+        重要：确保<key>所代表的部分完全不需要该音频后调用本方法
+        """
         if target_audio in self._using:
-            self._using.remove(target_audio)
+            self._using[target_audio].remove(key)
+            if len(self._using[target_audio]) == 0:
+                del self._using[target_audio]
 
     def _append_audio(self, new_audio: audio.Audio) -> None:
         self._dl_list.append(new_audio, new_audio.get_source_id(), force=True)
         self.save()
 
     def _delete_least_used_file(self) -> bool:
-        target_audio = self._dl_list.index_pop(0)
+        target_audio = self._dl_list.index_get(0)
         if target_audio not in self._using:
             try:
                 os.remove(target_audio.get_path())
             except FileNotFoundError:
                 self._logger.rp(f"超出{self._name}容量限制，尝试删除文件：{target_audio.get_path()}，但是文件已不存在", f"[{self._name}]")
+                # 将已不存在的文件移出dl_list
+                self._dl_list.key_remove(target_audio.get_source_id())
+                self.save()
+                # 删除失败，如果仍满则重试
+                if self.storage_full():
+                    self._delete_least_used_file()
             else:
                 self._logger.rp(f"超出{self._name}容量限制，删除文件：{target_audio.get_path()}", f"[{self._name}]")
-            return True
+                self._dl_list.key_remove(target_audio.get_source_id())
+                self.save()
+                return True
         else:
             self._logger.rp(f"文件正在使用中，无法删除文件：{target_audio.get_path()}", f"[{self._name}]")
             return False
@@ -102,11 +127,12 @@ class AudioFileLibrary:
         if bvid in self._dl_list:
             exists_audio = self._dl_list.key_get(bvid)
             self._logger.rp(f"音频已存在：{exists_audio.get_title()}\n路径：{exists_audio.get_path()}", f"[{self._name}]")
+            # 将再次使用的音频挪至最新
             self._append_audio(exists_audio)
             return exists_audio
 
         # 如果库满，尝试删除最不常使用的文件
-        if self.storage_full():
+        while self.storage_full():
             if not self._delete_least_used_file():
                 self._logger.rp(f"{self._name}已满且无法清除文件，下载失败", f"[{self._name}]", is_error=True)
                 raise errors.StorageFull(self._name)
@@ -121,9 +147,17 @@ class AudioFileLibrary:
             return None
 
     def download_youtube(self, url, info_dict, download_type) -> Union[audio.Audio, None]:
+        video_id = info_dict["id"]
+        # 如果文件已经存在
+        if video_id in self._dl_list:
+            exists_audio = self._dl_list.key_get(video_id)
+            self._logger.rp(f"音频已存在：{exists_audio.get_title()}\n路径：{exists_audio.get_path()}", f"[{self._name}]")
+            # 将再次使用的音频挪至最新
+            self._append_audio(exists_audio)
+            return exists_audio
 
-        if self.storage_full():
-            # 如果库满，尝试删除最不常使用的文件
+        # 如果库满，尝试删除最不常使用的文件
+        while self.storage_full():
             if not self._delete_least_used_file():
                 self._logger.rp(f"{self._name}已满且无法清除文件，下载失败", f"[{self._name}]", is_error=True)
                 raise errors.StorageFull(self._name)
@@ -131,8 +165,7 @@ class AudioFileLibrary:
         new_audio = youtube.audio_download(url, info_dict, self._root, download_type)
 
         if new_audio is not None:
-            self._dl_list.append(new_audio, new_audio.get_source_id(), force=True)
-            self.save()
+            self._append_audio(new_audio)
             return new_audio
         else:
             return None

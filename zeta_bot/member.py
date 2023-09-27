@@ -197,10 +197,7 @@ class MemberLibrary:
 
         if not os.path.exists(self.hashtag_file_path):
             utils.json_save(self.hashtag_file_path, {})
-        try:
-            self.hashtag_file = utils.json_load(self.hashtag_file_path)
-        except errors.JSONFileError:
-            raise errors.JSONFileError
+        self.hashtag_file = utils.json_load(self.hashtag_file_path)
 
     def save_hashtag_file(self):
         utils.json_save(self.hashtag_file_path, self.hashtag_file)
@@ -238,7 +235,6 @@ class MemberLibrary:
                 "language": lang.system_language,
                 "guilds": {ctx.guild.id: {
                     "nickname": ctx.user.nick},
-                    "language": lang.system_language
                 },
                 "data": {"first_contact": utils.time(), "play_counter": 0},
                 "property": {"playlists": []}

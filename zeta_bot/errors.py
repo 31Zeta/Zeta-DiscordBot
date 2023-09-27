@@ -102,9 +102,12 @@ class KeyNotFound(RuntimeError):
 
 
 class StorageFull(RuntimeError):
-    def __init__(self, library_name):
+    def __init__(self, library_name=None):
         super().__init__()
         self.library_name = library_name
 
     def __str__(self):
-        return f"{self.library_name} 已满"
+        if self.library_name is not None:
+            return f"{self.library_name} 已满"
+        else:
+            return "库已满"

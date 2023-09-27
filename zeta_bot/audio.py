@@ -11,10 +11,10 @@ class Audio:
         self._source_id = source_id
         self._path = path
         self._duration = duration
-        self._time_str = utils.convert_duration_to_time_str(duration)
+        self._duration_str = utils.convert_duration_to_str(duration)
 
     def __str__(self) -> str:
-        return f"{self._title} [{self._time_str}]"
+        return f"{self._title} [{self._duration_str}]"
 
     def __repr__(self) -> str:
         return f"<Audio对象：{self._title}>"
@@ -35,7 +35,7 @@ class Audio:
         return self._duration
 
     def get_time_str(self) -> str:
-        return self._time_str
+        return self._duration_str
 
     def encode(self) -> dict:
         return {
@@ -44,7 +44,7 @@ class Audio:
             "source_id": self._source_id,
             "path": self._path,
             "duration": self._duration,
-            "time_str": self._time_str
+            "duration_str": self._duration_str
         }
 
 

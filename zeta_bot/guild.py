@@ -24,6 +24,7 @@ class Guild:
         self._root = f"{self._lib_root}/{self._guild.id}"
         self._path = f"{self._root}/{self._guild.id}.json"
         self._audio_file_library = audio_file_library
+        self._logger = log.Log()
 
         if not os.path.exists(self._root):
             utils.create_folder(self._root)
@@ -45,8 +46,13 @@ class Guild:
 
         self.voice_volume = 100.0
 
+        self._logger.rp(f"服务器初始化完成：{self._name}", self._name)
+
     def __str__(self):
         return self._name
+
+    def get_id(self):
+        return self._id
 
     def get_name(self):
         return self._name
@@ -102,13 +108,21 @@ class GuildLibrary:
     def save_hashtag_file(self):
         utils.json_save(self._hashtag_file_path, self.hashtag_file)
 
-    def check(self, ctx: discord.ApplicationContext, audio_file_library: file_management.AudioFileLibrary) -> None:
-        guild_id = ctx.guild.id
-        guild_name = ctx.guild.name
+    def check(self, ctx: Union[discord.ApplicationContext, discord.AutocompleteContext],
+              audio_file_library: file_management.AudioFileLibrary) -> None:
+        if isinstance(ctx, discord.ApplicationContext):
+            guild_id = ctx.guild.id
+            guild_name = ctx.guild.name
+        else:
+            guild_id = ctx.interaction.guild.id
+            guild_name = ctx.interaction.guild.name
 
         # 如果guild_dict中不存在本Discord服务器
         if guild_id not in self._guild_dict:
-            self._guild_dict[guild_id] = Guild(ctx.guild, self._root, audio_file_library)
+            if isinstance(ctx, discord.ApplicationContext):
+                self._guild_dict[guild_id] = Guild(ctx.guild, self._root, audio_file_library)
+            else:
+                self._guild_dict[guild_id] = Guild(ctx.interaction.guild, self._root, audio_file_library)
 
         # 更新#Guilds文件
         if guild_id not in self.hashtag_file or guild_name != self.hashtag_file[guild_id]:
@@ -141,6 +155,9 @@ class GuildPlaylist(playlist.Playlist):
         self._guild = guild
         self._file_library = file_library
 
+    def get_guild(self):
+        return self._guild
+
     def get_file_library(self):
         return self._file_library
 
@@ -157,7 +174,8 @@ class GuildPlaylist(playlist.Playlist):
         else:
             target_audio = self._playlist.pop(index)
             self._duration -= target_audio.get_duration()
-            self._file_library.unlock_audio(target_audio)
+            if target_audio not in self._playlist:
+                self._file_library.unlock_audio(self._guild.get_id(), target_audio)
             self._guild.save()
             return target_audio
 
@@ -171,7 +189,7 @@ class GuildPlaylist(playlist.Playlist):
         if self._limitation is None or len(self._playlist) + 1 <= self._limitation:
             self._playlist.append(new_audio)
             self._duration += new_audio.get_duration()
-            self._file_library.lock_audio(new_audio)
+            self._file_library.lock_audio(self._guild.get_id(), new_audio)
             self._guild.save()
             return True
         else:
@@ -188,7 +206,7 @@ class GuildPlaylist(playlist.Playlist):
         if self._limitation is None or len(self._playlist) + 1 <= self._limitation:
             self._playlist.insert(index, new_audio)
             self._duration += new_audio.get_duration()
-            self._file_library.lock_audio(new_audio)
+            self._file_library.lock_audio(self._guild.get_id(), new_audio)
             self._guild.save()
             return True
         else:
@@ -205,7 +223,8 @@ class GuildPlaylist(playlist.Playlist):
         if target_audio is not None:
             self._duration -= self.get_audio(index).get_duration()
             del self._playlist[index]
-            self._file_library.unlock_audio(target_audio)
+            if target_audio not in self._playlist:
+                self._file_library.unlock_audio(self._guild.get_id(), target_audio)
             self._guild.save()
 
 
@@ -217,4 +236,4 @@ def guild_playlist_loader(guild_playlist: GuildPlaylist, info_dict: dict) -> Non
     for item in info_dict["playlist"]:
         current_audio = audio.audio_decoder(item)
         guild_playlist.append_audio(current_audio)
-        file_library.lock_audio(current_audio)
+        file_library.lock_audio(guild_playlist.get_guild().get_id(), current_audio)

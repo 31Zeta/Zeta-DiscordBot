@@ -162,14 +162,18 @@ class Playlist:
             self._duration -= self.get_audio(index).get_duration()
             del self._playlist[index]
 
-    def remove_all(self) -> None:
+    def remove_all(self, skip_first=False) -> None:
         """
         将播放列表中的全部音频移出播放列表
 
         :return:
         """
-        for i in range(len(self._playlist) - 1, -1, -1):
-            self.remove_audio(i)
+        if not skip_first:
+            for i in range(len(self._playlist) - 1, -1, -1):
+                self.remove_audio(i)
+        else:
+            for i in range(len(self._playlist) - 1, 0, -1):
+                self.remove_audio(i)
 
     def get_duration(self) -> int:
         """
@@ -181,7 +185,7 @@ class Playlist:
         """
         返回当前播放列表中剩余的音频的总时长，格式为字符串
         """
-        return utils.convert_duration_to_time_str(self._duration)
+        return utils.convert_duration_to_str(self._duration)
 
     def get_owner(self) -> str:
         """

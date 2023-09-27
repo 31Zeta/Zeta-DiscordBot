@@ -96,10 +96,6 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
         - httpx.ConnectTimeout 连接超时（可重试）
         - httpx.RemoteProtocolError 服务器违反了协议（可重试）
     """
-    # 将Interaction转换为InteractionMessage
-    if isinstance(response, discord.Interaction):
-        response = await response.original_response()
-
     # 获取日志记录器
     logger = log.Log()
 
@@ -134,9 +130,6 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
 
     # print(current_time + f"\n    开始下载: {title}.mp3\n下载进度:")
 
-    # 处理 bilibili_api.exceptions.ArgsException.ArgsException: bvid 提供错误，必须是以 BV 开头的纯字母和数字组成的 12 位字符串（大小写敏感）。
-    # bilibili_api.exceptions.ResponseCodeException.ResponseCodeException
-
     async with aiohttp.ClientSession() as sess:
         # 下载音频流
         async with sess.get(audio_url, headers=headers) as resp:
@@ -162,10 +155,10 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
     logger.rp(
         f"下载完成\n"
         f"文件名：{title}.mp3\n"
-        f"来源：{bvid}\n"
+        f"来源：[哔哩哔哩] {bvid}\n"
         f"路径：{download_path}\n"
         f"大小：{size[0]} {size[1]}\n"
-        f"时长：{utils.convert_duration_to_time_str(duration)}",
+        f"时长：{utils.convert_duration_to_str(duration)}",
         f"[{level}]"
     )
 

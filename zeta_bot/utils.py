@@ -148,7 +148,7 @@ def time_split(time_str: str) -> list:
     return time_list
 
 
-def convert_duration_to_time_str(duration: int) -> str:
+def convert_duration_to_str(duration: int) -> str:
     """
     将获取的秒数转换为普通时间格式字符串
 
