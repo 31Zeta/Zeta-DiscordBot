@@ -295,7 +295,7 @@ async def get_main_playlist_number(ctx: discord.AutocompleteContext):
     return number_list
 
 
-@bot.slash_command(description="[管理员] 测试指令")
+@bot.slash_command(description="[管理员] 测试指令1")
 async def debug1(ctx):
     """
     测试用指令
@@ -303,25 +303,18 @@ async def debug1(ctx):
     if not await command_check(ctx):
         return
 
-    t1 = await ctx.respond(f"原始信息")
-    t2 = await t1.original_response()
-    print(t2.content)
-    print()
-    t3 = await t2.edit("一次修改信息")
-    print(t2.content)
-    print(t3.content)
-    print()
-    t4 = await t2.edit("二次修改信息")
-    print(t2.content)
-    print(t4.content)
-    print()
-    t5 = await t3.original_response()
-    print(t5.content)
+    voice_client = ctx.guild.voice_client
+    current_guild = guild_lib.get_guild(ctx)
+    current_playlist = current_guild.get_playlist()
+
+    print(current_playlist)
+    voice_client.stop()
+    print(current_playlist)
 
     await ctx.respond("测试结果已打印")
 
 
-@bot.slash_command(description="[管理员] 测试指令")
+@bot.slash_command(description="[管理员] 测试指令2")
 async def debug2(ctx):
     """
     测试用指令
@@ -334,15 +327,21 @@ async def debug2(ctx):
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
+    if voice_client:
+        vc = True
+    else:
+        vc = False
+
+    print(f"Voice client is True/False：{vc}")
     print(f"Voice client 正在播放：{voice_client.is_playing()}")
     print(f"Voice client 正在暂停：{voice_client.is_paused()}")
     print(f"主播放列表为空：{current_playlist.is_empty()}")
+    print(current_playlist)
 
     await ctx.respond("测试结果已打印")
 
 
-# TODO DEBUG ONLY
-@bot.slash_command(description="[管理员] 测试指令")
+@bot.slash_command(description="[管理员] 测试指令3")
 async def debug3(ctx):
     """
     测试用指令
@@ -411,7 +410,7 @@ async def play(ctx: discord.ApplicationContext, link=None) -> None:
 async def pause(ctx: discord.ApplicationContext):
     if not await command_check(ctx):
         return
-    await pause_callback(ctx)
+    await pause_callback(ctx, command_call=True)
 
 
 @bot.slash_command(description="继续播放暂停或被意外中断的音频")
@@ -439,17 +438,16 @@ async def skip(ctx: discord.ApplicationContext, name=None):
     if not await command_check(ctx):
         return
     if name is None:
-        await skip_callback(ctx)
+        await skip_callback(ctx, first_index=None, second_index=None)
     elif name == "全部":
         await skip_callback(ctx, "*")
-        return
-
-    current_playlist = guild_lib.get_guild(ctx).get_playlist().get_audio_str_list()
-    counter = 1
-    for item in current_playlist:
-        if name == item:
-            await skip_callback(ctx, counter)
-        counter += 1
+    else:
+        current_playlist = guild_lib.get_guild(ctx).get_playlist().get_audio_str_list()
+        counter = 1
+        for item in current_playlist:
+            if name == item:
+                await skip_callback(ctx, counter)
+            counter += 1
 
 
 @bot.slash_command(description="通过序号跳过正在播放或播放列表中的音频 [Skip by Index]")
@@ -661,9 +659,9 @@ async def play_callback(ctx: discord.ApplicationContext, link,
         if not join_result:
             return
 
-    # 尝试恢复之前被停止的播放
+    # 尝试恢复之前被停止的播放（暂时取消）
     # if voice_client is not None and (not voice_client.is_playing() or voice_client.is_paused()):
-    await resume_callback(ctx, command_call=False)
+    # await resume_callback(ctx, command_call=False)
 
     # 检查输入的URL属于哪个网站
     source = utils.check_url_source(link)
@@ -672,6 +670,7 @@ async def play_callback(ctx: discord.ApplicationContext, link,
     if source is not None:
         link = utils.get_url_from_str(link, source)
 
+    # TODO 完成哔哩哔哩播放提示整体重制（ec）
     # Link属于Bilibili
     if source == "bilibili_bvid" or source == "bilibili_url" or source == "bilibili_short_url":
         loading_msg = await ctx.respond("正在加载Bilibili音频信息")
@@ -680,32 +679,7 @@ async def play_callback(ctx: discord.ApplicationContext, link,
     # Link属于YouTube
     elif source == "youtube_url" or source == "youtube_short_url":
         loading_msg = await ctx.respond("正在获取Youtube音频信息")
-        try:
-            new_audio = await play_youtube(ctx, link, response=loading_msg)
-
-            # new_audio is not None 对应如果为列表的情况
-            if new_audio is not None:
-                # 如果列表为空则会有正在播放提示，如果正在播放则播放以下提示
-                if not current_playlist.is_empty() and voice_client.is_playing():
-                    await eos(ctx, loading_msg, f"已加入播放列表：**{new_audio.get_title()} [{new_audio.get_time_str()}]**")
-
-                current_playlist.append_audio(new_audio)
-                logger.rp(f"音频 {new_audio.get_title()} [{new_audio.get_time_str()}] 已加入播放列表", ctx.guild)
-
-        except errors.StorageFull():
-            await eos(ctx, loading_msg, "机器人当前处理音频过多，请稍后再试")
-        except yt_dlp.utils.DownloadError:
-            await eos(ctx, loading_msg, "视频获取失败")
-            logger.rp("触发异常yt_dlp.utils.DownloadError，视频不可用", ctx.guild, is_error=True)
-        except yt_dlp.utils.ExtractorError:
-            await eos(ctx, loading_msg, "视频获取失败")
-            logger.rp("触发异常yt_dlp.utils.ExtractorError，视频不可用", ctx.guild, is_error=True)
-        except yt_dlp.utils.UnavailableVideoError:
-            await eos(ctx, loading_msg, "视频不可用")
-            logger.rp("触发异常yt_dlp.utils.UnavailableVideoError，视频不可用", ctx.guild, is_error=True)
-        except discord.HTTPException:
-            await eos(ctx, loading_msg, "视频获取失败")
-            logger.rp("触发异常discord.HTTPException", ctx.guild, is_error=True)
+        new_audio = await play_youtube(ctx, link, response=loading_msg)
 
     else:
         if link is not None:
@@ -739,11 +713,7 @@ async def play_audio(ctx: discord.ApplicationContext, target_audio: audio.Audio,
     voice_client.source.volume = current_guild.get_voice_volume() / 100.0
 
     if not function_call:
-        logger.rp(
-            f"开始播放：{target_audio.get_path()} 时长：{target_audio.get_time_str()}",
-            ctx.guild
-        )
-
+        logger.rp(f"开始播放：{target_audio.get_path()} 时长：{target_audio.get_time_str()}", ctx.guild)
         await eos(ctx, response, f"正在播放：**{target_audio.get_title()} [{target_audio.get_time_str()}]**")
 
 
@@ -753,23 +723,23 @@ async def play_next(ctx: discord.ApplicationContext) -> None:
 
     :param ctx: 指令原句
     """
+    voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
-    logger.rp(f"触发play_next", ctx.guild)
+    logger.rp(f"触发 play_next", ctx.guild)
 
     # 移除上一个音频
     finished_audio = current_playlist.pop_audio(0)
     # 解锁上一个音频
     audio_lib_main.unlock_audio(f"{ctx.guild.id}_NOW_PLAYING", finished_audio)
 
-    if len(current_playlist) > 1:
+    if len(current_playlist) > 0:
         # 获取下一个音频
         next_audio = current_playlist.get_audio(0)
         await play_audio(ctx, next_audio, response=None)
 
     else:
-        current_playlist.remove_audio(0)
         logger.rp("播放队列已结束", ctx.guild)
         await ctx.send("播放队列已结束")
 
@@ -885,41 +855,96 @@ async def add_bilibili_audio(ctx: discord.ApplicationContext, info_dict, audio_t
 
 
 async def play_youtube(
-        ctx: discord.ApplicationContext, link, response=None) -> Union[None, audio.Audio]:
+        ctx: discord.ApplicationContext, link, response=None, list_add_call=False) -> Union[None, audio.Audio]:
     """
     下载并播放来自Bilibili的视频的音频
 
     :param ctx: 指令原句
     :param link: 链接
     :param response: 用于编辑的加载信息
-    :return: 播放的音频
+    :param list_add_call: 是否是列表添加进行调用
+    :return: 播放的音频（如果为播放列表或获取失败则返回None）
     """
     # TODO 添加youtube版检查合集view
     if "&list" in link:
         link = link[:link.find("&list")]
 
-    info_dict = youtube.get_info(link)
+    # 先提取信息再进行下载
+    try:
+        info_dict = youtube.get_info(link)
 
+    # Youtube信息提取异常处理
+    except yt_dlp.utils.DownloadError:
+        await eos(ctx, response, "视频获取失败")
+        logger.rp("触发异常yt_dlp.utils.DownloadError，视频不可用", ctx.guild, is_error=True)
+        return None
+    except yt_dlp.utils.ExtractorError:
+        await eos(ctx, response, "视频获取失败")
+        logger.rp("触发异常yt_dlp.utils.ExtractorError，视频不可用", ctx.guild, is_error=True)
+        return None
+    except yt_dlp.utils.UnavailableVideoError:
+        await eos(ctx, response, "视频不可用")
+        logger.rp("触发异常yt_dlp.utils.UnavailableVideoError，视频不可用", ctx.guild, is_error=True)
+        return None
+    except discord.HTTPException:
+        await eos(ctx, response, "视频获取失败")
+        logger.rp("触发异常discord.HTTPException", ctx.guild, is_error=True)
+        return None
+
+    # 信息类型判定
     if "_type" in info_dict and info_dict["_type"] == "playlist":
         link_type = "youtube_playlist"
     else:
         link_type = "youtube_single"
 
-    # 单一视频 youtube_single
+    # 独立音频 youtube_single
     if link_type == "youtube_single":
         voice_client = ctx.guild.voice_client
         current_guild = guild_lib.get_guild(ctx)
         current_playlist = current_guild.get_playlist()
 
         # 开始下载
-        new_audio = audio_lib_main.download_youtube(link, info_dict, link_type)
+        try:
+            new_audio = audio_lib_main.download_youtube(link, info_dict, link_type)
 
-        if new_audio is not None:
-            # 如果当前播放列表为空
-            if current_playlist.is_empty() and not voice_client.is_playing():
-                await play_audio(ctx, new_audio, response=response)
+            if new_audio is not None:
+                if current_playlist.is_empty() and not voice_client.is_playing():
+                    await play_audio(ctx, new_audio, response=response)
 
-        return new_audio
+                # 如果是列表添加则结束本次调用，因为提示信息不同，音频的添加和列表处理通过返回new_audio交由循环调用处理
+                # 如果不是列表添加
+                if not list_add_call:
+                    # 如果列表为空则会有正在播放提示，如果不为空且voice_client正在播放则播放加入列表提示
+                    if not current_playlist.is_empty() and voice_client.is_playing():
+                        await eos(ctx, response, f"已加入播放列表：**{new_audio.get_title()} [{new_audio.get_time_str()}]**")
+
+                    # 添加至服务器播放列表
+                    current_playlist.append_audio(new_audio)
+                    logger.rp(f"音频 {new_audio.get_title()} [{new_audio.get_time_str()}] 已加入播放列表", ctx.guild)
+
+            # 返回None或者新下载的音频
+            return new_audio
+
+        # YouTube独立音频异常处理
+        except errors.StorageFull():
+            await eos(ctx, response, "机器人当前处理音频过多，请稍后再试")
+            return None
+        except yt_dlp.utils.DownloadError:
+            await eos(ctx, response, "视频获取失败")
+            logger.rp("触发异常yt_dlp.utils.DownloadError，视频不可用", ctx.guild, is_error=True)
+            return None
+        except yt_dlp.utils.ExtractorError:
+            await eos(ctx, response, "视频获取失败")
+            logger.rp("触发异常yt_dlp.utils.ExtractorError，视频不可用", ctx.guild, is_error=True)
+            return None
+        except yt_dlp.utils.UnavailableVideoError:
+            await eos(ctx, response, "视频不可用")
+            logger.rp("触发异常yt_dlp.utils.UnavailableVideoError，视频不可用", ctx.guild, is_error=True)
+            return None
+        except discord.HTTPException:
+            await eos(ctx, response, "视频获取失败")
+            logger.rp("触发异常discord.HTTPException", ctx.guild, is_error=True)
+            return None
 
     # 播放列表 youtube_playlist
     else:
@@ -929,11 +954,13 @@ async def play_youtube(
             ep_time_str = utils.convert_duration_to_str(item["duration"])
             ep_info_list.append((ep_title, ep_time_str))
 
+        # 本次调用结束，转交给EpisodeSelectView分别对每个选择的独立音频调用本方法
         menu_list = utils.make_playlist_page(
             ep_info_list, 10, starts_with={None: "        "}, ends_with={}, fill_lines=True)
         view = EpisodeSelectView(ctx, "youtube_playlist", info_dict, menu_list, info_dict['title'])
         await eos(ctx, response, f"## 播放列表 | {info_dict['title']}\n请选择要播放的集数:\n{menu_list[0]}\n"
                                  f"第[1]页，共[{len(menu_list)}]页\n已输入：", view=view)
+        # 返回None代表本次调用获得的是播放列表
         return None
 
 
@@ -975,11 +1002,12 @@ async def search_ytb(ctx: discord.ApplicationContext, input_name):
     # await ctx.respond(message, view=view)
 
 
-async def pause_callback(ctx: discord.ApplicationContext):
+async def pause_callback(ctx: discord.ApplicationContext, command_call: bool = False):
     """
     暂停播放
 
     :param ctx: 指令原句
+    :param command_call: 该指令是否是由用户指令调用
     :return:
     """
     guild_lib.check(ctx, audio_lib_main)
@@ -987,17 +1015,19 @@ async def pause_callback(ctx: discord.ApplicationContext):
     voice_client = ctx.guild.voice_client
 
     if voice_client is not None and voice_client.is_playing():
-        if ctx.user.voice and voice_client.channel == ctx.user.voice.channel:
-            voice_client.pause()
-            logger.rp("暂停播放", ctx.guild)
+        # if ctx.user.voice and voice_client.channel == ctx.user.voice.channel:
+        voice_client.pause()
+        logger.rp("暂停播放", ctx.guild)
+        if command_call:
             await ctx.respond("暂停播放")
-        else:
-            logger.rp(f"收到pause指令时指令发出者 {ctx.author} 不在机器人所在的频道", ctx.guild)
-            await ctx.respond(f"您不在{setting.value('bot_name')}所在的频道")
+        # else:
+        #     logger.rp(f"收到pause指令时指令发出者 {ctx.author} 不在机器人所在的频道", ctx.guild)
+        #     await ctx.respond(f"您不在{setting.value('bot_name')}所在的频道")
 
     else:
         logger.rp("收到pause指令时机器人未在播放任何音乐", ctx.guild)
-        await ctx.respond("未在播放任何音乐")
+        if command_call:
+            await ctx.respond("未在播放任何音乐")
 
 
 async def resume_callback(ctx: discord.ApplicationContext, command_call: bool = False):
@@ -1077,11 +1107,21 @@ async def list_callback(ctx: discord.ApplicationContext):
     else:
         playlist_list = utils.make_playlist_page(current_playlist.get_list_info(), 10,
                                                  {None: ">       ", 0: "> ▶  **"}, {0: "**"})
-
+        voice_client = ctx.guild.voice_client
+        if voice_client:
+            voice_client_status = "不在语音频道中"
+        elif voice_client.is_playing():
+            voice_client_status = "正在播放"
+        elif voice_client.is_paused():
+            voice_client_status = "暂停"
+        else:
+            voice_client_status = "未知"
         view = PlaylistMenu(ctx, current_playlist)
+        # TODO 完成列表播放状态
         await ctx.respond(
             content=f"## {current_playlist.get_name()}\n"
-                    f"    [列表长度：{len(current_playlist)} | 总时长：{current_playlist.get_time_str()}]\n\n"
+                    f"    [列表长度：{len(current_playlist)} | 总时长：{current_playlist.get_time_str()}]\n"
+                    f"    |播放状态：{voice_client_status}|\n\n"
                     f"{playlist_list[0]}\n第[1]页，共[{len(playlist_list)}]页\n",
             view=view
         )
@@ -1109,7 +1149,12 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
             title = current_audio.get_title()
 
             if voice_client is not None:
+                voice_client_is_paused = voice_client.is_paused()
                 voice_client.stop()
+                # 如果跳过之前正在暂停状态且准备播放下一个音频，则恢复暂停状态
+                if not voice_client.is_playing() and voice_client_is_paused:
+                    voice_client.pause()
+                    await ctx.send("播放器已被暂停，使用/resume指令恢复播放")
             else:
                 current_playlist.remove_audio(0)
 
@@ -1119,7 +1164,7 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
         # 输入1个参数的情况
         elif second_index is None:
 
-            if first_index == "*" or first_index == "all" or first_index == "All" or first_index == "ALL":
+            if first_index == "*":
                 await clear(ctx)
 
             elif int(first_index) == 1:
@@ -1246,8 +1291,8 @@ async def clear(ctx):
     :param ctx: 指令原句
     :return:
     """
-    if not await command_check(ctx):
-        return
+    # if not await command_check(ctx):
+    #     return
 
     guild_lib.check(ctx, audio_lib_main)
 
@@ -1360,6 +1405,17 @@ class PlaylistMenu(View):
                           f"{self.playlist_pages[0]}\n" \
                           f"第[1]页，共[{len(self.playlist_pages)}]页\n"
 
+        voice_client = self.ctx.guild.voice_client
+        if voice_client:
+            voice_client_status = "不在语音频道中"
+        elif voice_client.is_playing():
+            voice_client_status = "正在播放"
+        elif voice_client.is_paused():
+            voice_client_status = "暂停"
+        else:
+            voice_client_status = "未知"
+        self.voice_client_status = voice_client_status
+
     def refresh_pages(self):
         self.playlist_pages = utils.make_playlist_page(self.playlist.get_list_info(), 10,
                                                        {None: ">       ", 0: "> ▶  **"}, {0: "**"})
@@ -1368,6 +1424,17 @@ class PlaylistMenu(View):
                           f"{self.playlist_pages[0]}\n" \
                           f"第[1]页，共[{len(self.playlist_pages)}]页\n"
         self.playlist_duration = self.playlist.get_time_str()
+
+        voice_client = self.ctx.guild.voice_client
+        if voice_client:
+            voice_client_status = "不在语音频道中"
+        elif voice_client.is_playing():
+            voice_client_status = "正在播放"
+        elif voice_client.is_paused():
+            voice_client_status = "暂停"
+        else:
+            voice_client_status = "未知"
+        self.voice_client_status = voice_client_status
 
     @discord.ui.button(label="上一页", style=discord.ButtonStyle.grey,
                        custom_id="button_previous")
@@ -1939,26 +2006,30 @@ class EpisodeSelectView(View):
             total_duration = utils.convert_duration_to_str(total_duration)
             loading_msg = await self.ctx.send(f"正在将{valid_counter}个音频加入播放列表  总时长 -> [{total_duration}]")
 
+            # 循环添加
             for num in final_result:
                 # 跳过已被删除的视频
                 if self.info_dict['entries'][num - 1]['duration'] is not None:
                     url = f"https://www.youtube.com/watch?v={self.info_dict['entries'][num - 1]['id']}"
 
                     try:
-                        new_audio = await play_youtube(self.ctx, url, response=None)
+                        new_audio = await play_youtube(self.ctx, url, response=None, list_add_call=True)
                         # 如果音频加载成功
                         if new_audio is not None:
-                            # 重载loading_msg为Message对象
+                            # 重载loading_msg为Message对象（否则无法ec累计更新提示信息）
                             loading_msg = await ec(
                                 loading_msg, f"已加入播放列表：**{new_audio.get_title()} [{new_audio.get_time_str()}]**"
                             )
-                        self.current_playlist.append_audio(new_audio)
-                        logger.rp(f"音频 {new_audio.get_title()} [{new_audio.get_time_str()}] 已加入播放列表", self.ctx.guild)
+                            # 添加至服务器播放列表
+                            self.current_playlist.append_audio(new_audio)
+                            logger.rp(f"音频 {new_audio.get_title()} [{new_audio.get_time_str()}] 已加入播放列表",
+                                      self.ctx.guild)
 
+                    # YouTube列表下载异常处理
                     except errors.StorageFull:
                         logger.rp("库已满，播放列表添加失败", self.ctx.guild, is_error=True)
                         await ec(loading_msg, "机器人当前处理音频过多，无法完成播放列表添加")
-                        return
+                        return  # 终止
                     except yt_dlp.utils.DownloadError:
                         loading_msg = await ec(loading_msg, "视频获取失败")
                         logger.rp("触发异常yt_dlp.utils.DownloadError，视频不可用", self.ctx.guild, is_error=True)
