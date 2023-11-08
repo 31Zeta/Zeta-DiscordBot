@@ -261,7 +261,7 @@ async def eos(ctx: discord.ApplicationContext, response, content: str, view=None
 
 async def ec(target, content: str, view=None) -> Union[None, discord.Message]:
     """
-    [Edit Cumulativly]
+    [Edit Cumulatively]
     如果修改次数大于一次，请确保传入本方法第一次返回的Message对象，因为Interaction只能获取最初的信息
     """
     if isinstance(target, discord.Message):
@@ -277,7 +277,61 @@ async def ec(target, content: str, view=None) -> Union[None, discord.Message]:
     return await target.edit(content=new_content, view=view)
 
 
-async def get_main_playlist(ctx: discord.AutocompleteContext):
+def get_voice_client_status(voice_client: discord.VoiceProtocol) -> int:
+    """
+    获取voice_client的播放状态
+        0 - 待机中
+        1 - 正在播放
+        2 - 暂停
+        3 - 不在语音频道中
+    """
+    if not voice_client:
+        voice_client_status = 3
+    elif voice_client.is_playing():
+        voice_client_status = 1
+    elif voice_client.is_paused():
+        voice_client_status = 2
+    else:
+        voice_client_status = 0
+    return voice_client_status
+
+
+def get_voice_client_status_str(status_code: int) -> str:
+    """
+    将voice_client播放状态代码转换为文本
+        0 - 待机中
+        1 - 正在播放
+        2 - 暂停
+        3 - 不在语音频道中
+    """
+    if status_code == 3:
+        voice_client_status = "不在语音频道中"
+    elif status_code == 1:
+        voice_client_status = "正在播放"
+    elif status_code == 2:
+        voice_client_status = "暂停"
+    elif status_code == 0:
+        voice_client_status = "待机中"
+    else:
+        voice_client_status = "未知"
+    return voice_client_status
+
+
+choices_search_sites = ["哔哩哔哩", "YouTube"]
+
+
+async def autocomplete_search_sites(ctx: discord.AutocompleteContext):
+    """
+    search指令用自动填充 - 可选的搜索平台
+    """
+    guild_lib.check(ctx, audio_lib_main)
+    return choices_search_sites
+
+
+async def autocomplete_skip_playlist(ctx: discord.AutocompleteContext):
+    """
+    skip指令用自动填充 - 播放列表音频名称列表生成
+    """
     guild_lib.check(ctx, audio_lib_main)
 
     audio_str_list = guild_lib.get_guild(ctx).get_playlist().get_audio_str_list()
@@ -285,7 +339,10 @@ async def get_main_playlist(ctx: discord.AutocompleteContext):
     return audio_str_list
 
 
-async def get_main_playlist_number(ctx: discord.AutocompleteContext):
+async def autocomplete_skipi_playlist_index(ctx: discord.AutocompleteContext):
+    """
+    skipi指令用自动填充 - 播放列表序号列表生成
+    """
     guild_lib.check(ctx, audio_lib_main)
 
     playlist_len = len(guild_lib.get_guild(ctx).get_playlist())
@@ -354,28 +411,28 @@ async def debug3(ctx):
     await ctx.respond("测试结果已打印")
 
 
-@bot.slash_command(description="关于Zeta-Discord机器人")
+@bot.slash_command(name_localizations=lang.get_command_name("info"), description="关于Zeta-Discord机器人")
 async def info(ctx: discord.ApplicationContext) -> None:
     if not await command_check(ctx):
         return
     await info_callback(ctx)
 
 
-@bot.slash_command(description="帮助菜单")
+@bot.slash_command(name_localizations=lang.get_command_name("help"), description="召唤帮助菜单")
 async def help(ctx: discord.ApplicationContext) -> None:
     if not await command_check(ctx):
         return
     await help_callback(ctx)
 
 
-# @bot.slash_command(description="[管理员] 向机器人所在的所有服务器广播消息")
+# @bot.slash_command(name_localizations={"zh-CN": "广播"}, description="[管理员] 向机器人所在的所有服务器广播消息")
 async def broadcast(ctx: discord.ApplicationContext, message) -> None:
     if not await command_check(ctx):
         return
     await broadcast_callback(ctx, message)
 
 
-@bot.slash_command(description=f"让{bot_name}加入语音频道")
+@bot.slash_command(name_localizations=lang.get_command_name("join"), description=f"让{bot_name}加入当前所在或者指定语音频道")
 @option(
     "channel", discord.VoiceChannel,
     description=f"要让{bot_name}加入的频道，如果不选择则加入指令发送者所在的频道",
@@ -387,14 +444,34 @@ async def join(ctx: discord.ApplicationContext, channel: Union[discord.VoiceChan
     return await join_callback(ctx, channel, command_call=True)
 
 
-@bot.slash_command(description=f"让{bot_name}离开语音频道")
+@bot.slash_command(name_localizations=lang.get_command_name("leave"), description=f"让{bot_name}离开当前所在语音频道")
 async def leave(ctx: discord.ApplicationContext) -> None:
     if not await command_check(ctx):
         return
     await leave_callback(ctx)
 
 
-@bot.slash_command(description="播放来自哔哩哔哩或Youtube的音频")
+@bot.slash_command(name_localizations=lang.get_command_name("search_audio"), description="播放来自哔哩哔哩或Youtube的音频")
+@option(
+    "query",
+    description="要搜索的名称",
+    required=True
+)
+@option(
+    "site",
+    description="要在什么平台上搜索",
+    required=True,
+    # autocomplete=autocomplete_search_sites
+    choices=choices_search_sites
+)
+async def search_audio(ctx: discord.ApplicationContext, query, site) -> None:
+    if not await command_check(ctx):
+        return
+    # TODO 完成不强制输入平台的混合搜索
+    await search_audio_callback(ctx, query, site)
+
+
+@bot.slash_command(name_localizations=lang.get_command_name("play"), description="播放来自哔哩哔哩或Youtube的音频")
 @option(
     "link",
     description="要播放的音频（视频）的链接或者哔哩哔哩BV号",
@@ -406,33 +483,33 @@ async def play(ctx: discord.ApplicationContext, link=None) -> None:
     await play_callback(ctx, link)
 
 
-@bot.slash_command(description="暂停正在播放的音频")
+@bot.slash_command(name_localizations=lang.get_command_name("pause"), description="暂停正在播放的音频")
 async def pause(ctx: discord.ApplicationContext):
     if not await command_check(ctx):
         return
     await pause_callback(ctx, command_call=True)
 
 
-@bot.slash_command(description="继续播放暂停或被意外中断的音频")
+@bot.slash_command(name_localizations=lang.get_command_name("resume"), description="继续播放暂停或被意外中断的音频")
 async def resume(ctx: discord.ApplicationContext):
     if not await command_check(ctx):
         return
     await resume_callback(ctx, command_call=True)
 
 
-@bot.slash_command(description="显示当前播放列表")
+@bot.slash_command(name_localizations=lang.get_command_name("list"), description="召唤当前播放列表")
 async def list(ctx: discord.ApplicationContext):
     if not await command_check(ctx):
         return
     await list_callback(ctx)
 
 
-@bot.slash_command(description="跳过正在播放或播放列表中的音频")
+@bot.slash_command(name_localizations=lang.get_command_name("skip"), description="跳过正在播放或播放列表中的音频")
 @option(
     "name",
     description="需要跳过的音频",
     required=False,
-    autocomplete=get_main_playlist,
+    autocomplete=autocomplete_skip_playlist,
 )
 async def skip(ctx: discord.ApplicationContext, name=None):
     if not await command_check(ctx):
@@ -450,19 +527,19 @@ async def skip(ctx: discord.ApplicationContext, name=None):
             counter += 1
 
 
-@bot.slash_command(description="通过序号跳过正在播放或播放列表中的音频 [Skip by Index]")
+@bot.slash_command(name_localizations=lang.get_command_name("skipi"), description="通过序号跳过正在播放或播放列表中的音频")
 @option(
     "from_number", int,
     description="需要跳过的音频的序号",
     required=False,
-    autocomplete=get_main_playlist_number,
+    autocomplete=autocomplete_skipi_playlist_index,
     min_value=1
 )
 @option(
     "to_number", int,
     description="需要跳过的音频的序号",
     required=False,
-    autocomplete=get_main_playlist_number,
+    autocomplete=autocomplete_skipi_playlist_index,
     min_value=1
 )
 async def skipi(ctx: discord.ApplicationContext,
@@ -472,7 +549,7 @@ async def skipi(ctx: discord.ApplicationContext,
     await skip_callback(ctx, from_number, to_number)
 
 
-@bot.slash_command(description="移动播放列表中音频的位置")
+@bot.slash_command(name_localizations=lang.get_command_name("move"), description="移动播放列表中音频的位置")
 @option(
     "from_number", int,
     description="需要移动的音频的序号",
@@ -492,21 +569,21 @@ async def move(ctx, from_number: Union[int, None] = None, to_number: Union[int, 
 
 
 # TODO 继续添加选项装饰器
-@bot.slash_command(description=f"调整{bot_name}的语音频道音量")
+@bot.slash_command(name_localizations=lang.get_command_name("volume"), description=f"调整{bot_name}的语音频道音量")
 async def volume(ctx: discord.ApplicationContext, volume_num=None) -> None:
     if not await command_check(ctx):
         return
     await volume_callback(ctx, volume_num)
 
 
-@bot.slash_command(description="[管理员] 重启机器人")
+@bot.slash_command(name_localizations=lang.get_command_name("reboot"), description="[管理员] 重启机器人")
 async def reboot(ctx):
     if not await command_check(ctx):
         return
     await reboot_callback(ctx)
 
 
-@bot.slash_command(description="[管理员] 关闭机器人")
+@bot.slash_command(name_localizations=lang.get_command_name("shutdown"), description="[管理员] 关闭机器人")
 async def shutdown(ctx):
     if not await command_check(ctx):
         return
@@ -624,6 +701,26 @@ async def leave_callback(ctx: discord.ApplicationContext) -> None:
 
     else:
         await ctx.respond(f"{bot_name} 没有连接到任何语音频道")
+
+
+async def search_audio_callback(ctx: discord.ApplicationContext, query, site=None) -> None:
+    # TODO 临时
+
+    if site == "哔哩哔哩":
+        search_result = await bilibili.search(query, query_num=5)
+    elif site == "YouTube":
+        search_result = youtube.search(query, query_num=5)
+    else:
+        await ctx.respond("不支持该平台搜索")
+        return
+
+    result = f"[DEBUG] {site}搜索结果为:"
+    counter = 1
+    for item in search_result:
+        result += f"\n{counter}. {item['id']} {item['title']} [{utils.convert_duration_to_str(item['duration'])}]"
+        counter += 1
+
+    await ctx.respond(result)
 
 
 async def play_callback(ctx: discord.ApplicationContext, link,
@@ -776,16 +873,49 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
     else:
         bvid = link
 
-    # 获取Bilibili视频信息
     try:
+        # 获取Bilibili视频信息
         info_dict = await bilibili.get_info(bvid)
+
+        # 单一视频 bilibili_single
+        if info_dict["videos"] == 1 and "ugc_season" not in info_dict:
+            await add_bilibili_audio(ctx, info_dict, "bilibili_single", 0, response=response)
+
+        # 合集视频 bilibili_collection
+        elif "ugc_season" in info_dict:
+            await add_bilibili_audio(ctx, info_dict, "bilibili_single", 0, response=response)
+            collection_title = info_dict["ugc_season"]["title"]
+            message = f"**{info_dict['title']}** 包含在合集 **{collection_title}** 中, 是否要查看此合集？\n"
+            view = CheckCollectionView(ctx, "bilibili_collection", info_dict, response=response)
+            view_msg = await ctx.send(message, view=view)
+            await view.set_original_msg(view_msg)
+
+        # 分P视频 bilibili_p
+        else:
+            p_info_list = []
+            for item in info_dict["pages"]:
+                p_title = item["part"]
+                p_time_str = utils.convert_duration_to_str(item["duration"])
+                p_info_list.append((p_title, p_time_str))
+
+            menu_list = utils.make_playlist_page(p_info_list, 10, {}, {})
+            view = EpisodeSelectView(ctx, "bilibili_p", info_dict, menu_list, "哔哩哔哩分P")
+            await eos(
+                ctx, response, content=f"## 哔哩哔哩分P\n请选择要播放的集数:\n{menu_list[0]}\n第[1]页，共[{len(menu_list)}]页\n已输入：",
+                view=view
+            )
+            return
+
+    except errors.StorageFull:
+        await eos(ctx, response, "机器人当前处理音频过多，请稍后再试")
+        return
     except bilibili_api.ResponseCodeException:
         await eos(ctx, response, "哔哩哔哩无响应，该视频可能已失效或存在区域版权限制")
         logger.rp("触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，该视频内容可能已失效或存在区域版权限制", ctx.guild,
                   is_error=True)
         return
     except bilibili_api.ArgsException:
-        await eos(ctx, response, "bvid错误")
+        await eos(ctx, response, "参数错误，请检查链接中的BV号是否正确完整")
         logger.rp("触发异常bilibili_api.ArgsException，参数异常，可能为bvid错误", ctx.guild, is_error=True)
         return
     except httpx.ConnectTimeout:
@@ -797,35 +927,6 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
         logger.rp("触发异常httpx.RemoteProtocolError，服务器协议错误", ctx.guild, is_error=True)
         return
 
-    # 单一视频 bilibili_single
-    if info_dict["videos"] == 1 and "ugc_season" not in info_dict:
-        await add_bilibili_audio(ctx, info_dict, "bilibili_single", 0, response=response)
-
-    # 合集视频 bilibili_collection
-    elif "ugc_season" in info_dict:
-        await add_bilibili_audio(ctx, info_dict, "bilibili_single", 0, response=response)
-        # TODO 检查合集提示是否会覆盖原有的加载信息（需保留原有信息）
-        collection_title = info_dict["ugc_season"]["title"]
-        message = f"此视频包含在合集 **{collection_title}** 中, 是否要查看此合集？\n"
-        view = CheckBilibiliCollectionView(ctx, info_dict, response=response)
-        view_msg = await ctx.respond(message, view=view)
-        await view.set_original_msg(view_msg)
-
-    # 分P视频 bilibili_p
-    else:
-        p_info_list = []
-        for item in info_dict["pages"]:
-            p_title = item["part"]
-            p_time_str = utils.convert_duration_to_str(item["duration"])
-            p_info_list.append((p_title, p_time_str))
-
-        menu_list = utils.make_playlist_page(p_info_list, 10, {}, {})
-        view = EpisodeSelectView(ctx, "bilibili_p", info_dict, menu_list)
-        await eos(ctx, response,
-                        f"这是一个分p视频, 请选择要播放的分p:\n{menu_list[0]}\n第[1]页，共[{len(menu_list)}]页\n已输入：",
-                  view=view)
-        return
-
 
 async def add_bilibili_audio(ctx: discord.ApplicationContext, info_dict, audio_type, num_option: int = 0,
                              response: Union[discord.Interaction, discord.InteractionMessage, None] = None):
@@ -833,11 +934,7 @@ async def add_bilibili_audio(ctx: discord.ApplicationContext, info_dict, audio_t
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
-    try:
-        new_audio = await audio_lib_main.download_bilibili(info_dict, audio_type, num_option)
-    except errors.StorageFull:
-        await eos(ctx, response, "机器人当前处理音频过多，请稍后再试")
-        return
+    new_audio = await audio_lib_main.download_bilibili(info_dict, audio_type, num_option)
 
     if new_audio is not None:
         # 如果当前播放列表为空
@@ -854,8 +951,7 @@ async def add_bilibili_audio(ctx: discord.ApplicationContext, info_dict, audio_t
     return audio
 
 
-async def play_youtube(
-        ctx: discord.ApplicationContext, link, response=None, list_add_call=False) -> Union[None, audio.Audio]:
+async def play_youtube(ctx: discord.ApplicationContext, link, response=None) -> Union[None, audio.Audio]:
     """
     下载并播放来自Bilibili的视频的音频
 
@@ -866,102 +962,84 @@ async def play_youtube(
     :return: 播放的音频（如果为播放列表或获取失败则返回None）
     """
     # TODO 添加youtube版检查合集view
-    if "&list" in link:
-        link = link[:link.find("&list")]
+    # TODO 重新制作异常处理（区分添加单独音频和多个音频循环添加，不要让一个异常阻断其他添加）
 
-    # 先提取信息再进行下载
     try:
+        # 先提取信息
         info_dict = youtube.get_info(link)
 
-    # Youtube信息提取异常处理
+        # 带播放列表信息的单独视频
+        if "_type" in info_dict and info_dict["_type"] == "url":
+            pass
+        # 播放列表
+        elif "_type" in info_dict and info_dict["_type"] == "playlist":
+            pass
+        else:
+            link_type = "youtube_single"
+
+        # 独立音频 youtube_single
+        if link_type == "youtube_single":
+            await add_youtube_audio(ctx, link, info_dict, "youtube_single", list_add_call=False, response=response)
+
+        # 播放列表 youtube_playlist
+        # if check_playlist:
+        #     playlist_link = "https://www.youtube.com/playlist?list="
+        #     info_dict =
+        #
+        #     collection_title = info_dict['title']
+        #     message = f"**{info_dict['title']}** 包含在合集 **{collection_title}** 中, 是否要查看此合集？\n"
+        #     view = CheckCollectionView(ctx, "youtube_playlist", info_dict, response=response)
+        #     view_msg = await ctx.send(message, view=view)
+        #     await view.set_original_msg(view_msg)
+
+    # YouTube音频异常处理
+    except errors.StorageFull():
+        await eos(ctx, response, "机器人当前处理音频过多，请稍后再试")
+        return None
     except yt_dlp.utils.DownloadError:
-        await eos(ctx, response, "视频获取失败")
+        await eos(ctx, response, "音频获取失败")
         logger.rp("触发异常yt_dlp.utils.DownloadError，视频不可用", ctx.guild, is_error=True)
         return None
     except yt_dlp.utils.ExtractorError:
-        await eos(ctx, response, "视频获取失败")
+        await eos(ctx, response, "音频获取失败")
         logger.rp("触发异常yt_dlp.utils.ExtractorError，视频不可用", ctx.guild, is_error=True)
         return None
     except yt_dlp.utils.UnavailableVideoError:
-        await eos(ctx, response, "视频不可用")
+        await eos(ctx, response, "音频不可用")
         logger.rp("触发异常yt_dlp.utils.UnavailableVideoError，视频不可用", ctx.guild, is_error=True)
         return None
     except discord.HTTPException:
-        await eos(ctx, response, "视频获取失败")
+        await eos(ctx, response, "音频获取失败")
         logger.rp("触发异常discord.HTTPException", ctx.guild, is_error=True)
         return None
 
-    # 信息类型判定
-    if "_type" in info_dict and info_dict["_type"] == "playlist":
-        link_type = "youtube_playlist"
-    else:
-        link_type = "youtube_single"
 
-    # 独立音频 youtube_single
-    if link_type == "youtube_single":
-        voice_client = ctx.guild.voice_client
-        current_guild = guild_lib.get_guild(ctx)
-        current_playlist = current_guild.get_playlist()
+async def add_youtube_audio(ctx: discord.ApplicationContext, link, info_dict, link_type, list_add_call=False,
+                            response: Union[discord.Interaction, discord.InteractionMessage, None] = None):
+    voice_client = ctx.guild.voice_client
+    current_guild = guild_lib.get_guild(ctx)
+    current_playlist = current_guild.get_playlist()
 
-        # 开始下载
-        try:
-            new_audio = audio_lib_main.download_youtube(link, info_dict, link_type)
+    # 开始下载
+    new_audio = audio_lib_main.download_youtube(link, info_dict, link_type)
 
-            if new_audio is not None:
-                if current_playlist.is_empty() and not voice_client.is_playing():
-                    await play_audio(ctx, new_audio, response=response)
+    if new_audio is not None:
+        if current_playlist.is_empty() and not voice_client.is_playing():
+            await play_audio(ctx, new_audio, response=response)
 
-                # 如果是列表添加则结束本次调用，因为提示信息不同，音频的添加和列表处理通过返回new_audio交由循环调用处理
-                # 如果不是列表添加
-                if not list_add_call:
-                    # 如果列表为空则会有正在播放提示，如果不为空且voice_client正在播放则播放加入列表提示
-                    if not current_playlist.is_empty() and voice_client.is_playing():
-                        await eos(ctx, response, f"已加入播放列表：**{new_audio.get_title()} [{new_audio.get_time_str()}]**")
+        # 如果是列表添加则结束本次调用，因为提示信息不同，音频的添加和列表处理通过返回new_audio交由循环调用处理
+        # 如果不是列表添加
+        if not list_add_call:
+            # 如果列表为空则会有正在播放提示，如果不为空且voice_client正在播放则播放加入列表提示
+            if not current_playlist.is_empty() and voice_client.is_playing():
+                await eos(ctx, response, f"已加入播放列表：**{new_audio.get_title()} [{new_audio.get_time_str()}]**")
 
-                    # 添加至服务器播放列表
-                    current_playlist.append_audio(new_audio)
-                    logger.rp(f"音频 {new_audio.get_title()} [{new_audio.get_time_str()}] 已加入播放列表", ctx.guild)
+            # 添加至服务器播放列表
+            current_playlist.append_audio(new_audio)
+            logger.rp(f"音频 {new_audio.get_title()} [{new_audio.get_time_str()}] 已加入播放列表", ctx.guild)
 
-            # 返回None或者新下载的音频
-            return new_audio
-
-        # YouTube独立音频异常处理
-        except errors.StorageFull():
-            await eos(ctx, response, "机器人当前处理音频过多，请稍后再试")
-            return None
-        except yt_dlp.utils.DownloadError:
-            await eos(ctx, response, "视频获取失败")
-            logger.rp("触发异常yt_dlp.utils.DownloadError，视频不可用", ctx.guild, is_error=True)
-            return None
-        except yt_dlp.utils.ExtractorError:
-            await eos(ctx, response, "视频获取失败")
-            logger.rp("触发异常yt_dlp.utils.ExtractorError，视频不可用", ctx.guild, is_error=True)
-            return None
-        except yt_dlp.utils.UnavailableVideoError:
-            await eos(ctx, response, "视频不可用")
-            logger.rp("触发异常yt_dlp.utils.UnavailableVideoError，视频不可用", ctx.guild, is_error=True)
-            return None
-        except discord.HTTPException:
-            await eos(ctx, response, "视频获取失败")
-            logger.rp("触发异常discord.HTTPException", ctx.guild, is_error=True)
-            return None
-
-    # 播放列表 youtube_playlist
-    else:
-        ep_info_list = []
-        for item in info_dict["entries"]:
-            ep_title = item["title"]
-            ep_time_str = utils.convert_duration_to_str(item["duration"])
-            ep_info_list.append((ep_title, ep_time_str))
-
-        # 本次调用结束，转交给EpisodeSelectView分别对每个选择的独立音频调用本方法
-        menu_list = utils.make_playlist_page(
-            ep_info_list, 10, starts_with={None: "        "}, ends_with={}, fill_lines=True)
-        view = EpisodeSelectView(ctx, "youtube_playlist", info_dict, menu_list, info_dict['title'])
-        await eos(ctx, response, f"## 播放列表 | {info_dict['title']}\n请选择要播放的集数:\n{menu_list[0]}\n"
-                                 f"第[1]页，共[{len(menu_list)}]页\n已输入：", view=view)
-        # 返回None代表本次调用获得的是播放列表
-        return None
+    # 返回None或者新下载的音频
+    return new_audio
 
 
 async def search_ytb(ctx: discord.ApplicationContext, input_name):
@@ -1024,6 +1102,11 @@ async def pause_callback(ctx: discord.ApplicationContext, command_call: bool = F
         #     logger.rp(f"收到pause指令时指令发出者 {ctx.author} 不在机器人所在的频道", ctx.guild)
         #     await ctx.respond(f"您不在{setting.value('bot_name')}所在的频道")
 
+    elif voice_client.is_paused():
+        logger.rp("收到pause指令时机器人已经处于暂停状态", ctx.guild)
+        if command_call:
+            await ctx.respond("已在暂停中，使用 /resume 指令恢复播放")
+
     else:
         logger.rp("收到pause指令时机器人未在播放任何音乐", ctx.guild)
         if command_call:
@@ -1064,10 +1147,12 @@ async def resume_callback(ctx: discord.ApplicationContext, command_call: bool = 
         if ctx.user.voice and voice_client.channel == ctx.user.voice.channel:
             voice_client.resume()
             logger.rp("恢复播放", ctx.guild)
-            await ctx.respond("恢复播放")
+            if command_call:
+                await ctx.respond("恢复播放")
         else:
             logger.rp(f"收到pause指令时指令发出者 {ctx.author} 不在机器人所在的频道", ctx.guild)
-            await ctx.respond(f"您不在{setting.value('bot_name')}所在的频道")
+            if command_call:
+                await ctx.respond(f"您不在{setting.value('bot_name')}所在的频道")
 
     # 没有被暂停并且正在播放的情况
     elif voice_client.is_playing():
@@ -1082,7 +1167,8 @@ async def resume_callback(ctx: discord.ApplicationContext, command_call: bool = 
         await play_audio(ctx, current_audio, function_call=True)
 
         logger.rp("恢复中断的播放列表", ctx.guild)
-        await ctx.respond(f"恢复上次中断的播放列表")
+        if command_call:
+            await ctx.respond(f"恢复上次中断的播放列表")
 
     else:
         if command_call:
@@ -1102,29 +1188,33 @@ async def list_callback(ctx: discord.ApplicationContext):
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
-    if current_playlist.is_empty():
-        await ctx.respond("当前播放列表为空")
-    else:
-        playlist_list = utils.make_playlist_page(current_playlist.get_list_info(), 10,
-                                                 {None: ">       ", 0: "> ▶  **"}, {0: "**"})
-        voice_client = ctx.guild.voice_client
-        if voice_client:
-            voice_client_status = "不在语音频道中"
-        elif voice_client.is_playing():
-            voice_client_status = "正在播放"
-        elif voice_client.is_paused():
-            voice_client_status = "暂停"
-        else:
-            voice_client_status = "未知"
-        view = PlaylistMenu(ctx, current_playlist)
-        # TODO 完成列表播放状态
-        await ctx.respond(
-            content=f"## {current_playlist.get_name()}\n"
-                    f"    [列表长度：{len(current_playlist)} | 总时长：{current_playlist.get_time_str()}]\n"
-                    f"    |播放状态：{voice_client_status}|\n\n"
-                    f"{playlist_list[0]}\n第[1]页，共[{len(playlist_list)}]页\n",
-            view=view
-        )
+    # if current_playlist.is_empty():
+    #     await ctx.respond("当前播放列表为空")
+    # else:
+    playlist_list = utils.make_playlist_page(current_playlist.get_list_info(), 10,
+                                             {None: ">       ", 0: "> ▶  **"}, {0: "**"})
+    if len(playlist_list) == 0:
+        playlist_list.append("> **当前播放列表为空**\n")
+    voice_client = ctx.guild.voice_client
+    voice_client_status = get_voice_client_status(voice_client)
+    voice_client_status_str = get_voice_client_status_str(voice_client_status)
+
+    view = PlaylistMenu(ctx)
+
+    # 如果有更早的View则使其超时，替换为当前新View
+    current_guild = guild_lib.get_guild(ctx)
+    guild_active_views = current_guild.get_active_views()
+    if "play_list_menu_view" in guild_active_views and guild_active_views["play_list_menu_view"] is not None:
+        await guild_active_views["play_list_menu_view"].on_override()
+    guild_active_views["play_list_menu_view"] = view
+
+    await ctx.respond(
+        content=f"## {current_playlist.get_name()}\n"
+                f"    [列表长度：{len(current_playlist)} | 总时长：{current_playlist.get_time_str()}]\n"
+                f"    状态：{voice_client_status_str}\n\n"
+                f"{playlist_list[0]}\n第[1]页，共[{len(playlist_list)}]页\n",
+        view=view
+    )
 
 
 async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_index: Union[int, None] = None):
@@ -1136,6 +1226,9 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
     :param second_index: 跳过最终曲目的序号
     :return:
     """
+
+    # TODO BUG 暂停时使用跳过全部无法跳过第一首
+
     guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
@@ -1390,55 +1483,135 @@ async def shutdown_callback(ctx):
 
 class PlaylistMenu(View):
 
-    def __init__(self, ctx, playlist_1: guild.GuildPlaylist, timeout: int = 60):
+    def __init__(self, ctx, timeout: int = 600):
         super().__init__(timeout=timeout)
         self.ctx = ctx
-        self.playlist = playlist_1
-        self.playlist_pages = utils.make_playlist_page(self.playlist.get_list_info(), 10,
-                                                       {None: ">       ", 0: "> ▶  **"}, {0: "**"})
-        self.playlist_duration = self.playlist.get_time_str()
+        self.guild = guild_lib.get_guild(self.ctx)
+        self.playlist = self.guild.get_playlist()
+
         self.page_num = 0
         self.occur_time = utils.time()
-        # 保留当前第一页作为超时后显示的内容
-        self.first_page = f"## {self.playlist.get_name()}\n" \
-                          f"    [列表长度：{len(self.playlist)} | 总时长：{self.playlist.get_time_str()}]\n\n" \
-                          f"{self.playlist_pages[0]}\n" \
-                          f"第[1]页，共[{len(self.playlist_pages)}]页\n"
 
-        voice_client = self.ctx.guild.voice_client
-        if voice_client:
-            voice_client_status = "不在语音频道中"
-        elif voice_client.is_playing():
-            voice_client_status = "正在播放"
-        elif voice_client.is_paused():
-            voice_client_status = "暂停"
-        else:
-            voice_client_status = "未知"
-        self.voice_client_status = voice_client_status
+        self.playlist_pages = None
+        self.voice_client = None
+        self.voice_client_status = None
+        self.voice_client_status_str = None
+        self.play_pause_button_label = None
+        self.play_mode = None
+        self.play_mode_str = None
+        self.first_page = None
+        self.playlist_duration = None
+
+        self.overrode = False
+        self.time_outed = False
+
+        self.refresh_pages()
 
     def refresh_pages(self):
+        # 生成播放列表主体文本
         self.playlist_pages = utils.make_playlist_page(self.playlist.get_list_info(), 10,
                                                        {None: ">       ", 0: "> ▶  **"}, {0: "**"})
-        self.first_page = f"## {self.playlist.get_name()}\n" \
-                          f"    [列表长度：{len(self.playlist)} | 总时长：{self.playlist.get_time_str()}]\n\n" \
-                          f"{self.playlist_pages[0]}\n" \
-                          f"第[1]页，共[{len(self.playlist_pages)}]页\n"
+        if len(self.playlist_pages) == 0:
+            self.playlist_pages.append("> **当前播放列表为空**\n")
+
+        # 更新播放状态文本
+        self.voice_client = self.ctx.guild.voice_client
+        self.voice_client_status = get_voice_client_status(self.voice_client)
+        self.voice_client_status_str = get_voice_client_status_str(self.voice_client_status)
+
+        # 更新播放状态按钮符号
+        if self.voice_client_status == 1:
+            self.play_pause_button_label = "▌▌"
+        else:
+            self.play_pause_button_label = "▶"
+        for button in self.children:
+            if button.custom_id == "button_play_pause":
+                button.label = self.play_pause_button_label
+                break
+
+        # 更新播放模式
+        self.play_mode = self.guild.get_play_mode()
+
+        # 更新播放模式文本
+        if self.play_mode == 0:
+            self.play_mode_str = "顺序播放"
+        elif self.play_mode == 1:
+            self.play_mode_str = "单曲循环"
+        elif self.play_mode == 2:
+            self.play_mode_str = "列表循环"
+        elif self.play_mode == 3:
+            self.play_mode_str = "随机播放"
+        elif self.play_mode == 4:
+            self.play_mode_str = "随机循环"
+        else:
+            self.play_mode_str = "播放模式"
+        for button in self.children:
+            if button.custom_id == "button_play_mode":
+                button.label = self.play_mode_str
+                break
+
+        self.first_page = self.get_page_content(0)
         self.playlist_duration = self.playlist.get_time_str()
 
-        voice_client = self.ctx.guild.voice_client
-        if voice_client:
-            voice_client_status = "不在语音频道中"
-        elif voice_client.is_playing():
-            voice_client_status = "正在播放"
-        elif voice_client.is_paused():
-            voice_client_status = "暂停"
-        else:
-            voice_client_status = "未知"
-        self.voice_client_status = voice_client_status
+    def get_page_content(self, page_num: int) -> str:
+        return f"## {self.playlist.get_name()}\n" \
+               f"    [列表长度：{len(self.playlist)} | 总时长：{self.playlist.get_time_str()}]\n" \
+               f"    状态：{self.voice_client_status_str}\n\n" \
+               f"{self.playlist_pages[page_num]}\n" \
+               f"第[{page_num + 1}]页，共[{len(self.playlist_pages)}]页\n"
 
-    @discord.ui.button(label="上一页", style=discord.ButtonStyle.grey,
-                       custom_id="button_previous")
-    async def button_previous_callback(self, button, interaction):
+    @discord.ui.button(label="▍◀", style=discord.ButtonStyle.grey, custom_id="button_previous_audio", row=1)
+    async def button_previous_audio_callback(self, button, interaction):
+        button.disabled = False
+        msg = interaction.response
+
+        self.refresh_pages()
+
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
+
+    @discord.ui.button(label="▶▌▌", style=discord.ButtonStyle.grey, custom_id="button_play_pause", row=1)
+    async def button_play_pause_callback(self, button, interaction):
+        button.disabled = False
+        msg = interaction.response
+
+        if self.voice_client is None:
+            await resume_callback(self.ctx, command_call=False)
+        elif self.voice_client.is_playing():
+            await pause_callback(self.ctx, command_call=False)
+        elif self.voice_client.is_paused():
+            await resume_callback(self.ctx, command_call=False)
+        else:
+            await resume_callback(self.ctx, command_call=False)
+
+        self.refresh_pages()
+
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
+
+    @discord.ui.button(label="▶ ▍", style=discord.ButtonStyle.grey, custom_id="button_next_audio", row=1)
+    async def button_next_audio_callback(self, button, interaction):
+        button.disabled = False
+        msg = interaction.response
+
+        self.refresh_pages()
+
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
+
+    @discord.ui.button(label="播放模式", style=discord.ButtonStyle.grey, custom_id="button_play_mode", row=1)
+    async def button_play_mode_callback(self, button, interaction):
+        button.disabled = False
+        msg = interaction.response
+
+        temp_code = self.play_mode + 1
+        if temp_code > 4:
+            temp_code = 0
+        self.guild.set_play_mode(temp_code)
+
+        self.refresh_pages()
+
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
+
+    @discord.ui.button(label="上一页", style=discord.ButtonStyle.grey, custom_id="button_previous_page", row=2)
+    async def button_previous_page_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
         self.refresh_pages()
@@ -1447,17 +1620,10 @@ class PlaylistMenu(View):
             pass
         else:
             self.page_num -= 1
-        await msg.edit_message(
-            content=f"## {self.playlist.get_name()}\n"
-                    f"    [列表长度：{len(self.playlist)} | 总时长：{self.playlist.get_time_str()}]\n\n"
-                    f"{self.playlist_pages[self.page_num]}\n"
-                    f"第[{self.page_num + 1}]页，共[{len(self.playlist_pages)}]页\n",
-            view=self
-        )
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
-    @discord.ui.button(label="下一页", style=discord.ButtonStyle.grey,
-                       custom_id="button_next")
-    async def button_next_callback(self, button, interaction):
+    @discord.ui.button(label="下一页", style=discord.ButtonStyle.grey, custom_id="button_next_page", row=2)
+    async def button_next_page_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
         self.refresh_pages()
@@ -1466,30 +1632,16 @@ class PlaylistMenu(View):
             pass
         else:
             self.page_num += 1
-        await msg.edit_message(
-            content=f"## {self.playlist.get_name()}\n"
-                    f"    [列表长度：{len(self.playlist)} | 总时长：{self.playlist.get_time_str()}]\n\n"
-                    f"{self.playlist_pages[self.page_num]}\n"
-                    f"第[{self.page_num + 1}]页，共[{len(self.playlist_pages)}]页\n",
-            view=self
-        )
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
-    @discord.ui.button(label="刷新", style=discord.ButtonStyle.grey,
-                       custom_id="button_refresh")
+    @discord.ui.button(label="刷新", style=discord.ButtonStyle.grey, custom_id="button_refresh", row=2)
     async def button_refresh_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
         self.refresh_pages()
-        await msg.edit_message(
-            content=f"## {self.playlist.get_name()}\n"
-                    f"    [列表长度：{len(self.playlist)} | 总时长：{self.playlist.get_time_str()}]\n\n"
-                    f"{self.playlist_pages[self.page_num]}\n"
-                    f"第[{self.page_num + 1}]页，共[{len(self.playlist_pages)}]页\n",
-            view=self
-        )
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
-    @discord.ui.button(label="关闭", style=discord.ButtonStyle.grey,
-                       custom_id="button_close")
+    @discord.ui.button(label="关闭", style=discord.ButtonStyle.grey, custom_id="button_close", row=2)
     async def button_close_callback(self, button, interaction):
         button.disabled = True
         msg = interaction.response
@@ -1497,16 +1649,30 @@ class PlaylistMenu(View):
         await msg.edit_message(content="已关闭", view=self)
         await self.ctx.delete()
 
+    async def on_override(self):
+        """
+        当新的View出现时调用，使当前View失效
+        """
+        self.refresh_pages()
+        self.clear_items()
+        await self.ctx.edit(content=self.first_page, view=self)
+        self.overrode = True
+        if not self.time_outed:
+            logger.rp(f"{self.occur_time}生成的播放列表菜单已被覆盖", self.ctx.guild)
+
     async def on_timeout(self):
         self.refresh_pages()
         self.clear_items()
         await self.ctx.edit(content=self.first_page, view=self)
-        logger.rp(f"{self.occur_time}生成的播放列表菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
+        self.time_outed = True
+        if not self.overrode:
+            logger.rp(f"{self.occur_time}生成的播放列表菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
 
 
+# TODO BUG 音频库满重复添加
 class EpisodeSelectView(View):
 
-    def __init__(self, ctx, source, info_dict, menu_list, list_title=None, timeout=60):
+    def __init__(self, ctx, source, info_dict, menu_list, list_type=None, list_title=None, timeout=60):
         """
         初始化分集选择菜单
 
@@ -1515,10 +1681,18 @@ class EpisodeSelectView(View):
         :param info_dict: 播放源的信息字典
         :param menu_list: 选择菜单的文本（使用make_playlist_page获取）
         :param timeout: 超时时间（单位：秒）
+        :param list_type: 播放列表的类型（展示用）
+        :param list_title: 播放列表的标题（展示用）
         :return:
         """
         super().__init__(timeout=timeout)
         self.ctx = ctx
+
+        if list_type is not None:
+            self.list_type = list_type
+        else:
+            self.list_type = "播放列表"
+
         self.list_title = list_title
         self.source = source
         self.info_dict = info_dict
@@ -1532,22 +1706,24 @@ class EpisodeSelectView(View):
 
         self.finish = False
 
+    def get_page_content(self, page_num: int) -> str:
+        num = ""
+        for i in self.result:
+            num = num + i
+        if self.list_title is not None:
+            return (f"## {self.list_type} | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[page_num]}\n"
+                    f"第[{page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：{num}")
+        else:
+            return (f"## {self.list_type}\n请选择要播放的集数:\n{self.menu_list[page_num]}\n"
+                    f"第[{page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：{num}")
+
     @discord.ui.button(label="1", style=discord.ButtonStyle.grey,
                        custom_id="button_1", row=1)
     async def button_1_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
         self.result.append("1")
-        num = ""
-        for i in self.result:
-            num = num + i
-        if self.list_title is not None:
-            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        else:
-            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        await msg.edit_message(content=content, view=self)
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="2", style=discord.ButtonStyle.grey,
                        custom_id="button_2", row=1)
@@ -1555,16 +1731,7 @@ class EpisodeSelectView(View):
         button.disabled = False
         msg = interaction.response
         self.result.append("2")
-        num = ""
-        for i in self.result:
-            num = num + i
-        if self.list_title is not None:
-            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        else:
-            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        await msg.edit_message(content=content, view=self)
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="3", style=discord.ButtonStyle.grey,
                        custom_id="button_3", row=1)
@@ -1572,16 +1739,7 @@ class EpisodeSelectView(View):
         button.disabled = False
         msg = interaction.response
         self.result.append("3")
-        num = ""
-        for i in self.result:
-            num = num + i
-        if self.list_title is not None:
-            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        else:
-            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        await msg.edit_message(content=content, view=self)
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="4", style=discord.ButtonStyle.grey,
                        custom_id="button_4", row=2)
@@ -1589,16 +1747,7 @@ class EpisodeSelectView(View):
         button.disabled = False
         msg = interaction.response
         self.result.append("4")
-        num = ""
-        for i in self.result:
-            num = num + i
-        if self.list_title is not None:
-            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        else:
-            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        await msg.edit_message(content=content, view=self)
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="5", style=discord.ButtonStyle.grey,
                        custom_id="button_5", row=2)
@@ -1606,16 +1755,7 @@ class EpisodeSelectView(View):
         button.disabled = False
         msg = interaction.response
         self.result.append("5")
-        num = ""
-        for i in self.result:
-            num = num + i
-        if self.list_title is not None:
-            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        else:
-            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        await msg.edit_message(content=content, view=self)
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="6", style=discord.ButtonStyle.grey,
                        custom_id="button_6", row=2)
@@ -1623,16 +1763,7 @@ class EpisodeSelectView(View):
         button.disabled = False
         msg = interaction.response
         self.result.append("6")
-        num = ""
-        for i in self.result:
-            num = num + i
-        if self.list_title is not None:
-            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        else:
-            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        await msg.edit_message(content=content, view=self)
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="7", style=discord.ButtonStyle.grey,
                        custom_id="button_7", row=3)
@@ -1640,16 +1771,7 @@ class EpisodeSelectView(View):
         button.disabled = False
         msg = interaction.response
         self.result.append("7")
-        num = ""
-        for i in self.result:
-            num = num + i
-        if self.list_title is not None:
-            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        else:
-            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        await msg.edit_message(content=content, view=self)
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="8", style=discord.ButtonStyle.grey,
                        custom_id="button_8", row=3)
@@ -1657,16 +1779,7 @@ class EpisodeSelectView(View):
         button.disabled = False
         msg = interaction.response
         self.result.append("8")
-        num = ""
-        for i in self.result:
-            num = num + i
-        if self.list_title is not None:
-            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        else:
-            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        await msg.edit_message(content=content, view=self)
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="9", style=discord.ButtonStyle.grey,
                        custom_id="button_9", row=3)
@@ -1674,16 +1787,7 @@ class EpisodeSelectView(View):
         button.disabled = False
         msg = interaction.response
         self.result.append("9")
-        num = ""
-        for i in self.result:
-            num = num + i
-        if self.list_title is not None:
-            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        else:
-            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        await msg.edit_message(content=content, view=self)
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="-", style=discord.ButtonStyle.grey,
                        custom_id="button_dash", row=4)
@@ -1698,16 +1802,7 @@ class EpisodeSelectView(View):
         msg = interaction.response
         self.result.append("-")
         self.dash_finish = False
-        num = ""
-        for i in self.result:
-            num = num + i
-        if self.list_title is not None:
-            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        else:
-            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        await msg.edit_message(content=content, view=self)
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="0", style=discord.ButtonStyle.grey,
                        custom_id="button_0", row=4)
@@ -1715,16 +1810,7 @@ class EpisodeSelectView(View):
         button.disabled = False
         msg = interaction.response
         self.result.append("0")
-        num = ""
-        for i in self.result:
-            num = num + i
-        if self.list_title is not None:
-            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        else:
-            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        await msg.edit_message(content=content, view=self)
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label=",", style=discord.ButtonStyle.grey,
                        custom_id="button_comma", row=4)
@@ -1738,16 +1824,7 @@ class EpisodeSelectView(View):
         msg = interaction.response
         self.result.append(",")
         self.dash_finish = True
-        num = ""
-        for i in self.result:
-            num = num + i
-        if self.list_title is not None:
-            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        else:
-            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        await msg.edit_message(content=content, view=self)
+        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="<-", style=discord.ButtonStyle.grey,
                        custom_id="button_backspace", row=1)
@@ -1758,16 +1835,7 @@ class EpisodeSelectView(View):
             pass
         else:
             self.result.pop()
-            num = ""
-            for i in self.result:
-                num = num + i
-            if self.list_title is not None:
-                content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                          f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-            else:
-                content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                          f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-            await msg.edit_message(content=content, view=self)
+            await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="取消", style=discord.ButtonStyle.red,
                        custom_id="button_cancel", row=3)
@@ -1953,9 +2021,9 @@ class EpisodeSelectView(View):
         total_num = len(final_result)
         total_duration = 0
 
-        # ----- 下载并播放视频 -----
+        # ----- 下载并播放音频 -----
 
-        # 如果为Bilibili分p视频
+        # 如果为Bilibili分p音频
         if self.source == "bilibili_p":
             counter = 1
             for item in self.info_dict["pages"]:
@@ -1972,7 +2040,7 @@ class EpisodeSelectView(View):
             await self.ctx.send(f"已将{total_num}个音频加入播放列表  "
                                 f"总时长 -> [{total_duration}]")
 
-        # 如果为Bilibili合集视频
+        # 如果为Bilibili合集音频
         elif self.source == "bilibili_collection":
             counter = 1
             for item in self.info_dict["ugc_season"]["sections"][0]["episodes"]:
@@ -2008,12 +2076,16 @@ class EpisodeSelectView(View):
 
             # 循环添加
             for num in final_result:
-                # 跳过已被删除的视频
+                # 跳过已被删除或失效的视频
                 if self.info_dict['entries'][num - 1]['duration'] is not None:
                     url = f"https://www.youtube.com/watch?v={self.info_dict['entries'][num - 1]['id']}"
-
                     try:
-                        new_audio = await play_youtube(self.ctx, url, response=None, list_add_call=True)
+                        # 单独提取信息
+                        current_info_dict = youtube.get_info(url)
+                        # 每个音频作为“youtube_single”单独添加
+                        new_audio = await add_youtube_audio(
+                            self.ctx, url, current_info_dict, "youtube_single", list_add_call=True, response=None
+                        )
                         # 如果音频加载成功
                         if new_audio is not None:
                             # 重载loading_msg为Message对象（否则无法ec累计更新提示信息）
@@ -2055,39 +2127,74 @@ class EpisodeSelectView(View):
         logger.rp(f"{self.occur_time}生成的搜索选择菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
 
 
-class CheckBilibiliCollectionView(View):
+# TODO 拓展至Youtube可用
+class CheckCollectionView(View):
 
-    def __init__(self, ctx, info_dict, response: Union[discord.Interaction, discord.InteractionMessage, None] = None,
-                 timeout=10):
+    def __init__(self, ctx, source, info_dict, response: Union[discord.Interaction,
+                 discord.InteractionMessage, None] = None, timeout=10):
+        """
+        提示是否查看合集或播放列表的View
+        source:
+            - bilibili_collection
+            - youtube_playlist
+        """
         super().__init__(timeout=timeout)
         self.ctx = ctx
+        self.source = source
         self.response = response
         self.info_dict = info_dict
         self.occur_time = utils.time()
         self.finish = False
         self.original_msg = None
 
-    @discord.ui.button(label="确定", style=discord.ButtonStyle.grey,
-                       custom_id="button_confirm")
+    @discord.ui.button(label="确定", style=discord.ButtonStyle.grey, custom_id="button_confirm")
     async def button_confirm_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
         self.finish = True
-        ep_info_list = []
-        for item in self.info_dict["ugc_season"]["sections"][0]["episodes"]:
-            ep_title = item["title"]
-            ep_time_str = utils.convert_duration_to_str(item["arc"]["duration"])
-            ep_info_list.append((ep_title, ep_time_str))
 
-        menu_list = utils.make_playlist_page(ep_info_list, 10, {}, {})
-        view = EpisodeSelectView(self.ctx, "bilibili_collection", self.info_dict, menu_list)
-        await eos(self.ctx, self.response, f"{menu_list[0]}\n第[1]页，共[{len(menu_list)}]页\n已输入：", view=view)
+        self.clear_items()
 
-        await msg.edit_message(view=self)
-        await self.ctx.delete()
+        if self.original_msg is not None:
+            await self.original_msg.delete()
 
-    @discord.ui.button(label="关闭", style=discord.ButtonStyle.grey,
-                       custom_id="button_cancel")
+        if self.source == "bilibili_collection":
+            ep_info_list = []
+            for item in self.info_dict["ugc_season"]["sections"][0]["episodes"]:
+                ep_title = item["title"]
+                ep_time_str = utils.convert_duration_to_str(item["arc"]["duration"])
+                ep_info_list.append((ep_title, ep_time_str))
+
+            collection_title = self.info_dict["ugc_season"]["title"]
+            menu_list = utils.make_playlist_page(ep_info_list, 10, {}, {})
+            view = EpisodeSelectView(
+                self.ctx, "bilibili_collection", self.info_dict, menu_list, "哔哩哔哩合集", collection_title
+            )
+            await self.ctx.send(
+                f"## 哔哩哔哩合集 | {collection_title}\n请选择要播放的集数:\n{menu_list[0]}\n"
+                f"第[1]页，共[{len(menu_list)}]页\n已输入：", view=view
+            )
+
+        elif self.source == "youtube_playlist":
+            ep_info_list = []
+            for item in self.info_dict["entries"]:
+                ep_title = item["title"]
+                ep_time_str = utils.convert_duration_to_str(item["duration"])
+                ep_info_list.append((ep_title, ep_time_str))
+            collection_title = self.info_dict['title']
+            # 本次调用结束，转交给EpisodeSelectView分别对每个选择的独立音频进行添加
+            # menu_list = utils.make_playlist_page(
+            #     ep_info_list, 10, starts_with={None: "        "}, ends_with={}, fill_lines=True)
+            menu_list = utils.make_playlist_page(ep_info_list, 10, {}, {})
+            view = EpisodeSelectView(
+                self.ctx, "youtube_playlist", self.info_dict, menu_list, "YouTube播放列表", collection_title
+            )
+            await self.ctx.send(
+                f"## YouTube播放列表 | {collection_title}\n请选择要播放的集数:\n{menu_list[0]}\n"
+                f"第[1]页，共[{len(menu_list)}]页\n已输入：", view=view
+            )
+
+    @discord.ui.button(label="关闭", style=discord.ButtonStyle.grey, custom_id="button_cancel")
     async def button_close_callback(self, button, interaction):
         button.disabled = False
         self.finish = True
@@ -2095,7 +2202,7 @@ class CheckBilibiliCollectionView(View):
         if self.original_msg is not None:
             await self.original_msg.delete()
 
-    async def set_original_msg(self, response: Union[discord.Interaction, discord.InteractionMessage, None]):
+    async def set_original_msg(self, response: Union[discord.Message, discord.InteractionMessage, None]):
         """
         创建View后调用，传入发送该View的Interaction
         """

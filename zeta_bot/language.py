@@ -11,6 +11,24 @@ language_code_dict = {
 
 DEFAULT_LANGUAGE = "zh_cn"
 
+commands_name = {
+    "info": {"zh-CN": "关于"},
+    "help": {"zh-CN": "帮助"},
+    "broadcast": {"zh-CN": "广播"},
+    "join": {"zh-CN": "加入语音频道"},
+    "leave": {"zh-CN": "离开语音频道"},
+    "search_audio": {"zh-CN": "搜索音频"},
+    "play": {"zh-CN": "播放"},
+    "pause": {"zh-CN": "暂停"},
+    "resume": {"zh-CN": "继续播放"},
+    "list": {"zh-CN": "播放列表"},
+    "skip": {"zh-CN": "跳过"},
+    "skipi": {"zh-CN": "序号跳过"},
+    "move": {"zh-CN": "移动音频"},
+    "volume": {"zh-CN": "音量"},
+    "reboot": {"zh-CN": "重启"},
+    "shutdown": {"zh-CN": "关机"},
+}
 
 @decorators.Singleton
 class Lang:
@@ -19,6 +37,7 @@ class Lang:
         if lang_code in language_code_dict and os.path.exists(file_path):
             self.system_language = lang_code
             self.language_dict = {}
+            self.commands_name = commands_name
             self.load_all_languages()
         else:
             raise errors.InitializationFailed("系统语言", "找不到对应语言或文件")
@@ -85,6 +104,12 @@ class Lang:
 
     def printl(self, str_id: str, lang_code=None, slash_n=False):
         print(self.get_string(str_id, lang_code, slash_n))
+
+    def get_command_name(self, name: str) -> dict:
+        if name in self.commands_name:
+            return self.commands_name[name]
+        else:
+            return {}
 
 
 def read_lang_file(file_path: str, target_dict: dict) -> None:

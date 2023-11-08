@@ -192,6 +192,32 @@ def convert_duration_to_str(duration: int) -> str:
     return f"{hour}:{minutes}:{seconds}"
 
 
+def convert_str_to_duration(input_str: str) -> int:
+    """
+    将引号分开的时间格式字符串转换为秒数
+
+    :param input_str: 输入的时间字符串
+    :return:
+    """
+    if ":" in input_str:
+        num_list = input_str.split(":")
+    elif "：" in input_str:
+        num_list = input_str.split("：")
+    else:
+        return 0
+
+    if len(num_list) < 1 or len(num_list) > 3:
+        return 0
+
+    try:
+        if len(num_list) == 2:
+            return int(num_list[0]) * 60 + int(num_list[1])
+        elif len(num_list) == 3:
+            return int(num_list[0]) * 3600 + int(num_list[1]) * 60 + int(num_list[2])
+    except ValueError:
+        return 0
+
+
 def convert_byte(byte: int) -> Tuple[float, str]:
     kb = byte / 1024
     mb = kb / 1024
@@ -316,7 +342,7 @@ def make_playlist_page(
                 current_starts_with = starts_with[None]
             else:
                 current_starts_with = ""
-            # 从字典<starts_with>中查找此行是否存在
+            # 从字典<ends_with>中查找此行是否存在
             if counter in ends_with:
                 current_ends_with = ends_with[counter]
             elif None in ends_with:

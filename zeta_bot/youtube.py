@@ -1,6 +1,6 @@
 from __future__ import unicode_literals
+from typing import Union
 from yt_dlp import YoutubeDL
-from youtubesearchpython import VideosSearch
 from zeta_bot import (
     log,
     utils,
@@ -22,7 +22,7 @@ def get_info(ytb_url):
         "quiet": True,
     }
 
-    logger.rp(f"开始提取信息", f"[{level}]")
+    logger.rp(f"开始提取信息：{ytb_url}", f"[{level}]")
 
     with YoutubeDL(ydl_opts) as ydl:
         info_dict = ydl.extract_info(ytb_url, download=False)
@@ -76,40 +76,49 @@ def audio_download(youtube_url, info_dict, download_path, download_type="youtube
     return new_audio
 
 
-async def search_ytb(ctx, input_name):
-    name = input_name.strip()
+def search(query, query_num=5) -> list:
+    """
 
-    if name == "":
-        ctx.respond("请输入要搜索的名称")
-        return
+    """
 
-    options = []
-    search_result = VideosSearch(name, limit=5)
-    info_dict = dict(search_result.result())['result']
+    # 获取日志记录器
+    logger = log.Log()
 
-    message = f"Youtube搜索 **{name}** 结果为:\n"
+    query = query.strip()
 
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': "./downloads/" + '/%(title)s.%(ext)s',
+        'default_search': "ytsearch",
+        'extract_flat': True,
+        "quiet": True,
+    }
+
+    if query == "":
+        return []
+
+    logger.rp(f"开始搜索：{query}", f"[{level}]")
+
+    with YoutubeDL(ydl_opts) as ydl:
+        extracted_info = ydl.extract_info(f"ytsearch{query_num}:{query}", download=False)
+
+    result = []
+    log_message = f"搜索 {query} 结果为："
     counter = 1
-    for result_video in info_dict:
 
-        title = result_video["title"]
-        video_id = result_video["id"]
-        duration = result_video["duration"]
-
-        options.append([title, video_id, duration])
-        message = message + f"**[{counter}]** {title}  [{duration}]\n"
-
+    for item in extracted_info["entries"]:
+        if counter > query_num:
+            break
+        result.append(
+            {
+                "title": item["title"],
+                "id": item["id"],
+                "duration": item["duration"]
+            }
+        )
+        log_message += f"\n{counter}. {item['id']}：{item['title']} [{utils.convert_duration_to_str(item['duration'])}]"
         counter += 1
 
-    # console_message_log(ctx, f"搜索结果为：{options}")
+    logger.rp(log_message, f"[{level}]")
 
-    message = message + "\n请选择："
-
-    if len(info_dict) == 0:
-        await ctx.respond("没有搜索到任何结果")
-        return
-
-    # view = SearchSelectView(ctx, options)
-    # await ctx.respond(message, view=view)
-
-    return options
+    return result

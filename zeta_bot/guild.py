@@ -25,6 +25,8 @@ class Guild:
         self._path = f"{self._root}/{self._guild.id}.json"
         self._audio_file_library = audio_file_library
         self._logger = log.Log()
+        self._play_mode = 0
+        self._active_views = {}
 
         if not os.path.exists(self._root):
             utils.create_folder(self._root)
@@ -66,8 +68,36 @@ class Guild:
     def get_voice_volume(self) -> float:
         return self.voice_volume
 
+    def get_play_mode(self) -> int:
+        """
+        返回当前播放模式
+        0 - 顺序播放
+        1 - 单曲循环
+        2 - 列表循环
+        3 - 随机播放
+        4 - 随机循环
+        """
+        return self._play_mode
+
+    def get_active_views(self) -> dict:
+        return self._active_views
+
     def set_voice_volume(self, volume: Union[int, float]) -> None:
         self.voice_volume = float(volume)
+
+    def set_play_mode(self, mode_code: int) -> bool:
+        """
+        设置播放模式
+        0 - 顺序播放
+        1 - 单曲循环
+        2 - 列表循环
+        3 - 随机播放
+        4 - 随机循环
+        """
+        if mode_code not in [0, 1, 2, 3, 4]:
+            return False
+        self._play_mode = mode_code
+        return True
 
     def save(self) -> None:
         utils.json_save(self._path, self)

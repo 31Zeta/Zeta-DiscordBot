@@ -1,7 +1,8 @@
-from bilibili_api import video, Credential
 import aiohttp
-import discord
 from typing import Union
+import html
+from bilibili_api import video, Credential, sync
+from bilibili_api import search as bilibili_search
 
 from zeta_bot import (
     log,
@@ -29,6 +30,11 @@ async def get_info(bvid) -> dict:
     :param bvid: 目标视频BV号
     :return:
     """
+    # 获取日志记录器
+    logger = log.Log()
+
+    logger.rp(f"开始提取信息：{bvid}", f"[{level}]")
+
     # 实例化 Credential 类
     credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
     # 实例化 Video 类
@@ -38,56 +44,7 @@ async def get_info(bvid) -> dict:
     return info
 
 
-async def get_title(bvid):
-    """
-    返回视频标题
-
-    :param bvid: 目标视频BV号
-    :return:
-    """
-    info_dict = await get_info(bvid)
-    title = info_dict["title"]
-    title = utils.legal_name(title)
-
-    return title
-
-
-async def get_duration(bvid):
-    """
-    返回视频的时长，以秒为单位
-
-    :param bvid: 目标视频bv号
-    :return:
-    """
-    info_dict = await get_info(bvid)
-    duration = int(info_dict["duration"])
-
-    return duration
-
-
-async def get_title_duration(bvid):
-    """
-    返回视频标题\n
-    返回视频的时长，以秒为单位\n
-
-    本方法防止请求两遍info
-
-    :param bvid: 目标视频bv号
-    :return:
-    """
-
-    info_dict = await get_info(bvid)
-
-    title = info_dict["title"]
-    title = utils.legal_name(title)
-
-    duration = int(info_dict["duration"])
-
-    return title, duration
-
-
-async def audio_download(info_dict: dict, download_path: str, download_type="bilibili_single", num_p=0,
-                         response: Union[discord.Interaction, discord.InteractionMessage, None] = None) -> audio.Audio:
+async def audio_download(info_dict: dict, download_path: str, download_type="bilibili_single", num_p=0) -> audio.Audio:
     """
     使用bilibili_api，下载来自哔哩哔哩的音频
     需要处理以下异常：
@@ -163,3 +120,48 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
     )
 
     return new_audio
+
+
+async def search(query, query_num=5) -> list:
+    """
+    搜索哔哩哔哩的视频，最大返回20个结果（一页）
+    """
+
+    # 获取日志记录器
+    logger = log.Log()
+
+    query = query.strip()
+
+    if query_num > 20:
+        query_num = 20
+
+    logger.rp(f"开始搜索：{query}", f"[{level}]")
+
+    info_dict = await bilibili_search.search_by_type(query, search_type=bilibili_search.SearchObjectType.VIDEO)
+
+    result = []
+    log_message = f"搜索 {query} 结果为："
+    counter = 1
+
+    for item in info_dict["result"]:
+        if counter > query_num:
+            break
+
+        title = html.unescape(item["title"])
+        title = title.replace("<em class=\"keyword\">", "")
+        title = title.replace("</em>", "")
+
+        result.append(
+            {
+                "title": title,
+                "id": item["bvid"],
+                "duration": utils.convert_str_to_duration(item["duration"])
+            }
+        )
+
+        log_message += f"\n{counter}. {item['bvid']}：{title} [{item['duration']}]"
+        counter += 1
+
+    logger.rp(log_message, f"[{level}]")
+
+    return result
