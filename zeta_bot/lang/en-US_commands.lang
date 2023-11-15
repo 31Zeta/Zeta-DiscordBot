@@ -1,0 +1,16 @@
+info=info
+help=help
+broadcast=broadcast
+join=join-voice-channel
+leave=leave-voice-channel
+search_audio=search-audio
+play=play
+pause=pause
+resume=resume
+list=playlist
+skip=skip-audio
+skipi=skip-audio-by-index
+move=move-audio
+volume=volume
+reboot=reboot
+shutdown=shutdown

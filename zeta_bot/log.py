@@ -1,5 +1,6 @@
 import traceback
 import logging
+import os
 
 from zeta_bot import (
     errors,
@@ -16,16 +17,26 @@ printl = lang.printl
 
 @decorators.Singleton
 class Log:
-    def __init__(self, error_log_path: str, log_path: str, running_log: bool) -> None:
+    def __init__(self, error_log_path: str, log_path: str, running_log: bool, header: str = "") -> None:
         self._running_log = running_log
         self._log_path = log_path
         self._error_log_path = error_log_path
 
-        with open(self._error_log_path, "a", encoding="utf-8"):
-            self.rp(f"生成初始日志文件：{self._error_log_path}", "[日志记录器]")
+        with open(self._error_log_path, "a", encoding="utf-8") as log:
+            log.write(f"文件生成时间：{utils.time()}\n")
+            if header != "":
+                log.write(f"{header}\n")
+
         if self._running_log:
-            with open(self._log_path, "a", encoding="utf-8"):
-                self.rp(f"生成初始日志文件：{self._log_path}", "[日志记录器]")
+            with open(self._log_path, "a", encoding="utf-8") as log:
+                log.write(f"文件生成时间：{utils.time()}\n")
+                if header != "":
+                    log.write(f"{header}\n")
+
+        if os.path.exists(self._error_log_path):
+            self.rp(f"生成初始日志文件：{self._error_log_path}", "[日志记录器]")
+        if self._running_log and os.path.exists(self._log_path):
+            self.rp(f"生成初始日志文件：{self._log_path}", "[日志记录器]")
 
         logging.basicConfig(
             filename=self._error_log_path, level=logging.WARNING

@@ -3,6 +3,7 @@ from typing import Union
 import html
 from bilibili_api import video, Credential, sync
 from bilibili_api import search as bilibili_search
+from bilibili_api import BILIBILI_API_VERSION
 
 from zeta_bot import (
     log,
@@ -21,6 +22,7 @@ FFMPEG_PATH = "./zeta_bot/bin/ffmpeg"
 
 # logger = log.Log()
 level = "哔哩哔哩模块"
+api_version = BILIBILI_API_VERSION
 
 
 async def get_info(bvid) -> dict:

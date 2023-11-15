@@ -243,7 +243,7 @@ language_setting_configs = [
         "name": "系统语言设定",
         "type": "str",
         "description": f"请选择系统的语言：\n{language.list_lang_code(indent=6)}",
-        "input_description": "请输入语言代码（示例：zh_cn）",
+        "input_description": "请输入语言代码（示例：zh-CN）",
         "dependent": None,
         "regex": None,
         "options": language.get_lang_code_list(),

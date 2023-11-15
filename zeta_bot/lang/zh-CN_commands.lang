@@ -1,0 +1,16 @@
+info=关于
+help=帮助
+broadcast=广播
+join=加入语音频道
+leave=离开语音频道
+search_audio=搜索音频
+play=播放
+pause=暂停
+resume=继续播放
+list=播放列表
+skip=跳过
+skipi=序号跳过
+move=移动音频
+volume=音量
+reboot=重启
+shutdown=关机

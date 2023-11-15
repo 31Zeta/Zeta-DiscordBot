@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 from typing import Union
 from yt_dlp import YoutubeDL
+from yt_dlp import version as yt_dlp_version
 from zeta_bot import (
     log,
     utils,
@@ -8,6 +9,7 @@ from zeta_bot import (
 )
 
 level = "YouTube模块"
+api_version = yt_dlp_version.__version__
 
 
 def get_info(ytb_url):

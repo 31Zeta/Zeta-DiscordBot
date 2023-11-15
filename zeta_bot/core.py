@@ -27,7 +27,7 @@ from zeta_bot import (
     audio,
     file_management,
     bilibili,
-    youtube
+    youtube,
 )
 
 version = "0.10.0"
@@ -36,13 +36,28 @@ python_path = sys.executable
 pycord_version = discord.__version__
 update_time = "2023.**.**"
 
+logo = (
+    "________  _______  _________  ________               ________  ________  _________   \n"
+    "|\\_____  \\|\\  ___ \\|\\___   ___\\\\   __  \\             |\\   __  \\|\\   __  \\|\\___   ___\\ \n"
+    " \\|___/  /\\ \\   __/\\|___ \\  \\_\\ \\  \\|\\  \\  __________\\ \\  \\|\\ /\\ \\  \\|\\  \\|___ \\  \\_| \n"
+    "     /  / /\\ \\  \\_|/__  \\ \\  \\ \\ \\   __  \\|\\__________\\ \\   __  \\ \\  \\\\\\  \\   \\ \\  \\  \n"
+    "    /  /_/__\\ \\  \\_|\\ \\  \\ \\  \\ \\ \\  \\ \\  \\|__________|\\ \\  \\|\\  \\ \\  \\\\\\  \\   \\ \\  \\ \n"
+    "   |\\________\\ \\_______\\  \\ \\__\\ \\ \\__\\ \\__\\            \\ \\_______\\ \\_______\\   \\ \\__\\\n"
+    "    \\|_______|\\|_______|   \\|__|  \\|__|\\|__|             \\|_______|\\|_______|    \\|__|"
+)
+
+version_header = (f"主程序版本号：{version}\n"
+                  f"Pycord版本号：{pycord_version}\n"
+                  f"Bilibili API版本号：{bilibili.api_version}\n"
+                  f"YT-DLP版本号：{youtube.api_version}")
+
+print(f"Zeta-Bot程序启动\n{logo}\n\n{version_header}\n")
+
 # 系统检测
 if platform.system().lower() == "windows":
     ffmpeg_path = "./bin/ffmpeg.exe"
 else:
     ffmpeg_path = "./bin/ffmpeg"
-
-print(f"\n---------- 程序启动 ----------\n")
 
 # 多语言模块
 lang = language.Lang()
@@ -66,7 +81,7 @@ utils.create_folder("./logs")
 log_name_time = startup_time.replace(":", "_")
 error_log_path = f"./logs/{log_name_time}_errors.log"
 log_path = f"./logs/{log_name_time}.log"
-logger = log.Log(error_log_path, log_path, setting.value("log"))
+logger = log.Log(error_log_path, log_path, setting.value("log"), version_header)
 
 # 设置用户和Discord服务器管理
 utils.create_folder("./data")
