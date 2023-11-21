@@ -42,8 +42,13 @@ async def get_info(bvid) -> dict:
     # 实例化 Video 类
     v = video.Video(bvid=bvid, credential=credential)
     # 获取视频信息
-    info = await v.get_info()
-    return info
+    info_dict = await v.get_info()
+
+    video_id = info_dict["bvid"]
+    video_title = info_dict["title"]
+    logger.rp(f"信息提取完毕：{video_title} [{video_id}]", f"[{level}]")
+
+    return info_dict
 
 
 async def audio_download(info_dict: dict, download_path: str, download_type="bilibili_single", num_p=0) -> audio.Audio:

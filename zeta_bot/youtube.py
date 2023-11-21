@@ -32,7 +32,7 @@ def get_info(ytb_url):
     video_id = info_dict["id"]
     video_title = info_dict["title"]
 
-    logger.rp(f"提取完毕：[{video_id}] {video_title}", f"[{level}]")
+    logger.rp(f"信息提取完毕：{video_title} [{video_id}]", f"[{level}]")
 
     return info_dict
 
@@ -56,7 +56,7 @@ def audio_download(youtube_url, info_dict, download_path, download_type="youtube
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": video_path,
-        'extract_flat': True,
+        "extract_flat": True,
         "quiet": True,
     }
 

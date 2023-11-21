@@ -8,27 +8,10 @@ locale_dict = {
     "zh-CN": "中文",
     "en-US": "English",
 }
+# Discord 官方地区代码文档
+# https://discord.com/developers/docs/reference#locales
 
 DEFAULT_LANGUAGE = "zh-CN"
-
-commands_name = {
-    "info": {"zh-CN": "关于"},
-    "help": {"zh-CN": "帮助"},
-    "broadcast": {"zh-CN": "广播"},
-    "join": {"zh-CN": "加入语音频道"},
-    "leave": {"zh-CN": "离开语音频道"},
-    "search_audio": {"zh-CN": "搜索音频"},
-    "play": {"zh-CN": "播放"},
-    "pause": {"zh-CN": "暂停"},
-    "resume": {"zh-CN": "继续播放"},
-    "list": {"zh-CN": "播放列表"},
-    "skip": {"zh-CN": "跳过"},
-    "skipi": {"zh-CN": "序号跳过"},
-    "move": {"zh-CN": "移动音频"},
-    "volume": {"zh-CN": "音量"},
-    "reboot": {"zh-CN": "重启"},
-    "shutdown": {"zh-CN": "关机"},
-}
 
 
 @decorators.Singleton

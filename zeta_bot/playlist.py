@@ -42,7 +42,7 @@ class Playlist:
         """
         result = []
         for item in self._playlist:
-            result.append((item.get_title(), item.get_time_str()))
+            result.append((item.get_title(), item.get_duration_str()))
         return result
 
     def get_audio_str_list(self) -> List[str]:
@@ -181,7 +181,7 @@ class Playlist:
         """
         return self._duration
 
-    def get_time_str(self) -> str:
+    def get_duration_str(self) -> str:
         """
         返回当前播放列表中剩余的音频的总时长，格式为字符串
         """

@@ -34,7 +34,7 @@ class Audio:
     def get_duration(self) -> int:
         return self._duration
 
-    def get_time_str(self) -> str:
+    def get_duration_str(self) -> str:
         return self._duration_str
 
     def encode(self) -> dict:
