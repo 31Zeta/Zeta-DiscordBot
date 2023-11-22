@@ -84,16 +84,18 @@ class AudioFileLibrary:
 
         self._dl_list = utils.double_linked_list_dict_decoder(temp_list, force=True)
 
-        while self.storage_full():
-            if not self._delete_least_used_file():
-                self._logger.rp(f"{self._name}容量超出上限且且无法继续清除文件，初始化失败，请检查设置中的音频库缓存容量上限\n"
-                                f"可通过--setting修改设置中的音频库缓存容量上限，"
-                                f"或者手动修改文件./configs/system_config.json中的audio_library_storage_capacity",
-                                f"[{self._name}]", is_error=True)
-                raise errors.InitializationFailed(self._name,
-                                                  f"{self._name}容量超出上限且且无法继续清除文件，"
-                                                  f"请检查设置中的音频库缓存容量上限。可通过--setting修改设置中的音频库缓存容量上限，"
-                                                  f"或者手动修改文件./configs/system_config.json中的audio_library_storage_capacity")
+        if self.storage_full():
+            self._logger.rp(f"{self._name}超出容量限制，从最久不使用的文件开始尝试删除", f"[{self._name}]")
+            while self.storage_full():
+                if not self._delete_least_used_file():
+                    self._logger.rp(f"{self._name}容量超出上限且且无法继续清除文件，初始化失败，请检查设置中的音频库缓存容量上限\n"
+                                    f"可通过--setting修改设置中的音频库缓存容量上限，"
+                                    f"或者手动修改文件./configs/system_config.json中的audio_library_storage_capacity",
+                                    f"[{self._name}]", is_error=True)
+                    raise errors.InitializationFailed(self._name,
+                                                      f"{self._name}容量超出上限且且无法继续清除文件，"
+                                                      f"请检查设置中的音频库缓存容量上限。可通过--setting修改设置中的音频库缓存容量上限，"
+                                                      f"或者手动修改文件./configs/system_config.json中的audio_library_storage_capacity")
 
         self._logger.rp(f"成功加载库文件：{self._path}", f"[{self._name}]")
 
@@ -213,9 +215,9 @@ class AudioFileLibrary:
             converted_used_size = utils.convert_byte(self._used_storage_size)
             converted_capacity = utils.convert_byte(self._storage_capacity)
             self._logger.rp(f"添加文件：{new_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
-                            f"已用容量：{self.get_used_storage_percentage(2)}% "
-                            f"{converted_used_size[0]}{converted_used_size[1]}/"
-                            f"{converted_capacity[0]}{converted_capacity[1]}",
+                            f"已用容量：{converted_used_size[0]}{converted_used_size[1]}/"
+                            f"{converted_capacity[0]}{converted_capacity[1]}"
+                            f" -> {self.get_used_storage_percentage(2)}%",
                             f"[{self._name}]")
 
         self.save()
@@ -243,28 +245,33 @@ class AudioFileLibrary:
             converted_used_size = utils.convert_byte(self._used_storage_size)
             converted_capacity = utils.convert_byte(self._storage_capacity)
             self._logger.rp(f"删除文件：{target_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
-                            f"已用容量：{self.get_used_storage_percentage(2)}% "
-                            f"{converted_used_size[0]}{converted_used_size[1]}/"
-                            f"{converted_capacity[0]}{converted_capacity[1]}",
+                            f"已用容量：{converted_used_size[0]}{converted_used_size[1]}/"
+                            f"{converted_capacity[0]}{converted_capacity[1]}"
+                            f" -> {self.get_used_storage_percentage(2)}%",
                             f"[{self._name}]")
 
         self.save()
 
     def _delete_least_used_file(self, depth: int = 0) -> bool:
+        """
+        从最久不使用的文件开始尝试删除
+        由于本方法含有递归调用并且本方法可能会被循环调用，所以将提示语
+         - self._logger.rp(f"{self._name}超出容量限制，从最久不使用的文件开始尝试删除", f"[{self._name}]")
+        放置在方法外部以减少重复提示
+        """
         try:
             target_audio = self._dl_list.index_get(depth)
         except IndexError:
             self._logger.rp(f"{self._name}超出容量限制，尝试删除文件失败，库中已不包含任何可删除的文件", f"[{self._name}]")
             return False
-        if depth == 0:
-            self._logger.rp(f"{self._name}超出容量限制，从最久不使用的文件开始尝试删除", f"[{self._name}]")
         if not self.using(target_audio):
             try:
                 self._remove_audio(target_audio.get_source_id())
             except FileNotFoundError:
                 # 删除失败，如果仍满则重试
                 if self.storage_full():
-                    self._delete_least_used_file()
+                    result = self._delete_least_used_file()
+                    return result  # 递归返回
             # 如果是文件正在使用的话此错误大概率不会出现，作为key失效的兜底处理
             except PermissionError:
                 # 如果当前尝试删除的文件并不是正在播放的话，继续尝试删除下一最久不使用的文件，
@@ -297,9 +304,9 @@ class AudioFileLibrary:
             converted_capacity = utils.convert_byte(self._storage_capacity)
             self._logger.rp(f"文件已在库中：{exists_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
                             f"路径：{exists_audio.get_path()}\n"
-                            f"已用容量：{self.get_used_storage_percentage(2)}% "
-                            f"{converted_used_size[0]}{converted_used_size[1]}/"
-                            f"{converted_capacity[0]}{converted_capacity[1]}",
+                            f"已用容量：{converted_used_size[0]}{converted_used_size[1]}/"
+                            f"{converted_capacity[0]}{converted_capacity[1]}"
+                            f" -> {self.get_used_storage_percentage(2)}% ",
                             f"[{self._name}]")
             # 将再次使用的音频挪至最新
             self._append_audio(exists_audio, repeat_file=True)
@@ -308,17 +315,19 @@ class AudioFileLibrary:
         new_file_size = await bilibili.get_filesize(info_dict, num_option)
 
         # 如果下载此音频库会满，尝试删除最不常使用的文件
-        while self.storage_will_full(new_file_size):
-            # 现在是一直删文件直到可以下载或者删不了为止，可以改成先计算能删多少文件，空间够了再删，但是潜在问题太多先不改了
-            if not self._delete_least_used_file():
-                converted_file_size = utils.convert_byte(new_file_size)
-                available_size = self.get_available_storage_size()
-                converted_available_size = utils.convert_byte(available_size)
-                self._logger.rp(f"下载失败，超出音频库容量上限且无法清理出足够空间，"
-                                f"目标文件大小：{converted_file_size[0]}{converted_file_size[1]}，"
-                                f"音频库可用容量：{converted_available_size[0]}{converted_available_size[1]}",
-                                f"[{self._name}]")
-                raise errors.StorageFull(self._name)
+        if self.storage_will_full(new_file_size):
+            self._logger.rp(f"{self._name}超出容量限制，从最久不使用的文件开始尝试删除", f"[{self._name}]")
+            while self.storage_will_full(new_file_size):
+                # 现在是一直删文件直到可以下载或者删不了为止，可以改成先计算能删多少文件，空间够了再删，但是潜在问题太多先不改了
+                if not self._delete_least_used_file():
+                    converted_file_size = utils.convert_byte(new_file_size)
+                    available_size = self.get_available_storage_size()
+                    converted_available_size = utils.convert_byte(available_size)
+                    self._logger.rp(f"下载失败，超出音频库容量上限且无法清理出足够空间，"
+                                    f"目标文件大小：{converted_file_size[0]}{converted_file_size[1]}，"
+                                    f"音频库可用容量：{converted_available_size[0]}{converted_available_size[1]}",
+                                    f"[{self._name}]")
+                    raise errors.StorageFull(self._name)
 
         # 下载
         new_audio = await bilibili.audio_download(info_dict, self._root, download_type, num_option)
@@ -340,9 +349,9 @@ class AudioFileLibrary:
             converted_capacity = utils.convert_byte(self._storage_capacity)
             self._logger.rp(f"文件已在库中：{exists_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
                             f"路径：{exists_audio.get_path()}\n"
-                            f"已用容量：{self.get_used_storage_percentage(2)}% "
-                            f"{converted_used_size[0]}{converted_used_size[1]}/"
-                            f"{converted_capacity[0]}{converted_capacity[1]}",
+                            f"已用容量：{converted_used_size[0]}{converted_used_size[1]}/"
+                            f"{converted_capacity[0]}{converted_capacity[1]}"
+                            f" -> {self.get_used_storage_percentage(2)}%",
                             f"[{self._name}]")
             # 将再次使用的音频挪至最新
             self._append_audio(exists_audio, repeat_file=True)
@@ -351,17 +360,19 @@ class AudioFileLibrary:
         new_file_size = youtube.get_filesize(info_dict)
 
         # 如果下载此音频库会满，尝试删除最不常使用的文件
-        while self.storage_will_full(new_file_size):
-            # 现在是一直删文件直到可以下载或者删不了为止，可以改成先计算能删多少文件，空间够了再删，但是潜在问题太多先不改了
-            if not self._delete_least_used_file():
-                converted_file_size = utils.convert_byte(new_file_size)
-                available_size = self.get_available_storage_size()
-                converted_available_size = utils.convert_byte(available_size)
-                self._logger.rp(f"下载失败，超出音频库容量上限且无法清理出足够空间，"
-                                f"目标文件大小：{converted_file_size[0]}{converted_file_size[1]}，"
-                                f"音频库可用容量：{converted_available_size[0]}{converted_available_size[1]}",
-                                f"[{self._name}]")
-                raise errors.StorageFull(self._name)
+        if self.storage_will_full(new_file_size):
+            self._logger.rp(f"{self._name}超出容量限制，从最久不使用的文件开始尝试删除", f"[{self._name}]")
+            while self.storage_will_full(new_file_size):
+                # 现在是一直删文件直到可以下载或者删不了为止，可以改成先计算能删多少文件，空间够了再删，但是潜在问题太多先不改了
+                if not self._delete_least_used_file():
+                    converted_file_size = utils.convert_byte(new_file_size)
+                    available_size = self.get_available_storage_size()
+                    converted_available_size = utils.convert_byte(available_size)
+                    self._logger.rp(f"下载失败，超出音频库容量上限且无法清理出足够空间，"
+                                    f"目标文件大小：{converted_file_size[0]}{converted_file_size[1]}，"
+                                    f"音频库可用容量：{converted_available_size[0]}{converted_available_size[1]}",
+                                    f"[{self._name}]")
+                    raise errors.StorageFull(self._name)
 
         new_audio = youtube.audio_download(url, info_dict, self._root, download_type)
 
