@@ -108,6 +108,6 @@ class StorageFull(RuntimeError):
 
     def __str__(self):
         if self.library_name is not None:
-            return f"{self.library_name} 已满"
+            return f"{self.library_name}已满"
         else:
             return "库已满"

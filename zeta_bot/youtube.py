@@ -19,7 +19,6 @@ def get_info(ytb_url):
 
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': "./downloads/" + '/%(title)s.%(ext)s',
         'extract_flat': True,
         "quiet": True,
     }
@@ -37,6 +36,13 @@ def get_info(ytb_url):
     return info_dict
 
 
+def get_filesize(info_dict: dict) -> Union[int, None]:
+    if "filesize" in info_dict:
+        return info_dict["filesize"]
+    else:
+        return None
+
+
 def audio_download(youtube_url, info_dict, download_path, download_type="youtube_single") -> audio.Audio:
 
     # 获取日志记录器
@@ -50,6 +56,7 @@ def audio_download(youtube_url, info_dict, download_path, download_type="youtube
     video_path_title = utils.legal_name(video_title)
     video_name_extension = info_dict["ext"]
     video_duration = info_dict["duration"]
+    size = utils.convert_byte(int(info_dict["filesize"]))
 
     video_path = f"{download_path}/{video_path_title}.{video_name_extension}"
 
@@ -71,6 +78,7 @@ def audio_download(youtube_url, info_dict, download_path, download_type="youtube
         f"文件名：{video_path_title}.{video_name_extension}\n"
         f"来源：[YouTube] {video_id}\n"
         f"路径：{download_path}\n"
+        f"大小：{size[0]} {size[1]}\n"
         f"时长：{utils.convert_duration_to_str(video_duration)}",
         f"[{level}]"
     )

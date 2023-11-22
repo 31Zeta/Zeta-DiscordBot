@@ -48,7 +48,7 @@ class Guild:
 
         self.voice_volume = 100.0
 
-        self._logger.rp(f"服务器初始化完成：{self._name}", self._name)
+        self._logger.rp(f"服务器相关信息初始化完成：{self._name}", self._name)
 
     def __str__(self):
         return self._name
@@ -204,8 +204,7 @@ class GuildPlaylist(playlist.Playlist):
         else:
             target_audio = self._playlist.pop(index)
             self._duration -= target_audio.get_duration()
-            if target_audio not in self._playlist:
-                self._file_library.unlock_audio(self._guild.get_id(), target_audio)
+            self._file_library.unlock_audio(str(self._guild.get_id()), target_audio)
             self._guild.save()
             return target_audio
 
@@ -219,7 +218,7 @@ class GuildPlaylist(playlist.Playlist):
         if self._limitation is None or len(self._playlist) + 1 <= self._limitation:
             self._playlist.append(new_audio)
             self._duration += new_audio.get_duration()
-            self._file_library.lock_audio(self._guild.get_id(), new_audio)
+            self._file_library.lock_audio(str(self._guild.get_id()), new_audio)
             self._guild.save()
             return True
         else:
@@ -236,7 +235,7 @@ class GuildPlaylist(playlist.Playlist):
         if self._limitation is None or len(self._playlist) + 1 <= self._limitation:
             self._playlist.insert(index, new_audio)
             self._duration += new_audio.get_duration()
-            self._file_library.lock_audio(self._guild.get_id(), new_audio)
+            self._file_library.lock_audio(str(self._guild.get_id()), new_audio)
             self._guild.save()
             return True
         else:
@@ -253,8 +252,7 @@ class GuildPlaylist(playlist.Playlist):
         if target_audio is not None:
             self._duration -= self.get_audio(index).get_duration()
             del self._playlist[index]
-            if target_audio not in self._playlist:
-                self._file_library.unlock_audio(self._guild.get_id(), target_audio)
+            self._file_library.unlock_audio(str(self._guild.get_id()), target_audio)
             self._guild.save()
 
 
@@ -262,8 +260,6 @@ def guild_playlist_loader(guild_playlist: GuildPlaylist, info_dict: dict) -> Non
     """
     GuildPlaylist加载器，传入一个GuildPlaylist以及它的encode()生成的字典，重建并加入字典中的Audio，在AudioFileLibrary锁定这些Audio
     """
-    file_library = guild_playlist.get_file_library()
     for item in info_dict["playlist"]:
         current_audio = audio.audio_decoder(item)
         guild_playlist.append_audio(current_audio)
-        file_library.lock_audio(guild_playlist.get_guild().get_id(), current_audio)

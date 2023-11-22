@@ -51,6 +51,31 @@ async def get_info(bvid) -> dict:
     return info_dict
 
 
+async def get_filesize(info_dict: dict, num_p=0) -> Union[int, None]:
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://www.bilibili.com/"
+    }
+
+    bvid = info_dict["bvid"]
+    # 实例化 Credential 类
+    credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
+    # 实例化 Video 类
+    v = video.Video(bvid=bvid, credential=credential)
+
+    # 获取视频下载链接
+    url = await v.get_download_url(num_p)
+
+    # 音频轨链接
+    audio_url = url["dash"]["audio"][0]['baseUrl']
+
+    async with aiohttp.ClientSession() as sess:
+        # 下载音频流
+        async with sess.get(audio_url, headers=headers) as resp:
+            length = resp.headers.get('content-length')
+            return int(length)
+
+
 async def audio_download(info_dict: dict, download_path: str, download_type="bilibili_single", num_p=0) -> audio.Audio:
     """
     使用bilibili_api，下载来自哔哩哔哩的音频

@@ -290,15 +290,15 @@ bot_setting_configs = [
         "value": True
     },
     {
-        "id": "audio_library_storage_size",
-        "name": "音频库缓存上限",
+        "id": "audio_library_storage_capacity",
+        "name": "音频库缓存容量上限",
         "type": "int",
-        "description": "允许缓存在本地的音频数量上限，该上限为总上限（无论该机器人加入多少服务器），请根据您部署该机器人的设备的可用本地空间估算，当缓存数量超过该上限时将自动删除最久没有使用的音频",
-        "input_description": "请设置服务器允许在本地音频库缓存的音频的数量上限",
+        "description": "允许本地缓存的音频容量（单位为MB），该容量为总容量（无论该机器人加入多少服务器），请根据您部署该机器人的设备的可用本地空间估算，当缓存大小超过该上限时将自动删除最久没有使用的音频（备注：1GB = 1024MB, 1MB = 1024KB）",
+        "input_description": "请设置服务器允许在本地音频库缓存的音频的容量上限（单位为MB）",
         "dependent": None,
         "regex": None,
         "options": None,
-        "value": "200"
+        "value": "2048"
     },
     {
         "id": "guild_past_list_size",

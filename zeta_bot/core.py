@@ -48,10 +48,10 @@ logo = (
     "    \\|_______|\\|_______|   \\|__|  \\|__|\\|__|             \\|_______|\\|_______|    \\|__|"
 )
 
-version_header = (f"主程序版本号：{version}\n"
-                  f"Pycord版本号：{pycord_version}\n"
-                  f"Bilibili API版本号：{bilibili.api_version}\n"
-                  f"YT-DLP版本号：{youtube.api_version}")
+version_header = (f"Zeta-Bot Version：{version}\n"
+                  f"Pycord Version：{pycord_version}\n"
+                  f"Bilibili API Version：{bilibili.api_version}\n"
+                  f"yt-dlp Version：{youtube.api_version}")
 
 print(f"Zeta-Bot程序启动\n{logo}\n\n{version_header}\n")
 
@@ -96,7 +96,7 @@ audio_lib_main = file_management.AudioFileLibrary(
     "./downloads",
     "./data/audio_lib_main.json",
     "主音频文件库",
-    setting.value("audio_library_storage_size")
+    setting.value("audio_library_storage_capacity") * 1024 * 1024  # 要求用户输入的单位为MB，转换为字节Byte
 )
 
 logger.rp("初始化完成", "[系统]")
@@ -423,8 +423,7 @@ async def debug3(ctx):
     if not await command_check(ctx):
         return
 
-    audio_lib_main.debug_print_using()
-    ctx.voice_client.stop()
+    audio_lib_main.print_info()
 
     await ctx.respond("测试结果已打印")
 
@@ -532,6 +531,7 @@ async def list(ctx: discord.ApplicationContext):
 async def skip(ctx: discord.ApplicationContext, name=None):
 
     # TODO 整合两个skip指令
+    # TODO BUG 列表中同一名称出现多次时，会提示“选择的序号不在范围内”
 
     if not await command_check(ctx):
         return
@@ -792,8 +792,10 @@ async def play_callback(ctx: discord.ApplicationContext, link,
         else:
             return
 
-    # voice_client存在，不是正在播放或暂停的状态（刚启动时的状态），自动恢复播放
-    if voice_client is not None and not voice_client.is_playing() and not voice_client.is_paused():
+    # voice_client存在，不是正在播放或暂停的状态，且列表中存在音频，自动恢复播放
+    if (voice_client is not None and not voice_client.is_playing() and not voice_client.is_paused() and
+            not current_playlist.is_empty()):
+        await ctx.respond("恢复之前中断的播放")
         await resume_callback(ctx, command_call=False)
 
     # 检查输入的URL属于哪个网站
@@ -912,6 +914,7 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
     try:
         # 获取Bilibili视频信息
         info_dict = await bilibili.get_info(bvid)
+        utils.json_save("./test_output.json", info_dict)
 
         # 单一视频 bilibili_single
         if info_dict["videos"] == 1 and "ugc_season" not in info_dict:
@@ -1051,7 +1054,7 @@ async def play_youtube(ctx: discord.ApplicationContext, link, response=None) -> 
             )
 
     # YouTube音频异常处理
-    except errors.StorageFull():
+    except errors.StorageFull:
         await eos(ctx, response, "机器人当前处理音频过多，请稍后再试")
         return
     except yt_dlp.utils.DownloadError:
