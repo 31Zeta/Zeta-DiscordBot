@@ -45,10 +45,16 @@ class Playlist:
             result.append((item.get_title(), item.get_duration_str()))
         return result
 
-    def get_audio_str_list(self) -> List[str]:
+    def get_audio_str_list(self, index_start: bool = False) -> List[str]:
         temp_list = []
-        for audio_item in self._playlist:
-            temp_list.append(audio_item.__str__())
+        if not index_start:
+            for audio_item in self._playlist:
+                temp_list.append(audio_item.__str__())
+        else:
+            counter = 1
+            for audio_item in self._playlist:
+                temp_list.append(f"[{counter}] {audio_item.__str__()}")
+                counter += 1
         return temp_list
 
     def get_audio(self, index=0) -> Union[audio.Audio, None]:

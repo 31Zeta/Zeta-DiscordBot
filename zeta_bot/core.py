@@ -38,6 +38,8 @@ python_path = sys.executable
 pycord_version = discord.__version__
 update_time = "2023.**.**"
 
+supported_search_sites = ["哔哩哔哩", "YouTube"]
+
 logo = (
     "________  _______  _________  ________               ________  ________  _________   \n"
     "|\\_____  \\|\\  ___ \\|\\___   ___\\\\   __  \\             |\\   __  \\|\\   __  \\|\\___   ___\\ \n"
@@ -334,9 +336,6 @@ def get_voice_client_status_str(status_code: int) -> str:
     return voice_client_status
 
 
-supported_search_sites = ["哔哩哔哩", "YouTube"]
-
-
 async def autocomplete_search_sites(ctx: discord.AutocompleteContext):
     """
     search指令用自动填充 - 可选的搜索平台
@@ -351,8 +350,8 @@ async def autocomplete_skip_playlist(ctx: discord.AutocompleteContext):
     """
     guild_lib.check(ctx, audio_lib_main)
 
-    audio_str_list = guild_lib.get_guild(ctx).get_playlist().get_audio_str_list()
-    audio_str_list.append("全部")
+    audio_str_list = ["全部"]
+    audio_str_list += guild_lib.get_guild(ctx).get_playlist().get_audio_str_list(index_start=True)
     return audio_str_list
 
 
@@ -377,15 +376,11 @@ async def debug1(ctx):
     if not await command_check(ctx):
         return
 
-    voice_client = ctx.guild.voice_client
+    guild_lib.check(ctx, audio_lib_main)
     current_guild = guild_lib.get_guild(ctx)
-    current_playlist = current_guild.get_playlist()
+    await current_guild.refresh_list_view()
 
-    print(current_playlist)
-    voice_client.stop()
-    print(current_playlist)
-
-    await ctx.respond("测试结果已打印")
+    await ctx.respond("列表已刷新")
 
 
 @bot.slash_command(description="[管理员] 测试指令2")
@@ -471,20 +466,19 @@ async def leave(ctx: discord.ApplicationContext) -> None:
 @bot.slash_command(name_localizations=lang.get_command_name("search_audio"), description="播放来自哔哩哔哩或Youtube的音频")
 @option(
     "query",
-    description="要搜索的名称",
+    description="搜索的名称",
     required=True
 )
 @option(
     "site",
-    description="要在什么平台上搜索",
-    required=True,
+    description="搜索的平台（为空则在所有支持的平台进行搜索）",
+    required=False,
     # autocomplete=autocomplete_search_sites
     choices=supported_search_sites
 )
 async def search_audio(ctx: discord.ApplicationContext, query, site) -> None:
     if not await command_check(ctx):
         return
-    # TODO 完成不强制输入平台的混合搜索
     await search_audio_callback(ctx, query, site)
 
 
@@ -523,51 +517,97 @@ async def list(ctx: discord.ApplicationContext):
 
 @bot.slash_command(name_localizations=lang.get_command_name("skip"), description="跳过正在播放或播放列表中的音频")
 @option(
-    "name",
-    description="需要跳过的音频",
+    "start",
+    description="需要跳过的音频 / 从第几个音频开始跳过",
     required=False,
     autocomplete=autocomplete_skip_playlist,
 )
-async def skip(ctx: discord.ApplicationContext, name=None):
-
-    # TODO 整合两个skip指令
-    # TODO BUG 列表中同一名称出现多次时，会提示“选择的序号不在范围内”
-
+@option(
+    "end",
+    description="需要跳过的音频 / 跳过到第几个音频",
+    required=False,
+    autocomplete=autocomplete_skip_playlist,
+)
+async def skip(ctx: discord.ApplicationContext, start=None, end=None):
     if not await command_check(ctx):
         return
-    if name is None:
+
+    guild_lib.check(ctx, audio_lib_main)
+    current_guild = guild_lib.get_guild(ctx)
+    current_playlist = current_guild.get_playlist()
+
+    if start is None and end is None:
         await skip_callback(ctx, first_index=None, second_index=None, command_call=True)
-    elif name == "全部":
-        await skip_callback(ctx, "*", command_call=True)
+
+    elif start is not None and end is None:
+        if start == "全部":
+            await skip_callback(ctx, "*", command_call=True)
+        else:
+            if start.isdigit():
+                start_index = int(start)
+            elif "[" and "]" in start and start[1:start.find("]")].isdigit():
+                start_index = int(start[1:start.find("]")])
+            else:
+                await ctx.respond("参数错误")
+                logger.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
+                return
+            await skip_callback(ctx, first_index=start_index, command_call=True)
+
+    elif start is None and end is not None:
+        if end == "全部":
+            await skip_callback(ctx, "*", command_call=True)
+        else:
+            if end.isdigit():
+                start_index = int(end)
+            elif "[" and "]" in end and end[1:end.find("]")].isdigit():
+                start_index = int(end[1:end.find("]")])
+            else:
+                await ctx.respond("参数错误")
+                logger.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
+                return
+            await skip_callback(ctx, first_index=start_index, command_call=True)
+
     else:
-        current_playlist = guild_lib.get_guild(ctx).get_playlist().get_audio_str_list()
-        counter = 1
-        for item in current_playlist:
-            if name == item:
-                await skip_callback(ctx, counter, command_call=True)
-            counter += 1
-
-
-@bot.slash_command(name_localizations=lang.get_command_name("skipi"), description="通过序号跳过正在播放或播放列表中的音频")
-@option(
-    "from_number", int,
-    description="需要跳过的音频的序号",
-    required=False,
-    autocomplete=autocomplete_skipi_playlist_index,
-    min_value=1
-)
-@option(
-    "to_number", int,
-    description="需要跳过的音频的序号",
-    required=False,
-    autocomplete=autocomplete_skipi_playlist_index,
-    min_value=1
-)
-async def skipi(ctx: discord.ApplicationContext,
-                from_number=None, to_number=None):
-    if not await command_check(ctx):
-        return
-    await skip_callback(ctx, from_number, to_number, command_call=True)
+        if start == "全部" and end == "全部":
+            await skip_callback(ctx, "*", command_call=True)
+        if start == "全部":
+            if end.isdigit():
+                end_index = int(end)
+            elif "[" and "]" in end and end[1:end.find("]")].isdigit():
+                end_index = int(end[1:end.find("]")])
+            else:
+                await ctx.respond("参数错误")
+                logger.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
+                return
+            await skip_callback(ctx, first_index=1, second_index=end_index, command_call=True)
+        elif end == "全部":
+            if start.isdigit():
+                start_index = int(start)
+            elif "[" and "]" in start and start[1:start.find("]")].isdigit():
+                start_index = int(start[1:start.find("]")])
+            else:
+                await ctx.respond("参数错误")
+                logger.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
+                return
+            await skip_callback(ctx, first_index=start_index, second_index=len(current_playlist), command_call=True)
+        else:
+            if start.isdigit():
+                start_index = int(start)
+            elif "[" and "]" in start and start[1:start.find("]")].isdigit():
+                start_index = int(start[1:start.find("]")])
+            else:
+                await ctx.respond("参数错误")
+                logger.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
+                return
+            if end.isdigit():
+                end_index = int(end)
+            elif "[" and "]" in end and end[1:end.find("]")].isdigit():
+                end_index = int(end[1:end.find("]")])
+            else:
+                await ctx.respond("参数错误")
+                logger.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
+                return
+            await skip_callback(ctx, first_index=start_index, second_index=end_index, command_call=True)
 
 
 @bot.slash_command(name_localizations=lang.get_command_name("move"), description="移动播放列表中音频的位置")
@@ -670,6 +710,7 @@ async def join_callback(
     :return: 布尔值，是否成功加入频道
     """
     guild_lib.check(ctx, audio_lib_main)
+    current_guild = guild_lib.get_guild(ctx)
 
     # 未输入参数的情况
     if channel is None:
@@ -699,6 +740,7 @@ async def join_callback(
             await ctx.respond(f"转移语音频道：***{previous_channel}***  ->  ***{channel.name}***")
 
     logger.rp(f"加入语音频道：{channel.name}", ctx.guild)
+    await current_guild.refresh_list_view()
     return True
 
 
@@ -712,7 +754,8 @@ async def leave_callback(ctx: discord.ApplicationContext) -> None:
     guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
-    current_playlist = guild_lib.get_guild(ctx).get_playlist()
+    current_guild = guild_lib.get_guild(ctx)
+    current_playlist = current_guild.get_playlist()
 
     if voice_client is not None:
         # 防止因退出频道自动删除正在播放的音频
@@ -729,29 +772,42 @@ async def leave_callback(ctx: discord.ApplicationContext) -> None:
     else:
         await ctx.respond(f"{bot_name} 没有连接到任何语音频道")
 
+    await current_guild.refresh_list_view()
+
 
 async def search_audio_callback(ctx: discord.ApplicationContext, query, site=None, query_num=5) -> None:
-    # TODO 临时
+    guild_lib.check(ctx, audio_lib_main)
+    current_guild = guild_lib.get_guild(ctx)
 
     search_result = {key: None for key in supported_search_sites}
 
-    if site is None:
-        pass
-    elif site == "哔哩哔哩":
-        search_result["哔哩哔哩"] = await bilibili.search(query, query_num=query_num)
-    elif site == "YouTube":
-        search_result["YouTube"] = youtube.search(query, query_num=query_num)
-    else:
-        await ctx.respond("不支持该平台搜索")
+    loading_msg = await ctx.respond(f"正在搜索：{query}")
+
+    if site is not None and site not in supported_search_sites:
+        await eos(ctx, loading_msg, "不支持该平台搜索")
         return
+    if site == "哔哩哔哩" or site is None:
+        search_result["哔哩哔哩"] = await bilibili.search(query, query_num=query_num)
+    if site == "YouTube" or site is None:
+        search_result["YouTube"] = youtube.search(query, query_num=query_num)
 
-    result = f"[DEBUG] {site}搜索结果为:"
+    title_str = f"## 搜索：{query}\n"
+    address_str = f"## 搜索：{query}\n"
+    source_list = []
     counter = 1
-    for item in search_result:
-        result += f"\n{counter}. {item['id']} {item['title']} [{utils.convert_duration_to_str(item['duration'])}]"
-        counter += 1
+    for key in search_result:
+        if search_result[key] is not None:
+            title_str += f"### {key}\n"
+            address_str += f"### {key}\n"
+            for item in search_result[key]:
+                title_str += f"> **[{counter}]** {item['title']} [{utils.convert_duration_to_str(item['duration'])}]\n"
+                address_str += (f"> **[{counter}]** {item['title']} [{utils.convert_duration_to_str(item['duration'])}]"
+                                f" - {item['id']}\n")
+                source_list.append(item['id'])
+                counter += 1
 
-    await ctx.respond(result)
+    await eos(ctx, loading_msg, title_str)
+    await current_guild.refresh_list_view()
 
 
 async def play_callback(ctx: discord.ApplicationContext, link,
@@ -768,8 +824,6 @@ async def play_callback(ctx: discord.ApplicationContext, link,
     :param function_call 该指令是否是由其他函数调用
     :return:
     """
-    # TODO BUG 现在重启后状态自动为暂停，导致使用play没有自动播放，检查机器人重启后状态设定
-
     # 用户记录增加音乐播放计数
     member_lib.play_counter_increment(ctx.user.id)
 
@@ -820,6 +874,8 @@ async def play_callback(ctx: discord.ApplicationContext, link,
         if link is not None:
             await search_ytb(ctx, link)
 
+    await current_guild.refresh_list_view()
+
 
 async def play_audio(ctx: discord.ApplicationContext, target_audio: audio.Audio,
                      response: Union[discord.Interaction, discord.InteractionMessage, None] = None,
@@ -851,6 +907,8 @@ async def play_audio(ctx: discord.ApplicationContext, target_audio: audio.Audio,
         logger.rp(f"开始播放：{target_audio.get_path()} 时长：{target_audio.get_duration_str()}", ctx.guild)
         await eos(ctx, response, f"正在播放：**{target_audio.get_title()} [{target_audio.get_duration_str()}]**")
 
+    await current_guild.refresh_list_view()
+
 
 async def play_next(ctx: discord.ApplicationContext) -> None:
     """
@@ -877,6 +935,8 @@ async def play_next(ctx: discord.ApplicationContext) -> None:
     else:
         logger.rp("播放队列已结束", ctx.guild)
         await ctx.send("播放队列已结束")
+
+    await current_guild.refresh_list_view()
 
 
 async def play_bilibili(ctx: discord.ApplicationContext, source, link,
@@ -987,6 +1047,8 @@ async def add_bilibili_audio(ctx: discord.ApplicationContext, info_dict, audio_t
 
         current_playlist.append_audio(new_audio)
         logger.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表", ctx.guild)
+
+        await current_guild.refresh_list_view()
 
     return new_audio
 
@@ -1099,6 +1161,8 @@ async def add_youtube_audio(ctx: discord.ApplicationContext, link, info_dict, li
         # 添加至服务器播放列表
         current_playlist.append_audio(new_audio)
         logger.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表", ctx.guild)
+
+        await current_guild.refresh_list_view()
 
     # 返回None或者新下载的音频
     return new_audio
@@ -1237,6 +1301,8 @@ async def resume_callback(ctx: discord.ApplicationContext, command_call: bool = 
             logger.rp("收到resume指令时机器人没有任何被暂停的音乐", ctx.guild)
             await ctx.respond("当前没有任何被暂停的音乐")
 
+    await current_guild.refresh_list_view()
+
 
 async def list_callback(ctx: discord.ApplicationContext):
     """
@@ -1250,9 +1316,6 @@ async def list_callback(ctx: discord.ApplicationContext):
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
-    # if current_playlist.is_empty():
-    #     await ctx.respond("当前播放列表为空")
-    # else:
     playlist_list = utils.make_playlist_page(current_playlist.get_list_info(), 10,
                                              {None: ">       ", 0: "> ▶  **"}, {0: "**"})
     if len(playlist_list) == 0:
@@ -1270,28 +1333,28 @@ async def list_callback(ctx: discord.ApplicationContext):
         await guild_active_views["playlist_menu_view"].on_override()
     guild_active_views["playlist_menu_view"] = view
 
-    await ctx.respond(
+    msg = await ctx.respond(
         content=f"## {current_playlist.get_name()}\n"
                 f"    [列表长度：{len(current_playlist)} | 总时长：{current_playlist.get_duration_str()}]\n"
                 f"    状态：{voice_client_status_str}\n\n"
                 f"{playlist_list[0]}\n第[1]页，共[{len(playlist_list)}]页\n",
         view=view
     )
+    await view.set_original_msg(msg)
 
 
 async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_index: Union[int, None] = None,
                         command_call: bool = False):
     """
     使机器人跳过指定的歌曲，并删除对应歌曲的文件
+    *注意*：此方法输入的index从1开始，不是0
 
     :param ctx: 指令原句
-    :param first_index: 跳过起始曲目的序号
-    :param second_index: 跳过最终曲目的序号
+    :param first_index: 跳过起始曲目的序号（从1开始）
+    :param second_index: 跳过最终曲目的序号（包含）
     :param command_call: 该函数是否是由用户指令调用
     :return:
     """
-    # TODO 添加未找到音频的提示
-
     guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
@@ -1315,7 +1378,7 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
             else:
                 current_playlist.remove_audio(0)
 
-            logger.rp(f"第1个音频 {title} 已被用户 {ctx.user} 移出播放队列", ctx.guild)
+            logger.rp(f"第1个音频 {title} 已被用户 {ctx.user} 移出播放列表", ctx.guild)
             if command_call:
                 await ctx.respond(f"已跳过当前音频：**{title} [{duration_str}]**")
             else:
@@ -1338,7 +1401,7 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
                 else:
                     current_playlist.remove_audio(0)
 
-                logger.rp(f"第1个音频 {title} 已被用户 {ctx.user} 移出播放队列", ctx.guild)
+                logger.rp(f"第1个音频 {title} 已被用户 {ctx.user} 移出播放列表", ctx.guild)
                 if command_call:
                     await ctx.respond(f"已跳过当前音频：**{title} [{duration_str}]**")
                 else:
@@ -1358,7 +1421,7 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
                 duration_str = select_audio.get_duration_str()
                 current_playlist.remove_audio(first_index - 1)
 
-                logger.rp(f"第{first_index}个音频 {title} 已被用户 {ctx.user} 移出播放队列", ctx.guild)
+                logger.rp(f"第{first_index}个音频 {title} 已被用户 {ctx.user} 移出播放列表", ctx.guild)
                 if command_call:
                     await ctx.respond(f"第{first_index}个音频 **{title} [{duration_str}]** 已被移出播放列表")
                 else:
@@ -1379,11 +1442,11 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
                 else:
                     current_playlist.remove_audio(0)
 
-                logger.rp(f"第{first_index}到第{second_index}个音频被用户 {ctx.author} 移出播放队列", ctx.guild)
+                logger.rp(f"第{first_index}到第{second_index}个音频被用户 {ctx.author} 移出播放列表", ctx.guild)
                 if command_call:
-                    await ctx.respond(f"第{first_index}到第{second_index}个音频已被移出播放队列")
+                    await ctx.respond(f"第{first_index}到第{second_index}个音频已被移出播放列表")
                 else:
-                    await ctx.send(f"第{first_index}到第{second_index}个音频已被移出播放队列")
+                    await ctx.send(f"第{first_index}到第{second_index}个音频已被移出播放列表")
 
             elif int(first_index) > len(current_playlist) or int(second_index) > len(current_playlist):
                 logger.rp(f"用户 {ctx.author} 输入的序号不在范围内", ctx.guild)
@@ -1397,11 +1460,11 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
                 for i in range(second_index, first_index - 1, -1):
                     current_playlist.remove_audio(i - 1)
 
-                logger.rp(f"第{first_index}到第{second_index}个音频被用户 {ctx.author} 移出播放队列", ctx.guild)
+                logger.rp(f"第{first_index}到第{second_index}个音频被用户 {ctx.author} 移出播放列表", ctx.guild)
                 if command_call:
-                    await ctx.respond(f"第{first_index}到第{second_index}个音频已被移出播放队列")
+                    await ctx.respond(f"第{first_index}到第{second_index}个音频已被移出播放列表")
                 else:
-                    await ctx.send(f"第{first_index}到第{second_index}个音频已被移出播放队列")
+                    await ctx.send(f"第{first_index}到第{second_index}个音频已被移出播放列表")
 
         else:
             if command_call:
@@ -1415,6 +1478,8 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
             await ctx.respond("当前播放列表已为空")
         else:
             await ctx.send("当前播放列表已为空")
+
+    await current_guild.refresh_list_view()
 
 
 async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Union[int, None] = None):
@@ -1441,8 +1506,8 @@ async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Un
         current_playlist.insert_audio(current_audio, to_number)
         voice_client.stop()
 
-        logger.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放队列第 {to_number} 位", ctx.guild)
-        await ctx.respond(f"**{title}** 已被移至播放队列第 **{to_number}** 位")
+        logger.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
+        await ctx.respond(f"**{title}** 已被移至播放列表第 **{to_number}** 位")
 
     # 将音频移到当前位置
     elif to_number == 1:
@@ -1454,8 +1519,8 @@ async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Un
         current_playlist.add_audio(target_song, 1)
         voice_client.stop()
 
-        logger.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放队列第 {to_number} 位", ctx.guild)
-        await ctx.respond(f"**{title}** 已被移至播放队列第 **{to_number}** 位")
+        logger.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
+        await ctx.respond(f"**{title}** 已被移至播放列表第 **{to_number}** 位")
 
     else:
         target_song = current_playlist.get(from_number - 1)
@@ -1467,8 +1532,10 @@ async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Un
             current_playlist.add_audio(target_song, to_number - 1)
             current_playlist.remove_select(from_number)
 
-        logger.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放队列第 {to_number} 位", ctx.guild)
-        await ctx.respond(f"**{title}** 已被移至播放队列第 **{to_number}** 位")
+        logger.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
+        await ctx.respond(f"**{title}** 已被移至播放列表第 **{to_number}** 位")
+
+    await current_guild.refresh_list_view()
 
 
 async def clear(ctx):
@@ -1579,6 +1646,9 @@ async def shutdown_callback(ctx):
 class PlaylistMenu(View):
 
     def __init__(self, ctx, timeout: int = 600):
+        """
+        当前View被创建和发送后需要调用set_original_msg确保以后可被正确主动刷新
+        """
         super().__init__(timeout=timeout)
         self.ctx = ctx
         self.guild = guild_lib.get_guild(self.ctx)
@@ -1599,6 +1669,8 @@ class PlaylistMenu(View):
 
         self.overrode = False
         self.time_outed = False
+
+        self.original_msg = None
 
         self.refresh_pages()
 
@@ -1746,9 +1818,15 @@ class PlaylistMenu(View):
         await msg.edit_message(content="已关闭", view=self)
         await self.ctx.delete()
 
-    async def refresh_test(self):
-        # TODO 尝试添加使用任意音频相关指令后列表自动刷新，目前无法获取原文信息，可以尝试set_original_message？
-        pass
+    async def refresh_menu(self):
+        self.refresh_pages()
+        await eos(self.ctx, response=self.original_msg, content=self.get_page_content(self.page_num), view=self)
+
+    async def set_original_msg(self, response: Union[discord.Message, discord.InteractionMessage, None]):
+        """
+        创建View后调用，传入发送该View的Interaction
+        """
+        self.original_msg = response
 
     async def on_override(self):
         """

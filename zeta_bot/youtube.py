@@ -87,10 +87,6 @@ def audio_download(youtube_url, info_dict, download_path, download_type="youtube
 
 
 def search(query, query_num=5) -> list:
-    """
-
-    """
-
     # 获取日志记录器
     logger = log.Log()
 
@@ -116,13 +112,15 @@ def search(query, query_num=5) -> list:
     log_message = f"搜索 {query} 结果为："
     counter = 1
 
+    id_header = "https://www.youtube.com/watch?v="
+
     for item in extracted_info["entries"]:
         if counter > query_num:
             break
         result.append(
             {
                 "title": item["title"],
-                "id": item["id"],
+                "id": id_header + item["id"],
                 "duration": item["duration"]
             }
         )

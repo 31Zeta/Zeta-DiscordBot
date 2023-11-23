@@ -175,6 +175,8 @@ async def search(query, query_num=5) -> list:
     log_message = f"搜索 {query} 结果为："
     counter = 1
 
+    id_header = "https://www.bilibili.com/video/"
+
     for item in info_dict["result"]:
         if counter > query_num:
             break
@@ -186,7 +188,7 @@ async def search(query, query_num=5) -> list:
         result.append(
             {
                 "title": title,
-                "id": item["bvid"],
+                "id": id_header + item["bvid"],
                 "duration": utils.convert_str_to_duration(item["duration"])
             }
         )

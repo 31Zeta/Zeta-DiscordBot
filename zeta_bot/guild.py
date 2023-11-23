@@ -99,6 +99,10 @@ class Guild:
         self._play_mode = mode_code
         return True
 
+    async def refresh_list_view(self) -> None:
+        if "playlist_menu_view" in self._active_views and self._active_views["playlist_menu_view"] is not None:
+            await self._active_views["playlist_menu_view"].refresh_menu()
+
     def save(self) -> None:
         utils.json_save(self._path, self)
 
