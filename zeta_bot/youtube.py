@@ -121,7 +121,8 @@ def search(query, query_num=5) -> list:
             {
                 "title": item["title"],
                 "id": id_header + item["id"],
-                "duration": item["duration"]
+                "duration": item["duration"],
+                "duration_str": utils.convert_duration_to_str(item["duration"]),
             }
         )
         log_message += f"\n{counter}. {item['id']}：{item['title']} [{utils.convert_duration_to_str(item['duration'])}]"

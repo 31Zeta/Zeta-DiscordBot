@@ -7,7 +7,7 @@ import requests
 import platform
 import bilibili_api
 import yt_dlp
-from typing import Any, Union
+from typing import Any, Union, List, Dict
 
 from discord import Component
 from discord.ext import commands
@@ -262,20 +262,24 @@ async def auto_reboot_reminder():
             await current_guild.text_channels[0].send(f"注意：将在{ar_time}时自动重启")
 
 
-async def eos(ctx: discord.ApplicationContext, response, content: str, view=None) -> None:
+async def eos(ctx: discord.ApplicationContext, response, content: str, view=None, debug=False)\
+        -> Union[discord.InteractionMessage, discord.Message]:
     """
     [Edit Or Send]
     如果<response>可以被编辑，则将<response>编辑为<content>
     否则使用<ctx>发送<content>
     """
+    if debug:
+        print(f"[DEBUG] eos参数response类型为：{type(response)}\n")
+
     if isinstance(response, discord.Interaction):
-        await response.edit_original_response(content=content, view=view)
+        return await response.edit_original_response(content=content, view=view)
     elif isinstance(response, discord.InteractionMessage):
-        await response.edit(content=content, view=view)
+        return await response.edit(content=content, view=view)
     elif isinstance(response, discord.Message):
-        await response.edit(content=content, view=view)
+        return await response.edit(content=content, view=view)
     else:
-        await ctx.send(content=content, view=view)
+        return await ctx.send(content=content, view=view)
 
 
 async def ec(target, content: str, view=None) -> Union[None, discord.Message]:
@@ -775,13 +779,17 @@ async def leave_callback(ctx: discord.ApplicationContext) -> None:
     await current_guild.refresh_list_view()
 
 
-async def search_audio_callback(ctx: discord.ApplicationContext, query, site=None, query_num=5) -> None:
+async def search_audio_callback(ctx: discord.ApplicationContext, query, site=None, query_num=5,
+                                response: Union[discord.Interaction, discord.InteractionMessage, None] = None) -> None:
     guild_lib.check(ctx, audio_lib_main)
     current_guild = guild_lib.get_guild(ctx)
 
     search_result = {key: None for key in supported_search_sites}
 
-    loading_msg = await ctx.respond(f"正在搜索：{query}")
+    if response is None:
+        loading_msg = await ctx.respond(f"正在搜索：{query}")
+    else:
+        loading_msg = await eos(ctx, response, f"正在搜索：{query}")
 
     if site is not None and site not in supported_search_sites:
         await eos(ctx, loading_msg, "不支持该平台搜索")
@@ -793,7 +801,7 @@ async def search_audio_callback(ctx: discord.ApplicationContext, query, site=Non
 
     title_str = f"## 搜索：{query}\n"
     address_str = f"## 搜索：{query}\n"
-    source_list = []
+    resource_list = []
     counter = 1
     for key in search_result:
         if search_result[key] is not None:
@@ -802,11 +810,14 @@ async def search_audio_callback(ctx: discord.ApplicationContext, query, site=Non
             for item in search_result[key]:
                 title_str += f"> **[{counter}]** {item['title']} [{utils.convert_duration_to_str(item['duration'])}]\n"
                 address_str += (f"> **[{counter}]** {item['title']} [{utils.convert_duration_to_str(item['duration'])}]"
-                                f" - {item['id']}\n")
-                source_list.append(item['id'])
+                                f"  -  {item['id']}\n")
+                resource_list.append(item)
                 counter += 1
 
-    await eos(ctx, loading_msg, title_str)
+    title_str += "\n**请选择要播放的音频序号：**"
+    address_str += "\n**请选择要播放的音频序号：**"
+    view = SearchedAudioSelectionView(ctx, title_str, address_str, resource_list)
+    await eos(ctx, loading_msg, title_str, view=view)
     await current_guild.refresh_list_view()
 
 
@@ -861,18 +872,28 @@ async def play_callback(ctx: discord.ApplicationContext, link,
 
     # Link属于Bilibili
     if source == "bilibili_bvid" or source == "bilibili_url" or source == "bilibili_short_url":
-        loading_msg = await ctx.respond("正在加载Bilibili音频信息")
+        if response is None:
+            loading_msg = await ctx.respond("正在加载哔哩哔哩音频信息")
+        else:
+            loading_msg = await eos(ctx, response, "正在加载哔哩哔哩音频信息")
         await play_bilibili(ctx, source, link, response=loading_msg)
 
     # Link属于YouTube
     elif source == "youtube_url" or source == "youtube_short_url":
-        loading_msg = await ctx.respond("正在获取Youtube音频信息")
+        if response is None:
+            loading_msg = await ctx.respond("正在加载Youtube音频信息")
+        else:
+            loading_msg = await eos(ctx, response, "正在加载Youtube音频信息")
         await play_youtube(ctx, link, response=loading_msg)
 
     else:
-        # TODO 搜索询问
-        if link is not None:
-            await search_ytb(ctx, link)
+        # await ctx.respond("未能检测到可用的链接或BV号，可使用\"/search_audio\"（搜索音频）指令直接进行搜索")
+        # message = f"是否要进行搜索？\n"
+        # view = AskForSearchingView(ctx, link, response=response)
+        # view_msg = await ctx.send(message, view=view)
+        # await view.set_original_msg(view_msg)
+
+        await search_audio_callback(ctx, query=link)
 
     await current_guild.refresh_list_view()
 
@@ -1166,44 +1187,6 @@ async def add_youtube_audio(ctx: discord.ApplicationContext, link, info_dict, li
 
     # 返回None或者新下载的音频
     return new_audio
-
-
-async def search_ytb(ctx: discord.ApplicationContext, input_name):
-    await ctx.respond("搜索功能正在重构中，暂未开放，敬请期待")
-    # name = input_name.strip()
-    #
-    # if name == "":
-    #     ctx.respond("请输入要搜索的名称")
-    #     return
-    #
-    # options = []
-    # search_result = VideosSearch(name, limit=5)
-    # info_dict = dict(search_result.result())['result']
-    #
-    # message = f"Youtube搜索 **{name}** 结果为:\n"
-    #
-    # counter = 1
-    # for result_video in info_dict:
-    #
-    #     title = result_video["title"]
-    #     video_id = result_video["id"]
-    #     duration = result_video["duration"]
-    #
-    #     options.append([title, video_id, duration])
-    #     message = message + f"**[{counter}]** {title}  [{duration}]\n"
-    #
-    #     counter += 1
-    #
-    # logger.rp(ctx, f"搜索结果为：{options}")
-    #
-    # message = message + "\n请选择："
-    #
-    # if len(info_dict) == 0:
-    #     await ctx.respond("没有搜索到任何结果")
-    #     return
-    #
-    # view = SearchSelectView(ctx, options)
-    # await ctx.respond(message, view=view)
 
 
 async def pause_callback(ctx: discord.ApplicationContext, command_call: bool = False):
@@ -1715,6 +1698,10 @@ class PlaylistMenu(View):
         for button in self.children:
             if button.custom_id == "button_play_mode":
                 button.label = self.play_mode_str
+
+                # TODO 制作播放模式切换
+                button.disabled = True
+
                 break
 
         self.first_page = self.get_page_content(0)
@@ -2456,7 +2443,130 @@ class CheckCollectionView(View):
         logger.rp(f"{self.occur_time}生成的合集查看选择栏已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
 
 
-# TODO 未完成
+class SearchedAudioSelectionView(View):
+    def __init__(self, ctx, title_str: str, address_str: str, resource_list: List[dict],
+                 response: Union[discord.Interaction, discord.InteractionMessage, None] = None,
+                 timeout=60):
+        """
+        选择是否播放或者显示搜索到的音频的地址的View
+        """
+        super().__init__(timeout=timeout)
+        self.ctx = ctx
+        self.response = response
+        self.occur_time = utils.time()
+        self.finish = False
+
+        self.show_address = False
+        self.title_str = title_str
+        self.address_str = address_str
+        self.resource_list = resource_list
+
+        for i in range(10, len(self.resource_list), -1):
+            for item in self.children:
+                if item.custom_id == f"button_{i}":
+                    item.disabled = True
+                    break
+
+    async def play(self, index: int, msg):
+        selected_item = self.resource_list[index]
+        link = selected_item["id"]
+        self.finish = True
+        self.clear_items()
+        await msg.edit_message(content=f"已选择：**{selected_item['title']} [{selected_item['duration_str']}]**", view=self)
+        loading_msg = await self.ctx.send("正在准备播放")
+        await play_callback(self.ctx, link, response=loading_msg)
+
+    @discord.ui.button(label="1", style=discord.ButtonStyle.grey, custom_id="button_1", row=1)
+    async def button_1_callback(self, button, interaction):
+        button.disabled = True
+        msg = interaction.response
+        await self.play(0, msg)
+
+    @discord.ui.button(label="2", style=discord.ButtonStyle.grey, custom_id="button_2", row=1)
+    async def button_2_callback(self, button, interaction):
+        button.disabled = True
+        msg = interaction.response
+        await self.play(1, msg)
+
+    @discord.ui.button(label="3", style=discord.ButtonStyle.grey, custom_id="button_3", row=1)
+    async def button_3_callback(self, button, interaction):
+        button.disabled = True
+        msg = interaction.response
+        await self.play(2, msg)
+
+    @discord.ui.button(label="4", style=discord.ButtonStyle.grey, custom_id="button_4", row=1)
+    async def button_4_callback(self, button, interaction):
+        button.disabled = True
+        msg = interaction.response
+        await self.play(3, msg)
+
+    @discord.ui.button(label="5", style=discord.ButtonStyle.grey, custom_id="button_5", row=1)
+    async def button_5_callback(self, button, interaction):
+        button.disabled = True
+        msg = interaction.response
+        await self.play(4, msg)
+
+    @discord.ui.button(label="6", style=discord.ButtonStyle.grey, custom_id="button_6", row=2)
+    async def button_6_callback(self, button, interaction):
+        button.disabled = True
+        msg = interaction.response
+        await self.play(5, msg)
+
+    @discord.ui.button(label="7", style=discord.ButtonStyle.grey, custom_id="button_7", row=2)
+    async def button_7_callback(self, button, interaction):
+        button.disabled = True
+        msg = interaction.response
+        await self.play(6, msg)
+
+    @discord.ui.button(label="8", style=discord.ButtonStyle.grey, custom_id="button_8", row=2)
+    async def button_8_callback(self, button, interaction):
+        button.disabled = True
+        msg = interaction.response
+        await self.play(7, msg)
+
+    @discord.ui.button(label="9", style=discord.ButtonStyle.grey, custom_id="button_9", row=2)
+    async def button_9_callback(self, button, interaction):
+        button.disabled = True
+        msg = interaction.response
+        await self.play(8, msg)
+
+    @discord.ui.button(label="10", style=discord.ButtonStyle.grey, custom_id="button_10", row=2)
+    async def button_10_callback(self, button, interaction):
+        button.disabled = True
+        msg = interaction.response
+        await self.play(9, msg)
+
+    @discord.ui.button(label="显示网址", style=discord.ButtonStyle.blurple, custom_id="button_switch", row=3)
+    async def button_switch_callback(self, button, interaction):
+        msg = interaction.response
+
+        if self.show_address:
+            self.show_address = False
+            button.label = "显示网址"
+            await msg.edit_message(content=self.title_str, view=self)
+        else:
+            self.show_address = True
+            button.label = "隐藏网址"
+            await msg.edit_message(content=self.address_str, view=self)
+
+    @discord.ui.button(label="关闭", style=discord.ButtonStyle.red, custom_id="button_cancel", row=3)
+    async def button_cancel_callback(self, button, interaction):
+        button.disabled = True
+        self.finish = True
+        msg = interaction.response
+        self.clear_items()
+        await msg.edit_message(content=f"已关闭搜索结果选择菜单", view=self)
+        logger.rp("用户已关闭搜索选择菜单", self.ctx.guild)
+
+    async def on_timeout(self):
+        self.clear_items()
+        if self.finish:
+            await self.ctx.edit(view=self)
+        else:
+            await self.ctx.edit(content="搜索选择菜单已超时", view=self)
+        logger.rp(f"{self.occur_time}生成的搜索选择菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
+
+
 class AskForSearchingView(View):
 
     def __init__(self, ctx, query, response: Union[discord.Interaction, discord.InteractionMessage, None] = None,
@@ -2480,11 +2590,9 @@ class AskForSearchingView(View):
         button.disabled = False
         msg = interaction.response
         self.finish = True
-
         self.clear_items()
-
-        if self.original_msg is not None:
-            await self.original_msg.delete()
+        await msg.edit_message(view=self)
+        await search_audio_callback(self.ctx, self.query, response=self.original_msg, query_num=5)
 
     @discord.ui.button(label="关闭", style=discord.ButtonStyle.grey, custom_id="button_cancel")
     async def button_close_callback(self, button, interaction):
@@ -2501,7 +2609,7 @@ class AskForSearchingView(View):
         self.original_msg = response
 
     async def on_timeout(self):
+        self.clear_items()
         if not self.finish and self.original_msg is not None:
             await self.original_msg.delete()
         logger.rp(f"{self.occur_time}生成的询问搜索选择栏已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
-

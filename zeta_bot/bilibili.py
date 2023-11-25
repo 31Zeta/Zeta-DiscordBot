@@ -185,11 +185,14 @@ async def search(query, query_num=5) -> list:
         title = title.replace("<em class=\"keyword\">", "")
         title = title.replace("</em>", "")
 
+        duration = utils.convert_str_to_duration(item["duration"])
+
         result.append(
             {
                 "title": title,
                 "id": id_header + item["bvid"],
-                "duration": utils.convert_str_to_duration(item["duration"])
+                "duration": duration,
+                "duration_str": utils.convert_duration_to_str(duration),
             }
         )
 
