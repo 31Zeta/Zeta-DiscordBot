@@ -36,7 +36,7 @@ version = "0.10.0"
 author = "炤铭Zeta (31Zeta)"
 python_path = sys.executable
 pycord_version = discord.__version__
-update_time = "2023.**.**"
+update_time = "2023.11.25"
 
 supported_search_sites = ["哔哩哔哩", "YouTube"]
 
