@@ -1,4 +1,5 @@
 import os
+from typing import Union, List, Tuple
 from zeta_bot import (
     errors,
     decorators
@@ -113,7 +114,7 @@ class Lang:
             return {}
 
 
-def read_commands_lang_file(file_path: str) -> list[tuple[str, str]]:
+def read_commands_lang_file(file_path: str) -> List[Tuple[str, str]]:
     """
     读取指令名称.lang文件并返回一个包含所有指令对应的本地化名称的列表
     """
