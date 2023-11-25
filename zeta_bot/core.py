@@ -1825,7 +1825,8 @@ class PlaylistMenu(View):
         """
         self.refresh_pages()
         self.clear_items()
-        await self.ctx.edit(content=self.first_page, view=self)
+        # await self.ctx.edit(content=self.first_page, view=self)
+        await self.ctx.edit(content="菜单已被覆盖", view=self)
         self.overrode = True
         if not self.time_outed:
             logger.rp(f"{self.occur_time}生成的播放列表菜单已被覆盖", self.ctx.guild)
@@ -1838,7 +1839,8 @@ class PlaylistMenu(View):
     async def on_timeout(self):
         self.refresh_pages()
         self.clear_items()
-        await self.ctx.edit(content=self.first_page, view=self)
+        # await self.ctx.edit(content=self.first_page, view=self)
+        await self.ctx.edit(content="菜单已超时", view=self)
         self.time_outed = True
         if not self.overrode:
             logger.rp(f"{self.occur_time}生成的播放列表菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
