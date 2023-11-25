@@ -29,10 +29,13 @@ class AudioFileLibrary:
                 self._load()
             except errors.JSONFileError:
                 self._reset_library()
+                self._load()
             except KeyError:
                 self._reset_library()
+                self._load()
         else:
             self._reset_library()
+            self._load()
 
     # DEBUG ONLY
     def print_info(self):

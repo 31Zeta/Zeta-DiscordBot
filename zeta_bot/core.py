@@ -2206,7 +2206,7 @@ class EpisodeSelectView(View):
                     total_duration += item["duration"]
                 counter += 1
             total_duration = utils.convert_duration_to_str(total_duration)
-            loading_msg = await self.ctx.send(f"正在将{total_num}个音频加入播放列表  总时长 -> [{total_duration}]")
+            loading_msg = await self.ctx.send(f"正在将以下{total_num}个音频加入播放列表：  总时长 -> [{total_duration}]")
 
             for num_p in final_result:
                 try:
@@ -2215,7 +2215,7 @@ class EpisodeSelectView(View):
                     if new_audio is not None:
                         # 重载loading_msg为Message对象（否则无法ec累计更新提示信息）
                         loading_msg = await ec(
-                            loading_msg, f"已加入播放列表：**{new_audio.get_title()} [{new_audio.get_duration_str()}]**"
+                            loading_msg, f"\\-  **{new_audio.get_title()} [{new_audio.get_duration_str()}]**"
                         )
                 except errors.StorageFull:
                     await ec(loading_msg, "机器人当前处理音频过多，请稍后再试")
@@ -2251,7 +2251,7 @@ class EpisodeSelectView(View):
                     total_duration += item["arc"]["duration"]
                 counter += 1
             total_duration = utils.convert_duration_to_str(total_duration)
-            loading_msg = await self.ctx.send(f"正在将{total_num}个音频加入播放列表  总时长 -> [{total_duration}]")
+            loading_msg = await self.ctx.send(f"正在将以下{total_num}个音频加入播放列表：  总时长 -> [{total_duration}]")
 
             for num in final_result:
                 try:
@@ -2262,7 +2262,7 @@ class EpisodeSelectView(View):
                     if new_audio is not None:
                         # 重载loading_msg为Message对象（否则无法ec累计更新提示信息）
                         loading_msg = await ec(
-                            loading_msg, f"已加入播放列表：**{new_audio.get_title()} [{new_audio.get_duration_str()}]**"
+                            loading_msg, f"\\-  **{new_audio.get_title()} [{new_audio.get_duration_str()}]**"
                         )
                 except errors.StorageFull:
                     await ec(loading_msg, "机器人当前处理音频过多，请稍后再试")
@@ -2303,7 +2303,7 @@ class EpisodeSelectView(View):
                 counter += 1
 
             total_duration = utils.convert_duration_to_str(total_duration)
-            loading_msg = await self.ctx.send(f"正在将{valid_counter}个音频加入播放列表  总时长 -> [{total_duration}]")
+            loading_msg = await self.ctx.send(f"正在将以下{total_num}个音频加入播放列表：  总时长 -> [{total_duration}]")
 
             # 循环添加
             for num in final_result:
@@ -2321,7 +2321,7 @@ class EpisodeSelectView(View):
                         if new_audio is not None:
                             # 重载loading_msg为Message对象（否则无法ec累计更新提示信息）
                             loading_msg = await ec(
-                                loading_msg, f"已加入播放列表：**{new_audio.get_title()} [{new_audio.get_duration_str()}]**"
+                                loading_msg, f"\\-  **{new_audio.get_title()} [{new_audio.get_duration_str()}]**"
                             )
 
                     # YouTube列表下载异常处理
