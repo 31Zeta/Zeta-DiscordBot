@@ -1698,10 +1698,14 @@ class PlaylistMenu(View):
         for button in self.children:
             if button.custom_id == "button_play_mode":
                 button.label = self.play_mode_str
-
                 # TODO 制作播放模式切换
                 button.disabled = True
+                break
 
+        for button in self.children:
+            if button.custom_id == "button_previous_audio":
+                # TODO 完成历史播放列表
+                button.disabled = True
                 break
 
         self.first_page = self.get_page_content(0)
