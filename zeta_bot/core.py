@@ -1818,13 +1818,23 @@ class PlaylistMenu(View):
     async def button_close_callback(self, button, interaction):
         button.disabled = True
         msg = interaction.response
+
+        # 将此View从guild_active_views中移除
+        current_guild = guild_lib.get_guild(self.ctx)
+        guild_active_views = current_guild.get_active_views()
+        guild_active_views["playlist_menu_view"] = None
+
         self.clear_items()
         await msg.edit_message(content="已关闭", view=self)
         await self.ctx.delete()
 
     async def refresh_menu(self):
         self.refresh_pages()
-        await eos(self.ctx, response=self.original_msg, content=self.get_page_content(self.page_num), view=self)
+        try:
+            await eos(self.ctx, response=self.original_msg, content=self.get_page_content(self.page_num), view=self)
+        except discord.HTTPException:
+            # TODO 临时性解决措施，暂时不清楚是Discord服务器问题还是程序逻辑问题
+            pass
 
     async def set_original_msg(self, response: Union[discord.Message, discord.InteractionMessage, None]):
         """
@@ -1837,6 +1847,12 @@ class PlaylistMenu(View):
         当新的View出现时调用，使当前View失效
         """
         self.refresh_pages()
+
+        # 将此View从guild_active_views中移除
+        current_guild = guild_lib.get_guild(self.ctx)
+        guild_active_views = current_guild.get_active_views()
+        guild_active_views["playlist_menu_view"] = None
+
         self.clear_items()
         # await self.ctx.edit(content=self.first_page, view=self)
         await self.ctx.edit(content="菜单已被覆盖", view=self)
@@ -1844,24 +1860,20 @@ class PlaylistMenu(View):
         if not self.time_outed:
             logger.rp(f"{self.occur_time}生成的播放列表菜单已被覆盖", self.ctx.guild)
 
+    async def on_timeout(self):
+        self.refresh_pages()
+
         # 将此View从guild_active_views中移除
         current_guild = guild_lib.get_guild(self.ctx)
         guild_active_views = current_guild.get_active_views()
         guild_active_views["playlist_menu_view"] = None
 
-    async def on_timeout(self):
-        self.refresh_pages()
         self.clear_items()
         # await self.ctx.edit(content=self.first_page, view=self)
         await self.ctx.edit(content="菜单已超时", view=self)
         self.time_outed = True
         if not self.overrode:
             logger.rp(f"{self.occur_time}生成的播放列表菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
-
-        # 将此View从guild_active_views中移除
-        current_guild = guild_lib.get_guild(self.ctx)
-        guild_active_views = current_guild.get_active_views()
-        guild_active_views["playlist_menu_view"] = None
 
 
 class EpisodeSelectView(View):
