@@ -276,14 +276,18 @@ def get_url_from_str(input_str, url_type) -> Union[str, None]:
         url = "https://" + input_str[url_position[0]:url_position[1]]
         return url
 
+    elif url_type == "youtube_short_url":
+        url_position = re.search("youtu\.be[^ ]*", input_str).span()
+        url = "https://" + input_str[url_position[0]:url_position[1]]
+        return url
+
     else:
         return None
 
 
-def get_redirect_url_bilibili(url) -> str:
+def get_redirect_url(url) -> str:
     headers = {
         "User-Agent": "Mozilla/5.0",
-        "Referer": "https://www.bilibili.com/"
     }
 
     # 请求网页

@@ -872,6 +872,18 @@ async def play_callback(ctx: discord.ApplicationContext, link,
 
     # Link属于Bilibili
     if source == "bilibili_bvid" or source == "bilibili_url" or source == "bilibili_short_url":
+
+        # 如果是Bilibili短链则获取重定向链接
+        if source == "bilibili_short_url":
+            try:
+                link = utils.get_redirect_url(link)
+            except requests.exceptions.InvalidSchema:
+                await eos(ctx, response, "链接异常")
+                logger.rp(f"链接重定向失败", ctx.guild, is_error=True)
+                return
+
+            logger.rp(f"获取的重定向链接为 {link}", ctx.guild)
+
         if response is None:
             loading_msg = await ctx.respond("正在加载哔哩哔哩音频信息")
         else:
@@ -880,6 +892,18 @@ async def play_callback(ctx: discord.ApplicationContext, link,
 
     # Link属于YouTube
     elif source == "youtube_url" or source == "youtube_short_url":
+
+        # 如果是Youtube短链则获取重定向链接
+        if source == "youtube_short_url":
+            try:
+                link = utils.get_redirect_url(link)
+            except requests.exceptions.InvalidSchema:
+                await eos(ctx, response, "链接异常")
+                logger.rp(f"链接重定向失败", ctx.guild, is_error=True)
+                return
+
+            logger.rp(f"获取的重定向链接为 {link}", ctx.guild)
+
         if response is None:
             loading_msg = await ctx.respond("正在加载Youtube音频信息")
         else:
@@ -971,17 +995,6 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
     :param response: 用于编辑的加载信息
     :return: 播放的音频
     """
-    # 如果是Bilibili短链则获取重定向链接
-    if source == "bilibili_short_url":
-        try:
-            link = utils.get_redirect_url_bilibili(link)
-        except requests.exceptions.InvalidSchema:
-            await eos(ctx, response, "链接异常")
-            logger.rp(f"链接重定向失败", ctx.guild, is_error=True)
-            return
-
-        logger.rp(f"获取的重定向链接为 {link}", ctx.guild)
-
     # 如果是URl则转换成BV号
     if source == "bilibili_url" or source == "bilibili_short_url":
         bvid = utils.get_bvid_from_url(link)
