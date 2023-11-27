@@ -980,6 +980,7 @@ async def play_next(ctx: discord.ApplicationContext) -> None:
     # 解锁上一个音频
     audio_lib_main.unlock_audio(f"{ctx.guild.id}_NOW_PLAYING", finished_audio)
 
+    # TODO 制作文件丢失处理方法，当前流程为文件丢失会触发播放Invalid argument，直接触发play_next进入下一个音频
     if len(current_playlist) > 0:
         # 获取下一个音频
         next_audio = current_playlist.get_audio(0)
@@ -1328,23 +1329,31 @@ async def list_callback(ctx: discord.ApplicationContext):
     voice_client_status = get_voice_client_status(voice_client)
     voice_client_status_str = get_voice_client_status_str(voice_client_status)
 
-    view = PlaylistMenu(ctx)
+    current_view = PlaylistMenu(ctx)
+    previous_view = None
 
-    # 如果有更早的View则使其超时，替换为当前新View
+    # 如果有更早的View则让其执行被覆盖程序，active_views替换为当前刚生成的View，为了显示效果先获取之前的View，在发送完毕后再覆盖
     current_guild = guild_lib.get_guild(ctx)
     guild_active_views = current_guild.get_active_views()
     if "playlist_menu_view" in guild_active_views and guild_active_views["playlist_menu_view"] is not None:
-        await guild_active_views["playlist_menu_view"].on_override()
-    guild_active_views["playlist_menu_view"] = view
+        previous_view = guild_active_views["playlist_menu_view"]
 
+    # 更新为刚生成的View
+    guild_active_views["playlist_menu_view"] = current_view
+
+    # 发送刚生成的View
     msg = await ctx.respond(
         content=f"## {current_playlist.get_name()}\n"
                 f"    [列表长度：{len(current_playlist)} | 总时长：{current_playlist.get_duration_str()}]\n"
                 f"    状态：{voice_client_status_str}\n\n"
                 f"{playlist_list[0]}\n第[1]页，共[{len(playlist_list)}]页\n",
-        view=view
+        view=current_view
     )
-    await view.set_original_msg(msg)
+    await current_view.set_original_msg(msg)
+
+    # 让先前的View执行被覆盖程序
+    if previous_view is not None:
+        await previous_view.on_override()
 
 
 async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_index: Union[int, None] = None,
@@ -1651,7 +1660,9 @@ class PlaylistMenu(View):
 
     def __init__(self, ctx, timeout: int = 600):
         """
-        当前View被创建和发送后需要调用set_original_msg确保以后可被正确主动刷新
+        *注意*
+        - 当前View被创建和发送后需要调用set_original_msg确保以后可被正确主动刷新
+        - 如需执行覆盖操作则需要在外部更新guild_active_views中的View（换为新View）
         """
         super().__init__(timeout=timeout)
         self.ctx = ctx
@@ -1838,11 +1849,7 @@ class PlaylistMenu(View):
 
     async def refresh_menu(self):
         self.refresh_pages()
-        try:
-            await eos(self.ctx, response=self.original_msg, content=self.get_page_content(self.page_num), view=self)
-        except discord.HTTPException:
-            # TODO 临时性解决措施，暂时不清楚是Discord服务器问题还是程序逻辑问题
-            pass
+        await eos(self.ctx, response=self.original_msg, content=self.get_page_content(self.page_num), view=self)
 
     async def set_original_msg(self, response: Union[discord.Message, discord.InteractionMessage, None]):
         """
@@ -1853,34 +1860,32 @@ class PlaylistMenu(View):
     async def on_override(self):
         """
         当新的View出现时调用，使当前View失效
+        将本View从guild_active_views中移除的操作（换为新View）交由调用新View方法的地方实现
         """
-        self.refresh_pages()
-
-        # 将此View从guild_active_views中移除
-        current_guild = guild_lib.get_guild(self.ctx)
-        guild_active_views = current_guild.get_active_views()
-        guild_active_views["playlist_menu_view"] = None
-
-        self.clear_items()
-        # await self.ctx.edit(content=self.first_page, view=self)
-        await self.ctx.edit(content="菜单已被覆盖", view=self)
         self.overrode = True
+        # 覆盖程序，如果已经超时则不再执行
         if not self.time_outed:
+            # 将本View从guild_active_views中移除的操作（换为新View）交由调用新View方法的地方实现
+            self.refresh_pages()
+            self.clear_items()
+            # await self.ctx.edit(content=self.first_page, view=self)
+            await self.ctx.edit(content="菜单已被覆盖", view=self)
             logger.rp(f"{self.occur_time}生成的播放列表菜单已被覆盖", self.ctx.guild)
 
     async def on_timeout(self):
-        self.refresh_pages()
 
-        # 将此View从guild_active_views中移除
-        current_guild = guild_lib.get_guild(self.ctx)
-        guild_active_views = current_guild.get_active_views()
-        guild_active_views["playlist_menu_view"] = None
-
-        self.clear_items()
-        # await self.ctx.edit(content=self.first_page, view=self)
-        await self.ctx.edit(content="菜单已超时", view=self)
         self.time_outed = True
+        # 超时程序，如果已被覆盖则不再执行
         if not self.overrode:
+            # 将此View从guild_active_views中移除
+            current_guild = guild_lib.get_guild(self.ctx)
+            guild_active_views = current_guild.get_active_views()
+            guild_active_views["playlist_menu_view"] = None
+
+            self.refresh_pages()
+            self.clear_items()
+            # await self.ctx.edit(content=self.first_page, view=self)
+            await self.ctx.edit(content="菜单已超时", view=self)
             logger.rp(f"{self.occur_time}生成的播放列表菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
 
 
