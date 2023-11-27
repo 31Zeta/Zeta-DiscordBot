@@ -25,12 +25,12 @@ from zeta_bot import (
     playlist,
     member,
     guild,
-    help,
     audio,
     file_management,
     bilibili,
     youtube,
 )
+from zeta_bot.help import HelpMenuView
 
 version = "0.10.0"
 author = "炤铭Zeta (31Zeta)"
@@ -372,6 +372,14 @@ async def autocomplete_skipi_playlist_index(ctx: discord.AutocompleteContext):
     return number_list
 
 
+async def get_guild_playlist_length(ctx: discord.AutocompleteContext) -> int:
+    """
+    获取<ctx>对应的服务器的主播放列表长度
+    """
+    guild_lib.check(ctx, audio_lib_main)
+    return len(guild_lib.get_guild(ctx).get_playlist())
+
+
 @bot.slash_command(description="[管理员] 测试指令1")
 async def debug1(ctx):
     """
@@ -627,7 +635,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
     required=True,
     min_value=1
 )
-async def move(ctx, from_number: Union[int, None] = None, to_number: Union[int, None] = None):
+async def move(ctx, from_number: int, to_number: int):
     if not await command_check(ctx):
         return
     await move_callback(ctx, from_number, to_number)
@@ -681,7 +689,7 @@ async def help_callback(ctx: discord.ApplicationContext) -> None:
     :param ctx: 指令原句
     :return:
     """
-    view = help.HelpMenuView(ctx)
+    view = HelpMenuView(ctx)
     await ctx.respond(content=view.catalog, view=view)
 
 
