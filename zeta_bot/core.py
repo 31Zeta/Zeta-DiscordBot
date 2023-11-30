@@ -1869,7 +1869,8 @@ class PlaylistMenu(View):
             self.refresh_pages()
             self.clear_items()
             # await self.ctx.edit(content=self.first_page, view=self)
-            await self.ctx.edit(content="菜单已被覆盖", view=self)
+            await eos(self.ctx, response=self.original_msg, content="播放列表菜单已被覆盖", view=self)
+            # await self.ctx.edit(content="播放列表菜单已被覆盖", view=self)
             logger.rp(f"{self.occur_time}生成的播放列表菜单已被覆盖", self.ctx.guild)
 
     async def on_timeout(self):
@@ -1885,7 +1886,8 @@ class PlaylistMenu(View):
             self.refresh_pages()
             self.clear_items()
             # await self.ctx.edit(content=self.first_page, view=self)
-            await self.ctx.edit(content="菜单已超时", view=self)
+            await eos(self.ctx, response=self.original_msg, content="播放列表菜单已超时", view=self)
+            # await self.ctx.edit(content="播放列表菜单已超时", view=self)
             logger.rp(f"{self.occur_time}生成的播放列表菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
 
 
@@ -2285,7 +2287,7 @@ class EpisodeSelectView(View):
                     logger.rp("触发异常httpx.RemoteProtocolError，服务器协议错误", self.ctx.guild, is_error=True)
                     continue
 
-            await ec(loading_msg, f"已将{total_num}个音频加入播放列表  总时长 -> [{total_duration}]")
+            await ec(loading_msg, f"完成添加，已将{total_num}个音频加入播放列表  总时长 -> [{total_duration}]")
 
         # 如果为Bilibili合集音频
         elif self.source == "bilibili_collection":
@@ -2333,7 +2335,7 @@ class EpisodeSelectView(View):
                     logger.rp("触发异常httpx.RemoteProtocolError，服务器协议错误", self.ctx.guild, is_error=True)
                     continue
 
-            await ec(loading_msg, f"已将{total_num}个音频加入播放列表  总时长 -> [{total_duration}]")
+            await ec(loading_msg, f"完成添加，已将{total_num}个音频加入播放列表  总时长 -> [{total_duration}]")
 
         # 如果为Youtube播放列表
         elif self.source == "youtube_playlist":
@@ -2390,7 +2392,7 @@ class EpisodeSelectView(View):
                         logger.rp("触发异常discord.HTTPException", self.ctx.guild, is_error=True)
                         continue
 
-            await ec(loading_msg, f"已将{total_num}个音频加入播放列表  总时长 -> [{total_duration}]")
+            await ec(loading_msg, f"完成添加，已将{total_num}个音频加入播放列表  总时长 -> [{total_duration}]")
 
         else:
             logger.rp("未知的播放源", self.ctx.guild)
