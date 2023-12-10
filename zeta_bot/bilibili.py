@@ -141,15 +141,26 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
     # print("\n\n" + current_time + f"\n    下载完成\n")
 
     new_audio = audio.Audio(original_title, download_type, bvid, path, duration)
-    logger.rp(
-        f"下载完成\n"
-        f"文件名：{title}.mp3\n"
-        f"来源：[哔哩哔哩] {bvid}\n"
-        f"路径：{download_path}\n"
-        f"大小：{size[0]} {size[1]}\n"
-        f"时长：{utils.convert_duration_to_str(duration)}",
-        f"[{level}]"
-    )
+    if download_type == "bilibili_p":
+        logger_prompt = (
+            f"下载完成\n"
+            f"文件名：{title}.mp3\n"
+            f"来源：[哔哩哔哩] {bvid}\n"
+            f"分P号：{num_p + 1}\n"
+            f"路径：{download_path}\n"
+            f"大小：{size[0]} {size[1]}\n"
+            f"时长：{utils.convert_duration_to_str(duration)}"
+        )
+    else:
+        logger_prompt = (
+            f"下载完成\n"
+            f"文件名：{title}.mp3\n"
+            f"来源：[哔哩哔哩] {bvid}\n"
+            f"路径：{download_path}\n"
+            f"大小：{size[0]} {size[1]}\n"
+            f"时长：{utils.convert_duration_to_str(duration)}"
+        )
+    logger.rp(logger_prompt, f"[{level}]")
 
     return new_audio
 

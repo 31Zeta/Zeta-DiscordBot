@@ -298,6 +298,8 @@ class AudioFileLibrary:
 
     async def download_bilibili(self, info_dict, download_type: str, num_option: int = 0) -> Union[audio.Audio, None]:
         bvid = info_dict["bvid"]
+        if download_type == "bilibili_p":
+            bvid += f"_p{num_option + 1}"
         # 如果文件已经存在
         if bvid in self._dl_list:
             exists_audio = self._dl_list.key_get(bvid)
