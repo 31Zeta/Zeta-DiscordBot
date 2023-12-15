@@ -1,83 +1,105 @@
-# Zeta Discord机器人 Discord Bot
+# Zeta Discord 机器人
 一个基于Pycord的Discord机器人  
 作者目前业余编程，如有不规范的地方请多多包涵与指教  
 
-A Discord Bot that based on Pycord.
-  
-**不推荐使用0.6.1或更低版本（这些版本中机器人的相关设置存储在main.py文件中且设置极不完善）**  
+目前机器人只有中文可用  
+Only Chinese are available inside the bot for now.
 
-**Not recommended to use Ver 0.6.1 or below (The setting in those version is stored in main.py and incomplete)**
+目录 Table of content
+------------------------
+- [核心功能](#核心功能)
+- [如何安装并部署](#如何安装并部署)
+- [Core Features](#core-features)
+- [How to install and deploy](#how-to-install-and-deploy)
 
-核心功能 Core Functions
---------  
-- 在Discord音频频道中播放来自Bilibili视频的音频  
-- 在Discord音频频道中播放来自Youtube视频的音频  
-- Play Youtube video sound in Discord Voice Channel
-- Play Bilibili video sound in Discord Voice Channel
+## 核心功能
+- 在Discord音频频道中播放来自哔哩哔哩或者YouTube视频的声音
+- 直接在Discord频道内进行搜索并播放
+- 可交互的播放列表
 
-安装及使用 Install
-----------  
-**使用Python3.9开发，不保证更低版本运行效果**  
-**Developed on Python 3.9, I do not guarantee that this bot will work on lower Python versions**
+## 如何安装并部署
+**请使用Python3.9或更高版本**
 
-使用以下指令将本库克隆到本地：  
-Use following commands to clone this repo to local
+请使用以下指令将本库克隆到本地：
 ```
 git clone https://github.com/31Zeta/Zeta-DiscordBot.git
 ```  
   
 将命令行运行位置移动至库根目录后使用以下指令来安装依赖包：  
-Change command line to root dir and use following commands to install dependency
 ```
  pip install -r requirements.txt
-```  
-或手动安装以下包：  
-Or install these manually
+```
 
-- py-cord (v2.1.1) https://github.com/Pycord-Development/pycord  
+或手动安装以下包：  
+- py-cord (v2.4.1) https://github.com/Pycord-Development/pycord  
 - APScheduler https://github.com/agronholm/apscheduler  
 - bilibili-api-python https://github.com/Nemo2011/bilibili-api
 - PyNaCl https://github.com/pyca/pynacl/
 - requests https://github.com/psf/requests  
 - yt-dlp https://github.com/yt-dlp/yt-dlp  
-- youtube-search-python https://github.com/alexmercerind/youtube-search-python  
   
 Windows系统请前往ffmpeg官网 https://ffmpeg.org/download.html 获取ffmpeg.exe  
 （或使用 https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-full.7z 下载后解压bin文件夹内的ffmpeg.exe）  
   
-Windows: please visit https://ffmpeg.org/download.html to get ffmpeg.exe
-(or access https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-full.7z download and unzip it to get ffmpeg.exe in bin dir） 
-  
 Linux系统可使用库内bin文件夹内自带的ffmpeg或前往ffmpeg官网 https://ffmpeg.org/download.html 获取最新版ffmpeg  
 
-Linux: Visit https://ffmpeg.org/download.html to get the most recent ffmpeg file
+将解压出的ffmpeg文件放入库中的bin文件夹内  
 
 输入以下命令以运行机器人：  
-Use following command to start Discord Bot
 ```
 python main.py
-```  
-根据提示完成设置，保持窗口打开以确保机器人正常运行  
-Complete the setting through instruction, keep the window open to ensure the Bot is running correctly
+```
 
-如需更改设置，则使用以下命令启动机器人（0.7.0及更高版本）： 
-To change the setting, please use following command (Ver 0.7.0 or higher required)
+根据提示完成设置，保持窗口打开以确保机器人正常运行  
+如需更改设置，则使用以下命令启动机器人（0.7.0及更高版本）：
 ```
 python main.py --mode=setting
 ```  
+
+# Zeta Discord Bot
+A Discord Bot that based on Pycord.
+
+## Core Features
+- Play Bilibili or YouTube's video sound on the Discord Voice Channel
+- Search and play directly within the Discord channel
+- Interactive playlists
+
+## How to install and deploy
+**Please use Python 3.9 or higher versions**
   
-0.6.1及更低版本注意事项     
-P.S. for Ver 0.6.1 and lower version
-----------------------  
-1. 请将ffmpeg或ffmpeg.exe放入库根目录的bin文件夹中  
-2. 打开main.py根据使用的系统将设置中的system_option设为对应数值  
-3. 创建一个txt文件并将Discord机器人令牌存储到其中，默认情况下Linux系统将文件重命名为token.txt，Windows系统则重命名为test_token.txt，并将该文件置于库根目录下（请自行搜索如何创建Discord机器人及获得其令牌token）  
-4. 根据需求修改main.py中设置内的变量，机器人指令前缀以及令牌文件名称可根据需要搜索变量名command_prefix以及token_name进行修改  
+Please use the following commands to clone this repo to your local:
+```
+git clone https://github.com/31Zeta/Zeta-DiscordBot.git
+```
 
+Change the command line directory to thus repo and use the following command to install dependencies:
+```
+ pip install -r requirements.txt
+```
 
-<ol>
-<li>Put ffmpeg or ffmpeg.exe to /bin folder
-<li>Set the system_option in the settings to the corresponding value according to the system used (in main.py)
-<li>Create a txt file and store Discord Bot's token in it. Linux user should rename the file name with "token.txt". Windows user should rename the file name with "test_token.txt". Then put this file in root dir.
-<li>Set the var in main.py according to the demand. Change Bot command prefix by edit var command_prefix. Change token filename by edit var token_name.
-</ol>
+Or install these packages manually:
+- py-cord (v2.4.1) https://github.com/Pycord-Development/pycord  
+- APScheduler https://github.com/agronholm/apscheduler  
+- bilibili-api-python https://github.com/Nemo2011/bilibili-api
+- PyNaCl https://github.com/pyca/pynacl/
+- requests https://github.com/psf/requests  
+- yt-dlp https://github.com/yt-dlp/yt-dlp  
+  
+Windows: please visit https://ffmpeg.org/download.html to get ffmpeg.exe
+(or access https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-full.7z download and unzip it to get ffmpeg.exe in bin dir） 
+
+Linux: Visit https://ffmpeg.org/download.html to get the most recent ffmpeg file  
+
+Put the unzipped ffmpeg file into the bin folder.  
+
+Use following command to start Discord Bot:  
+```
+python main.py
+```
+
+Complete the setting through instructions, and keep the window open to ensure the Bot is running.
+ 
+To change the setting, please use following command: 
+```
+python main.py --mode=setting
+```
