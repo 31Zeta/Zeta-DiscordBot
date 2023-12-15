@@ -17,16 +17,18 @@ printl = lang.printl
 permissions = {
     "info": False,
     "help": False,
-    "play": False,
+    "broadcast": False,
     "join": False,
     "leave": False,
-    "skip": False,
-    "move": False,
+    "search_audio": False,
+    "play": False,
     "pause": False,
     "resume": False,
-    "volume": False,
     "list": False,
-    "broadcast": False,
+    "skip": False,
+    "move": False,
+    "volume": False,
+    "login_webui": False,
     "reboot": False,
     "shutdown": False,
     "change_member_group_from": {
@@ -50,16 +52,18 @@ default_permission_config = {
     "administrator": {
         "info": True,
         "help": True,
-        "play": True,
+        "broadcast": False,
         "join": True,
         "leave": True,
-        "skip": True,
-        "move": True,
+        "search_audio": True,
+        "play": True,
         "pause": True,
         "resume": True,
-        "volume": True,
         "list": True,
-        "broadcast": False,
+        "skip": True,
+        "move": True,
+        "volume": True,
+        "login_webui": True,
         "reboot": True,
         "shutdown": False,
         "change_member_group_from": {
@@ -81,16 +85,18 @@ default_permission_config = {
     "standard": {
         "info": True,
         "help": True,
-        "play": True,
+        "broadcast": False,
         "join": True,
         "leave": True,
-        "skip": True,
-        "move": True,
+        "search_audio": True,
+        "play": True,
         "pause": True,
         "resume": True,
-        "volume": True,
         "list": True,
-        "broadcast": False,
+        "skip": True,
+        "move": True,
+        "volume": True,
+        "login_webui": True,
         "reboot": False,
         "shutdown": False,
         "change_member_group_from": {
@@ -112,16 +118,18 @@ default_permission_config = {
     "restricted": {
         "info": True,
         "help": True,
-        "play": True,
+        "broadcast": False,
         "join": False,
         "leave": False,
-        "skip": False,
-        "move": False,
+        "search_audio": True,
+        "play": True,
         "pause": False,
         "resume": False,
-        "volume": False,
         "list": True,
-        "broadcast": False,
+        "skip": False,
+        "move": False,
+        "volume": False,
+        "login_webui": False,
         "reboot": False,
         "shutdown": False,
         "change_member_group_from": {
@@ -143,16 +151,18 @@ default_permission_config = {
     "banned": {
         "info": True,
         "help": False,
-        "play": False,
+        "broadcast": False,
         "join": False,
         "leave": False,
-        "skip": False,
-        "move": False,
+        "search_audio": False,
+        "play": False,
         "pause": False,
         "resume": False,
-        "volume": False,
         "list": False,
-        "broadcast": False,
+        "skip": False,
+        "move": False,
+        "volume": False,
+        "login_webui": False,
         "reboot": False,
         "shutdown": False,
         "change_member_group_from": {
@@ -189,6 +199,28 @@ class MemberLibrary:
             utils.json_save(self.group_config_path, default_permission_config)
         try:
             self.group_config = utils.json_load(self.group_config_path)
+
+            # 检查组权限文件新内容
+            for user_group in default_permission_config.keys():
+                for operation in default_permission_config[user_group]:
+                    if user_group not in self.group_config.keys():
+                        self.group_config[user_group] = default_permission_config[user_group]
+                    if operation not in self.group_config[user_group]:
+                        self.group_config[user_group][operation] = default_permission_config[user_group][operation]
+                for sub_operation in default_permission_config[user_group]["change_member_group_from"]:
+                    if sub_operation not in self.group_config[user_group]["change_member_group_from"]:
+                        self.group_config[user_group]["change_member_group_from"][sub_operation] = (
+                            default_permission_config[user_group]["change_member_group_from"][sub_operation]
+                        )
+                for sub_operation in default_permission_config[user_group]["change_member_group_to"]:
+                    if sub_operation not in self.group_config[user_group]["change_member_group_to"]:
+                        self.group_config[user_group]["change_member_group_to"][sub_operation] = (
+                            default_permission_config[user_group]["change_member_group_to"][sub_operation]
+                        )
+
+            # 保存新的变更
+            utils.json_save(self.group_config_path, self.group_config)
+
         except errors.JSONFileError:
             raise errors.InitializationFailed("MemberLibrary", "组权限文件读取错误")
 
@@ -197,10 +229,21 @@ class MemberLibrary:
 
         if not os.path.exists(self.hashtag_file_path):
             utils.json_save(self.hashtag_file_path, {})
-        self.hashtag_file = utils.json_load(self.hashtag_file_path)
+        self.hashtag_file = {}
+        self.load_hashtag_file()
 
     def save_hashtag_file(self):
         utils.json_save(self.hashtag_file_path, self.hashtag_file)
+
+    def load_hashtag_file(self):
+        loaded_dict = utils.json_load(self.hashtag_file_path)
+        # 将键值重建为int格式
+        for key in loaded_dict:
+            try:
+                new_key = int(key)
+            except ValueError:
+                new_key = key
+            self.hashtag_file[new_key] = loaded_dict[key]
 
     def check(self, ctx: discord.ApplicationContext) -> None:
         user_id = ctx.user.id
@@ -213,13 +256,15 @@ class MemberLibrary:
             # 更新用户名
             if user_name != user_dict["name"]:
                 user_dict["name"] = user_name
-            # 更新用户服务器数据
-            if ctx.guild.id not in user_dict["guilds"]:
-                user_dict["guilds"][ctx.guild.id] = {"nickname": ctx.user.nick, "language": lang.system_language}
-            # 更新用户此服务器的昵称
-            if ctx.user.nick != user_dict["guilds"][ctx.guild.id]["nickname"]:
-                user_dict["guilds"][ctx.guild.id]["nickname"] = ctx.user.nick
+            if ctx.guild is not None:
+                # 更新用户服务器数据
+                if ctx.guild.id not in user_dict["guilds"]:
+                    user_dict["guilds"][ctx.guild.id] = {"nickname": ctx.user.nick, "language": lang.system_language}
+                # 更新用户此服务器的昵称
+                if ctx.user.nick != user_dict["guilds"][ctx.guild.id]["nickname"]:
+                    user_dict["guilds"][ctx.guild.id]["nickname"] = ctx.user.nick
             # 更新#Members文件
+            self.load_hashtag_file()
             if user_id not in self.hashtag_file or user_name != self.hashtag_file[user_id]:
                 self.hashtag_file[user_id] = user_name
                 self.save_hashtag_file()
@@ -241,6 +286,7 @@ class MemberLibrary:
             }
             utils.json_save(path, temp_dict)
             # 更新#Members文件
+            self.load_hashtag_file()
             self.hashtag_file[user_id] = user_name
             self.save_hashtag_file()
 

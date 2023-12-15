@@ -129,18 +129,28 @@ class GuildLibrary:
         self._guild_dict = {}
         self._hashtag_file_path = f"{self._root}/#Guilds.json"
         self._logger = log.Log()
-        # TODO hashtag文件内名称键重复两遍
 
         # 检查#Guilds文件
         if not os.path.exists(self._hashtag_file_path):
             utils.json_save(self._hashtag_file_path, {})
         try:
-            self.hashtag_file = utils.json_load(self._hashtag_file_path)
+            self.hashtag_file = {}
+            self.load_hashtag_file()
         except errors.JSONFileError:
             raise errors.JSONFileError
 
     def save_hashtag_file(self):
         utils.json_save(self._hashtag_file_path, self.hashtag_file)
+
+    def load_hashtag_file(self):
+        loaded_dict = utils.json_load(self._hashtag_file_path)
+        # 将键值重建为int格式
+        for key in loaded_dict:
+            try:
+                new_key = int(key)
+            except ValueError:
+                new_key = key
+            self.hashtag_file[new_key] = loaded_dict[key]
 
     def check(self, ctx: Union[discord.ApplicationContext, discord.AutocompleteContext],
               audio_file_library: file_management.AudioFileLibrary) -> None:
@@ -159,6 +169,21 @@ class GuildLibrary:
                 self._guild_dict[guild_id] = Guild(ctx.interaction.guild, self._root, audio_file_library)
 
         # 更新#Guilds文件
+        self.load_hashtag_file()
+        if guild_id not in self.hashtag_file or guild_name != self.hashtag_file[guild_id]:
+            self.hashtag_file[guild_id] = guild_name
+            self.save_hashtag_file()
+
+    def check_by_guild_obj(self, guild: discord.Guild, audio_file_library: file_management.AudioFileLibrary) -> None:
+        guild_id = guild.id
+        guild_name = guild.name
+
+        # 如果guild_dict中不存在本Discord服务器
+        if guild_id not in self._guild_dict:
+            self._guild_dict[guild_id] = Guild(guild, self._root, audio_file_library)
+
+        # 更新#Guilds文件
+        self.load_hashtag_file()
         if guild_id not in self.hashtag_file or guild_name != self.hashtag_file[guild_id]:
             self.hashtag_file[guild_id] = guild_name
             self.save_hashtag_file()

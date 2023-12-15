@@ -51,6 +51,7 @@ def path_exists(path: str) -> bool:
 def json_save(json_path: str, saving_item) -> None:
     """
     将<saving_item>以json格式保存到<json_path>
+    **警告**：json格式的键值必须为字符串，否则会被转换为字符串
     """
     with open(json_path, "w", encoding="utf-8") as file:
         file.write(json.dumps(saving_item, default=lambda x: x.encode(),
@@ -60,6 +61,7 @@ def json_save(json_path: str, saving_item) -> None:
 def json_load(json_path: str) -> Union[dict, list]:
     """
     读取<json_path>的json文件
+    **警告**：json格式的键值必须为字符串，否则会被转换为字符串
     """
     try:
         with open(json_path, "r", encoding="utf-8") as file:
