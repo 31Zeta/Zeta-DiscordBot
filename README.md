@@ -13,8 +13,10 @@ Only Chinese are available inside the bot for now.
 - [How to install and deploy](#how-to-install-and-deploy)
 
 ## 核心功能
-- 在Discord音频频道中播放来自哔哩哔哩或者YouTube视频的声音
-- 直接在Discord频道内进行搜索并播放
+- 在Discord音频频道中播放来自哔哩哔哩视频的声音
+- 在Discord音频频道中播放来自YouTube视频的声音
+- 在Discord音频频道中播放来自网易云音乐的音频
+- 直接在Discord频道内进行哔哩哔哩或YouTube搜索并播放
 - 可交互的播放列表
 
 ## 如何安装并部署
@@ -57,10 +59,12 @@ python main.py --mode=setting
 ```  
 
 # Zeta Discord Bot
-A Discord Bot that based on Pycord.
+A Discord Bot that is based on Pycord.
 
 ## Core Features
-- Play Bilibili or YouTube's video sound on the Discord Voice Channel
+- Play Bilibili's video sound on the Discord Voice Channels
+- Play YouTube's video sound on the Discord Voice Channels
+- Play NetEase CloudMusic's audio on the Discord Voice Channels
 - Search and play directly within the Discord channel
 - Interactive playlists
 
@@ -72,7 +76,7 @@ Please use the following commands to clone this repo to your local:
 git clone https://github.com/31Zeta/Zeta-DiscordBot.git
 ```
 
-Change the command line directory to thus repo and use the following command to install dependencies:
+Change the command line directory to this repo and use the following command to install dependencies:
 ```
  pip install -r requirements.txt
 ```
@@ -92,14 +96,14 @@ Linux: Visit https://ffmpeg.org/download.html to get the most recent ffmpeg file
 
 Put the unzipped ffmpeg file into the bin folder.  
 
-Use following command to start Discord Bot:  
+Use the following command to start Discord Bot:  
 ```
 python main.py
 ```
 
 Complete the setting through instructions, and keep the window open to ensure the Bot is running.
  
-To change the setting, please use following command: 
+To change the setting, please use the following command: 
 ```
 python main.py --mode=setting
 ```
