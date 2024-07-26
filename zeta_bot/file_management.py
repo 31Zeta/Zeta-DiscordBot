@@ -7,7 +7,8 @@ from zeta_bot import (
     utils,
     audio,
     bilibili,
-    youtube
+    youtube,
+    netease,
 )
 
 
@@ -296,6 +297,8 @@ class AudioFileLibrary:
                 result = self._delete_least_used_file(depth + 1)
                 return result  # 递归返回
 
+    # TODO 下载代码合并分类
+
     async def download_bilibili(self, info_dict, download_type: str, num_option: int = 0) -> Union[audio.Audio, None]:
         bvid = info_dict["bvid"]
         if download_type == "bilibili_p":
@@ -380,6 +383,50 @@ class AudioFileLibrary:
                     raise errors.StorageFull(self._name)
 
         new_audio = youtube.audio_download(url, info_dict, self._root, download_type)
+
+        if new_audio is not None:
+            self._append_audio(new_audio, repeat_file=False)
+            return new_audio
+        else:
+            return None
+
+    def download_netease(self, url, info_dict, download_type) -> Union[audio.Audio, None]:
+        video_id = info_dict["id"]
+        # 如果文件已经存在
+        if video_id in self._dl_list:
+            exists_audio = self._dl_list.key_get(video_id)
+            filesize = os.path.getsize(exists_audio.get_path())
+            converted_file_size = utils.convert_byte(filesize)
+            converted_used_size = utils.convert_byte(self._used_storage_size)
+            converted_capacity = utils.convert_byte(self._storage_capacity)
+            self._logger.rp(f"文件已在库中：{exists_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
+                            f"路径：{exists_audio.get_path()}\n"
+                            f"已用容量：{converted_used_size[0]}{converted_used_size[1]}/"
+                            f"{converted_capacity[0]}{converted_capacity[1]}"
+                            f" -> {self.get_used_storage_percentage(2)}%",
+                            f"[{self._name}]")
+            # 将再次使用的音频挪至最新
+            self._append_audio(exists_audio, repeat_file=True)
+            return exists_audio
+
+        new_file_size = netease.get_filesize(info_dict)
+
+        # 如果下载此音频库会满，尝试删除最不常使用的文件
+        if self.storage_will_full(new_file_size):
+            self._logger.rp(f"{self._name}超出容量限制，从最久不使用的文件开始尝试删除", f"[{self._name}]")
+            while self.storage_will_full(new_file_size):
+                # 现在是一直删文件直到可以下载或者删不了为止，可以改成先计算能删多少文件，空间够了再删，但是潜在问题太多先不改了
+                if not self._delete_least_used_file():
+                    converted_file_size = utils.convert_byte(new_file_size)
+                    available_size = self.get_available_storage_size()
+                    converted_available_size = utils.convert_byte(available_size)
+                    self._logger.rp(f"下载失败，超出音频库容量上限且无法清理出足够空间，"
+                                    f"目标文件大小：{converted_file_size[0]}{converted_file_size[1]}，"
+                                    f"音频库可用容量：{converted_available_size[0]}{converted_available_size[1]}",
+                                    f"[{self._name}]")
+                    raise errors.StorageFull(self._name)
+
+        new_audio = netease.audio_download(url, info_dict, self._root, download_type)
 
         if new_audio is not None:
             self._append_audio(new_audio, repeat_file=False)

@@ -29,6 +29,7 @@ from zeta_bot import (
     file_management,
     bilibili,
     youtube,
+    netease,
 )
 from zeta_bot.help import HelpMenuView
 
@@ -880,7 +881,6 @@ async def play_callback(ctx: discord.ApplicationContext, link,
 
     # Link属于Bilibili
     if source == "bilibili_bvid" or source == "bilibili_url" or source == "bilibili_short_url":
-
         # 如果是Bilibili短链则获取重定向链接
         if source == "bilibili_short_url":
             try:
@@ -900,7 +900,6 @@ async def play_callback(ctx: discord.ApplicationContext, link,
 
     # Link属于YouTube
     elif source == "youtube_url" or source == "youtube_short_url":
-
         # 如果是Youtube短链则获取重定向链接
         if source == "youtube_short_url":
             try:
@@ -917,6 +916,25 @@ async def play_callback(ctx: discord.ApplicationContext, link,
         else:
             loading_msg = await eos(ctx, response, "正在加载Youtube音频信息")
         await play_youtube(ctx, link, response=loading_msg)
+
+    # Link属于网易云音乐
+    elif source == "netease_url" or source == "netease_short_url":
+        # 如果是网易云短链则获取重定向链接
+        if source == "netease_short_url":
+            try:
+                link = utils.get_redirect_url(link)
+            except requests.exceptions.InvalidSchema:
+                await eos(ctx, response, "链接异常")
+                logger.rp(f"链接重定向失败", ctx.guild, is_error=True)
+                return
+
+            logger.rp(f"获取的重定向链接为 {link}", ctx.guild)
+
+        if response is None:
+            loading_msg = await ctx.respond("正在加载网易云音频信息")
+        else:
+            loading_msg = await eos(ctx, response, "正在加载网易云音频信息")
+        await play_netease(ctx, link, response=loading_msg)
 
     else:
         # await ctx.respond("未能检测到可用的链接或BV号，可使用\"/search_audio\"（搜索音频）指令直接进行搜索")
@@ -1098,7 +1116,7 @@ async def add_bilibili_audio(ctx: discord.ApplicationContext, info_dict, audio_t
 
 async def play_youtube(ctx: discord.ApplicationContext, link, response=None) -> None:
     """
-    下载并播放来自Bilibili的视频的音频
+    下载并播放来自YouTube的视频的音频
 
     :param ctx: 指令原句
     :param link: 链接
@@ -1163,8 +1181,8 @@ async def play_youtube(ctx: discord.ApplicationContext, link, response=None) -> 
         await eos(ctx, response, "机器人当前处理音频过多，请稍后再试")
         return
     except yt_dlp.utils.DownloadError:
-        await eos(ctx, response, "音频获取失败")
-        logger.rp("触发异常yt_dlp.utils.DownloadError，视频不可用", ctx.guild, is_error=True)
+        await eos(ctx, response, "YouTube下载失败，该视频可能已失效或存在区域版权限制")
+        logger.rp("触发异常yt_dlp.utils.DownloadError，YouTube下载失败，该视频可能已失效或存在区域版权限制", ctx.guild, is_error=True)
         return
     except yt_dlp.utils.ExtractorError:
         await eos(ctx, response, "音频获取失败")
@@ -1189,6 +1207,103 @@ async def add_youtube_audio(ctx: discord.ApplicationContext, link, info_dict, li
 
     # 开始下载
     new_audio = audio_lib_main.download_youtube(link, info_dict, link_type)
+
+    if new_audio is not None:
+        if current_playlist.is_empty() and not voice_client.is_playing():
+            await play_audio(ctx, new_audio, response=response)
+
+        # 如果是列表添加则结束本次调用，因为提示信息不同，音频的添加和列表处理通过返回new_audio交由循环调用处理
+        # 如果不是列表添加
+        if not list_add_call:
+            # 如果列表为空则会有正在播放提示，否则加入列表提示
+            if not current_playlist.is_empty():
+                await eos(ctx, response, f"已加入播放列表：**{new_audio.get_title()} [{new_audio.get_duration_str()}]**")
+
+        # 添加至服务器播放列表
+        current_playlist.append_audio(new_audio)
+        logger.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表", ctx.guild)
+
+        await current_guild.refresh_list_view()
+
+    # 返回None或者新下载的音频
+    return new_audio
+
+
+async def play_netease(ctx: discord.ApplicationContext, link, response=None) -> None:
+    """
+    下载并播放来自网易云音乐的音频
+
+    :param ctx: 指令原句
+    :param link: 链接
+    :param response: 用于编辑的加载信息
+    :return: 播放的音频（如果为播放列表或获取失败则返回None）
+    """
+    try:
+        # 先提取信息
+        info_dict = netease.get_info(link)
+
+        # 播放列表
+        if "_type" in info_dict and info_dict["_type"] == "playlist":
+            link_type = "netease_playlist"
+
+        # 独立音频
+        else:
+            link_type = "netease_single"
+
+        # 独立音频 netease_single
+        if link_type == "netease_single":
+            await add_netease_audio(ctx, link, info_dict, "netease_single", list_add_call=False, response=response)
+
+        # 播放列表 netease_playlist
+        elif link_type == "netease_playlist":
+            ep_info_list = []
+            for item in info_dict["entries"]:
+                ep_title = item["title"]
+                # ep_info_list内的所有元组只包含ep_title一个元素，不要去掉()内的逗号
+                ep_info_list.append((ep_title,))
+            playlist_title = info_dict['title']
+            menu_list = utils.make_playlist_page(ep_info_list, 10, {}, {})
+            view = EpisodeSelectView(
+                ctx, "netease_playlist", info_dict, menu_list, "网易云播放列表", playlist_title
+            )
+            await eos(
+                ctx, response,
+                content=f"## 网易云播放列表 | {playlist_title}\n请选择要播放的集数:\n{menu_list[0]}\n"
+                        f"第[1]页，共[{len(menu_list)}]页\n已输入：",
+                view=view
+            )
+
+    # 网易云音频异常处理
+    except errors.StorageFull:
+        await eos(ctx, response, "机器人当前处理音频过多，请稍后再试")
+        return
+    except yt_dlp.utils.DownloadError:
+        await eos(ctx, response, "网易云下载失败，该视频可能已失效或存在区域版权限制")
+        logger.rp("触发异常yt_dlp.utils.DownloadError，网易云下载失败，该视频可能已失效或存在区域版权限制", ctx.guild, is_error=True)
+        return
+    except yt_dlp.utils.ExtractorError:
+        await eos(ctx, response, "音频获取失败")
+        logger.rp("触发异常yt_dlp.utils.ExtractorError，音频不可用", ctx.guild, is_error=True)
+        return
+    except yt_dlp.utils.UnavailableVideoError:
+        await eos(ctx, response, "音频不可用")
+        logger.rp("触发异常yt_dlp.utils.UnavailableVideoError，音频不可用", ctx.guild, is_error=True)
+        return
+    except discord.HTTPException:
+        await eos(ctx, response, "音频获取失败")
+        logger.rp("触发异常discord.HTTPException", ctx.guild, is_error=True)
+        return
+
+
+async def add_netease_audio(ctx: discord.ApplicationContext, link, info_dict, link_type, list_add_call=False,
+                            response: Union[discord.Interaction, discord.InteractionMessage, None] = None
+                            ) -> Union[audio.Audio, None]:
+    voice_client = ctx.guild.voice_client
+    current_guild = guild_lib.get_guild(ctx)
+    current_playlist = current_guild.get_playlist()
+
+    # 开始下载
+    new_audio = audio_lib_main.download_netease(link, info_dict, link_type)
 
     if new_audio is not None:
         if current_playlist.is_empty() and not voice_client.is_playing():
@@ -1898,7 +2013,7 @@ class EpisodeSelectView(View):
         初始化分集选择菜单
 
         :param ctx: 指令原句
-        :param source: 播放源的种类（bilibili_p, bilibili_collection, youtube_playlist)
+        :param source: 播放源的种类（bilibili_p, bilibili_collection, youtube_playlist, netease_playlist)
         :param info_dict: 播放源的信息字典
         :param menu_list: 选择菜单的文本（使用make_playlist_page获取）
         :param timeout: 超时时间（单位：秒）
@@ -2165,6 +2280,12 @@ class EpisodeSelectView(View):
                     self.clear_items()
                     await msg.edit_message(content="选择中含有无效集数", view=self)
                     return
+        elif self.source == "netease_playlist":
+            for num in final_result:
+                if num > len(self.info_dict["entries"]):
+                    self.clear_items()
+                    await msg.edit_message(content="选择中含有无效序号", view=self)
+                    return
 
         message = message[:-1]
         self.clear_items()
@@ -2228,7 +2349,7 @@ class EpisodeSelectView(View):
         elif self.source == "bilibili_collection":
             total_num = len(
                 self.info_dict["ugc_season"]["sections"][0]["episodes"])
-        elif self.source == "youtube_playlist":
+        elif self.source == "youtube_playlist" or self.source == "netease_playlist":
             total_num = len(self.info_dict["entries"])
 
         for num in range(1, total_num + 1):
@@ -2376,8 +2497,8 @@ class EpisodeSelectView(View):
                         await ec(loading_msg, "机器人当前处理音频过多，无法完成播放列表添加")
                         return  # 终止
                     except yt_dlp.utils.DownloadError:
-                        loading_msg = await ec(loading_msg, "视频获取失败")
-                        logger.rp("触发异常yt_dlp.utils.DownloadError，视频不可用", self.ctx.guild, is_error=True)
+                        loading_msg = await ec(loading_msg, "YouTube下载失败，该视频可能已失效或存在区域版权限制")
+                        logger.rp("触发异常yt_dlp.utils.DownloadError，YouTube下载失败，该视频可能已失效或存在区域版权限制", self.ctx.guild, is_error=True)
                         continue
                     except yt_dlp.utils.ExtractorError:
                         loading_msg = await ec(loading_msg, "视频获取失败")
@@ -2393,6 +2514,64 @@ class EpisodeSelectView(View):
                         continue
 
             await ec(loading_msg, f"完成添加，已将{total_num}个音频加入播放列表  总时长 -> [{total_duration}]")
+
+        # 如果为网易云播放列表
+        elif self.source == "netease_playlist":
+            # yt-dlp下载的网易云播放列表并不包含单曲时长信息
+            # counter = 1
+            # valid_counter = 0
+            # for item in self.info_dict["entries"]:
+            #     # item["duration"] is not None 检测如果列表中含有已被删除的视频
+            #     if counter in final_result and item["duration"] is not None:
+            #         total_duration += item["duration"]
+            #         valid_counter += 1
+            #     counter += 1
+
+            # total_duration = utils.convert_duration_to_str(total_duration)
+            loading_msg = await self.ctx.send(f"正在将以下{total_num}个音频加入播放列表：")
+
+            # 循环添加
+            for num in final_result:
+                # 跳过已被删除或失效的视频
+                # if self.info_dict['entries'][num - 1]['duration'] is not None:
+                url = self.info_dict['entries'][num - 1]['url']
+                try:
+                    # 单独提取信息
+                    current_info_dict = netease.get_info(url)
+                    # 每个音频作为“netease_single”单独添加
+                    new_audio = await add_netease_audio(
+                        self.ctx, url, current_info_dict, "netease_single", list_add_call=True, response=None
+                    )
+                    # 如果音频加载成功
+                    if new_audio is not None:
+                        # 重载loading_msg为Message对象（否则无法ec累计更新提示信息）
+                        loading_msg = await ec(
+                            loading_msg, f"\\-  **{new_audio.get_title()} [{new_audio.get_duration_str()}]**"
+                        )
+
+                # 网易云列表下载异常处理
+                except errors.StorageFull:
+                    logger.rp("库已满，播放列表添加失败", self.ctx.guild, is_error=True)
+                    await ec(loading_msg, "机器人当前处理音频过多，无法完成播放列表添加")
+                    return  # 终止
+                except yt_dlp.utils.DownloadError:
+                    loading_msg = await ec(loading_msg, "网易云下载失败，该视频可能已失效或存在区域版权限制")
+                    logger.rp("触发异常yt_dlp.utils.DownloadError，网易云下载失败，该视频可能已失效或存在区域版权限制", self.ctx.guild, is_error=True)
+                    continue
+                except yt_dlp.utils.ExtractorError:
+                    loading_msg = await ec(loading_msg, "视频获取失败")
+                    logger.rp("触发异常yt_dlp.utils.ExtractorError，视频不可用", self.ctx.guild, is_error=True)
+                    continue
+                except yt_dlp.utils.UnavailableVideoError:
+                    loading_msg = await ec(loading_msg, "视频不可用")
+                    logger.rp("触发异常yt_dlp.utils.UnavailableVideoError，视频不可用", self.ctx.guild, is_error=True)
+                    continue
+                except discord.HTTPException:
+                    loading_msg = await ec(loading_msg, "视频获取失败")
+                    logger.rp("触发异常discord.HTTPException", self.ctx.guild, is_error=True)
+                    continue
+
+            await ec(loading_msg, f"完成添加，已将{total_num}个音频加入播放列表")
 
         else:
             logger.rp("未知的播放源", self.ctx.guild)
