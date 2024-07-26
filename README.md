@@ -33,7 +33,7 @@ git clone https://github.com/31Zeta/Zeta-DiscordBot.git
 ```
 
 或手动安装以下包：  
-- py-cord (v2.4.1) https://github.com/Pycord-Development/pycord  
+- py-cord https://github.com/Pycord-Development/pycord  
 - APScheduler https://github.com/agronholm/apscheduler  
 - bilibili-api-python https://github.com/Nemo2011/bilibili-api
 - PyNaCl https://github.com/pyca/pynacl/
@@ -82,7 +82,7 @@ Change the command line directory to this repo and use the following command to 
 ```
 
 Or install these packages manually:
-- py-cord (v2.4.1) https://github.com/Pycord-Development/pycord  
+- py-cord https://github.com/Pycord-Development/pycord  
 - APScheduler https://github.com/agronholm/apscheduler  
 - bilibili-api-python https://github.com/Nemo2011/bilibili-api
 - PyNaCl https://github.com/pyca/pynacl/
