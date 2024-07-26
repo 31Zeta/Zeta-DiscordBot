@@ -53,7 +53,7 @@ def audio_download(netease_url, info_dict, download_path, download_type="netease
 
     audio_id = info_dict["id"]
     audio_title = info_dict["title"]
-    audio_authors = info_dict["creators"]
+    # audio_authors = info_dict["creators"]
     audio_path_title = utils.legal_name(audio_title)
     audio_name_extension = info_dict["ext"]
     audio_duration = info_dict["duration"]
