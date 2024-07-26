@@ -33,11 +33,11 @@ from zeta_bot import (
 )
 from zeta_bot.help import HelpMenuView
 
-version = "0.10.0"
+version = "0.11.0"
 author = "炤铭Zeta (31Zeta)"
 python_path = sys.executable
 pycord_version = discord.__version__
-update_time = "2023.11.25"
+update_time = "2024.07.26"
 
 supported_search_sites = ["哔哩哔哩", "YouTube"]
 
