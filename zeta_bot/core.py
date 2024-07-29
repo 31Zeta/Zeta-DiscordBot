@@ -1819,6 +1819,7 @@ class PlaylistMenu(View):
             if button.custom_id in variable_states_buttons:
                 button.disabled = False
 
+        # 如果self.playlist_pages长度为0，则插入一个当前播放列表为空，此时长度为1
         if len(self.playlist_pages) == 0:
             self.playlist_pages.append("> **当前播放列表为空**\n")
             # 如果播放列表为空则禁用下一首按钮
@@ -1826,6 +1827,13 @@ class PlaylistMenu(View):
                 if button.custom_id == "button_next_audio":
                     button.disabled = True
                     break
+
+        # 如果当前页码小于范围则跳转至第一页
+        if self.page_num < 0:
+            self.page_num = 0
+        # 如果当前页码大于范围则跳转至最后一页
+        if self.page_num > len(self.playlist_pages) - 1:
+            self.page_num = len(self.playlist_pages) - 1
 
         # 更新播放状态文本
         self.voice_client = self.ctx.guild.voice_client
@@ -1953,8 +1961,8 @@ class PlaylistMenu(View):
         msg = interaction.response
         self.refresh_pages()
         # 翻页
-        if self.page_num == 0:
-            pass
+        if self.page_num <= 0:
+            self.page_num = 0
         else:
             self.page_num -= 1
         self.refresh_pages()
@@ -1966,8 +1974,8 @@ class PlaylistMenu(View):
         msg = interaction.response
         self.refresh_pages()
         # 翻页
-        if self.page_num == len(self.playlist_pages) - 1:
-            pass
+        if self.page_num >= len(self.playlist_pages) - 1:
+            self.page_num = len(self.playlist_pages) - 1
         else:
             self.page_num += 1
         self.refresh_pages()
