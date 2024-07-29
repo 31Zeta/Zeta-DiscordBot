@@ -111,3 +111,16 @@ class StorageFull(RuntimeError):
             return f"{self.library_name}已满"
         else:
             return "库已满"
+
+
+class GetInfoDownloadError(RuntimeError):
+    def __init__(self, original_error, info: dict):
+        super().__init__()
+        self.original_error = original_error
+        self.info = info
+
+    def __str__(self):
+        if "title" in self.info:
+            return f"触发异常：{self.original_error}，尝试对{self.info['title']}的信息获取或下载失败"
+        else:
+            return f"触发异常：{self.original_error}"

@@ -33,11 +33,11 @@ from zeta_bot import (
 )
 from zeta_bot.help import HelpMenuView
 
-version = "0.11.1"
+version = "0.11.2"
 author = "炤铭Zeta (31Zeta)"
 python_path = sys.executable
 pycord_version = discord.__version__
-update_time = "2024.07.26"
+update_time = "2024.07.29"
 
 supported_search_sites = ["哔哩哔哩", "YouTube"]
 
@@ -1806,10 +1806,26 @@ class PlaylistMenu(View):
 
     def refresh_pages(self):
         # 生成播放列表主体文本
-        self.playlist_pages = utils.make_playlist_page(self.playlist.get_list_info(), 10,
-                                                       {None: ">       ", 0: "> ▶  **"}, {0: "**"})
+        self.playlist_pages = utils.make_playlist_page(
+            self.playlist.get_list_info(),
+            10,
+            {None: ">       ", 0: "> ▶  **"},
+            {0: "**"}
+        )
+
+        # 先启用所有可变状态的按钮，稍后根据状态禁用
+        variable_states_buttons = {"button_next_audio", "button_previous_page", "button_next_page"}
+        for button in self.children:
+            if button.custom_id in variable_states_buttons:
+                button.disabled = False
+
         if len(self.playlist_pages) == 0:
             self.playlist_pages.append("> **当前播放列表为空**\n")
+            # 如果播放列表为空则禁用下一首按钮
+            for button in self.children:
+                if button.custom_id == "button_next_audio":
+                    button.disabled = True
+                    break
 
         # 更新播放状态文本
         self.voice_client = self.ctx.guild.voice_client
@@ -1854,6 +1870,20 @@ class PlaylistMenu(View):
                 # TODO 完成历史播放列表
                 button.disabled = True
                 break
+
+        # 如果在第1页则禁用上一页按钮
+        if self.page_num == 0:
+            for button in self.children:
+                if button.custom_id == "button_previous_page":
+                    button.disabled = True
+                    break
+
+        # 如果在最后1页则禁用下一页按钮
+        if self.page_num == len(self.playlist_pages) - 1:
+            for button in self.children:
+                if button.custom_id == "button_next_page":
+                    button.disabled = True
+                    break
 
         self.first_page = self.get_page_content(0)
         self.playlist_duration = self.playlist.get_duration_str()
@@ -1927,6 +1957,7 @@ class PlaylistMenu(View):
             pass
         else:
             self.page_num -= 1
+        self.refresh_pages()
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="下一页", style=discord.ButtonStyle.grey, custom_id="button_next_page", row=2)
@@ -1939,6 +1970,7 @@ class PlaylistMenu(View):
             pass
         else:
             self.page_num += 1
+        self.refresh_pages()
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="刷新", style=discord.ButtonStyle.grey, custom_id="button_refresh", row=2)
@@ -2361,6 +2393,7 @@ class EpisodeSelectView(View):
 
     async def play_select(self, final_result):
         total_num = len(final_result)
+        success_num = 0
         total_duration = 0
 
         # ----- 下载并播放音频 -----
@@ -2382,33 +2415,35 @@ class EpisodeSelectView(View):
                     if new_audio is not None:
                         # 重载loading_msg为Message对象（否则无法ec累计更新提示信息）
                         loading_msg = await ec(
-                            loading_msg, f"\\-  **{new_audio.get_title()} [{new_audio.get_duration_str()}]**"
+                            loading_msg, f"\\-  **[{num_p}] {new_audio.get_title()}** [{new_audio.get_duration_str()}]"
                         )
                 except errors.StorageFull:
-                    await ec(loading_msg, "机器人当前处理音频过多，请稍后再试")
+                    await ec(loading_msg, "**机器人当前处理音频过多，请稍后再试**")
                     return  # 终止
                 except bilibili_api.ResponseCodeException:
-                    loading_msg = await ec(loading_msg, "哔哩哔哩无响应，该视频可能已失效或存在区域版权限制")
+                    loading_msg = await ec(loading_msg, f"\\-  **错误：{num_p}p** 无响应，资源可能已失效或存在区域版权限制")
                     logger.rp(
-                        "触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，该视频内容可能已失效或存在区域版权限制",
+                        f"触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，{num_p}p可能已失效或存在区域版权限制",
                         self.ctx.guild,
                         is_error=True
                     )
                     continue
                 except bilibili_api.ArgsException:
-                    loading_msg = await ec(loading_msg, "参数错误，请检查链接中的BV号是否正确完整")
-                    logger.rp("触发异常bilibili_api.ArgsException，参数异常，可能为bvid错误", self.ctx.guild, is_error=True)
+                    loading_msg = await ec(loading_msg, f"\\-  **错误：{num_p}p** 参数错误，请检查链接中的BV号是否正确完整")
+                    logger.rp(f"触发异常bilibili_api.ArgsException，{num_p}p获取失败，参数异常，可能为bvid错误", self.ctx.guild, is_error=True)
                     continue
                 except httpx.ConnectTimeout:
-                    loading_msg = await ec(loading_msg, "网络主机连接超时，请稍后再试")
-                    logger.rp("触发异常httpx.ConnectTimeout，网络主机连接超时", self.ctx.guild, is_error=True)
+                    loading_msg = await ec(loading_msg, f"\\-  **错误：{num_p}p** 获取失败，网络主机连接超时，请稍后再试")
+                    logger.rp(f"触发异常httpx.ConnectTimeout，{num_p}p获取失败，网络主机连接超时", self.ctx.guild, is_error=True)
                     continue
                 except httpx.RemoteProtocolError:
-                    loading_msg = await ec(loading_msg, "服务器协议错误，请稍后再试")
-                    logger.rp("触发异常httpx.RemoteProtocolError，服务器协议错误", self.ctx.guild, is_error=True)
+                    loading_msg = await ec(loading_msg, f"\\-  **错误：{num_p}p** 获取失败，服务器协议错误，请稍后再试")
+                    logger.rp(f"触发异常httpx.RemoteProtocolError，{num_p}p获取失败，服务器协议错误", self.ctx.guild, is_error=True)
                     continue
+                else:
+                    success_num += 1
 
-            await ec(loading_msg, f"完成添加，已将{total_num}个音频加入播放列表  总时长 -> [{total_duration}]")
+            await ec(loading_msg, f"完成添加，已将{success_num}个音频加入播放列表  总时长 -> [{total_duration}]")
 
         # 如果为Bilibili合集音频
         elif self.source == "bilibili_collection":
@@ -2421,6 +2456,7 @@ class EpisodeSelectView(View):
             loading_msg = await self.ctx.send(f"正在将以下{total_num}个音频加入播放列表：  总时长 -> [{total_duration}]")
 
             for num in final_result:
+                title = self.info_dict["ugc_season"]["sections"][0]["episodes"][num - 1]["title"]
                 try:
                     bvid = self.info_dict["ugc_season"]["sections"][0]["episodes"][num - 1]["bvid"]
                     info_dict = await bilibili.get_info(bvid)
@@ -2429,34 +2465,39 @@ class EpisodeSelectView(View):
                     if new_audio is not None:
                         # 重载loading_msg为Message对象（否则无法ec累计更新提示信息）
                         loading_msg = await ec(
-                            loading_msg, f"\\-  **{new_audio.get_title()} [{new_audio.get_duration_str()}]**"
+                            loading_msg, f"\\-  [{num}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]"
                         )
                 except errors.StorageFull:
-                    await ec(loading_msg, "机器人当前处理音频过多，请稍后再试")
+                    await ec(loading_msg, "**机器人当前处理音频过多，请稍后再试**")
                     return  # 终止
                 except bilibili_api.ResponseCodeException:
-                    loading_msg = await ec(loading_msg, "哔哩哔哩无响应，该视频可能已失效或存在区域版权限制")
+                    view = AskForSearchingView(self.ctx, title)
+                    loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 无响应，资源可能已失效或存在区域版权限制")
                     logger.rp(
-                        "触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，该视频内容可能已失效或存在区域版权限制",
+                        f"触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，{title}可能已失效或存在区域版权限制",
                         self.ctx.guild,
                         is_error=True
                     )
+                    ask_msg = await self.ctx.send(f"[{num}] **{title}** 获取失败，是否要重新进行搜索？", view=view)
+                    await view.set_original_msg(ask_msg)
                     continue
                 except bilibili_api.ArgsException:
-                    loading_msg = await ec(loading_msg, "参数错误，请检查链接中的BV号是否正确完整")
-                    logger.rp("触发异常bilibili_api.ArgsException，参数异常，可能为bvid错误", self.ctx.guild,
+                    loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 参数错误，请检查链接中的BV号是否正确完整")
+                    logger.rp(f"触发异常bilibili_api.ArgsException，{title}获取失败，参数异常，可能为bvid错误", self.ctx.guild,
                               is_error=True)
                     continue
                 except httpx.ConnectTimeout:
-                    loading_msg = await ec(loading_msg, "网络主机连接超时，请稍后再试")
-                    logger.rp("触发异常httpx.ConnectTimeout，网络主机连接超时", self.ctx.guild, is_error=True)
+                    loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 获取失败，网络主机连接超时，请稍后再试")
+                    logger.rp(f"触发异常httpx.ConnectTimeout，{title}获取失败，网络主机连接超时", self.ctx.guild, is_error=True)
                     continue
                 except httpx.RemoteProtocolError:
-                    loading_msg = await ec(loading_msg, "服务器协议错误，请稍后再试")
-                    logger.rp("触发异常httpx.RemoteProtocolError，服务器协议错误", self.ctx.guild, is_error=True)
+                    loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 获取失败，服务器协议错误，请稍后再试")
+                    logger.rp(f"触发异常httpx.RemoteProtocolError，{title}获取失败，服务器协议错误", self.ctx.guild, is_error=True)
                     continue
+                else:
+                    success_num += 1
 
-            await ec(loading_msg, f"完成添加，已将{total_num}个音频加入播放列表  总时长 -> [{total_duration}]")
+            await ec(loading_msg, f"完成添加，已将{success_num}个音频加入播放列表  总时长 -> [{total_duration}]")
 
         # 如果为Youtube播放列表
         elif self.source == "youtube_playlist":
@@ -2474,6 +2515,7 @@ class EpisodeSelectView(View):
 
             # 循环添加
             for num in final_result:
+                title = self.info_dict['entries'][num - 1]['title']
                 # 跳过已被删除或失效的视频
                 if self.info_dict['entries'][num - 1]['duration'] is not None:
                     url = f"https://www.youtube.com/watch?v={self.info_dict['entries'][num - 1]['id']}"
@@ -2488,32 +2530,42 @@ class EpisodeSelectView(View):
                         if new_audio is not None:
                             # 重载loading_msg为Message对象（否则无法ec累计更新提示信息）
                             loading_msg = await ec(
-                                loading_msg, f"\\-  **{new_audio.get_title()} [{new_audio.get_duration_str()}]**"
+                                loading_msg, f"\\-  [{num}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]"
                             )
 
                     # YouTube列表下载异常处理
                     except errors.StorageFull:
                         logger.rp("库已满，播放列表添加失败", self.ctx.guild, is_error=True)
-                        await ec(loading_msg, "机器人当前处理音频过多，无法完成播放列表添加")
+                        await ec(loading_msg, "**机器人当前处理音频过多，无法完成播放列表添加**")
                         return  # 终止
                     except yt_dlp.utils.DownloadError:
-                        loading_msg = await ec(loading_msg, "YouTube下载失败，该视频可能已失效或存在区域版权限制")
-                        logger.rp("触发异常yt_dlp.utils.DownloadError，YouTube下载失败，该视频可能已失效或存在区域版权限制", self.ctx.guild, is_error=True)
+                        view = AskForSearchingView(self.ctx, title)
+                        loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 下载失败，资源可能已失效或存在区域版权限制")
+                        logger.rp(
+                            f"触发异常yt_dlp.utils.DownloadError，YouTube下载失败，{title}可能已失效或存在区域版权限制",
+                            self.ctx.guild, is_error=True
+                        )
+                        ask_msg = await self.ctx.send(f"[{num}] **{title}** 获取失败，是否要重新进行搜索？", view=view)
+                        await view.set_original_msg(ask_msg)
                         continue
                     except yt_dlp.utils.ExtractorError:
-                        loading_msg = await ec(loading_msg, "视频获取失败")
-                        logger.rp("触发异常yt_dlp.utils.ExtractorError，视频不可用", self.ctx.guild, is_error=True)
+                        loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 获取失败")
+                        logger.rp(f"触发异常yt_dlp.utils.ExtractorError，{title}视频不可用", self.ctx.guild,
+                                  is_error=True)
                         continue
                     except yt_dlp.utils.UnavailableVideoError:
-                        loading_msg = await ec(loading_msg, "视频不可用")
-                        logger.rp("触发异常yt_dlp.utils.UnavailableVideoError，视频不可用", self.ctx.guild, is_error=True)
+                        loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 视频不可用")
+                        logger.rp(f"触发异常yt_dlp.utils.UnavailableVideoError，{title}视频不可用", self.ctx.guild,
+                                  is_error=True)
                         continue
                     except discord.HTTPException:
-                        loading_msg = await ec(loading_msg, "视频获取失败")
-                        logger.rp("触发异常discord.HTTPException", self.ctx.guild, is_error=True)
+                        loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 视频获取失败，请稍后再试")
+                        logger.rp(f"触发异常discord.HTTPException", self.ctx.guild, is_error=True)
                         continue
+                    else:
+                        success_num += 1
 
-            await ec(loading_msg, f"完成添加，已将{total_num}个音频加入播放列表  总时长 -> [{total_duration}]")
+            await ec(loading_msg, f"完成添加，已将{success_num}个音频加入播放列表  总时长 -> [{total_duration}]")
 
         # 如果为网易云播放列表
         elif self.source == "netease_playlist":
@@ -2535,6 +2587,7 @@ class EpisodeSelectView(View):
                 # 跳过已被删除或失效的视频
                 # if self.info_dict['entries'][num - 1]['duration'] is not None:
                 url = self.info_dict['entries'][num - 1]['url']
+                title = self.info_dict['entries'][num - 1]['title']
                 try:
                     # 单独提取信息
                     current_info_dict = netease.get_info(url)
@@ -2546,32 +2599,40 @@ class EpisodeSelectView(View):
                     if new_audio is not None:
                         # 重载loading_msg为Message对象（否则无法ec累计更新提示信息）
                         loading_msg = await ec(
-                            loading_msg, f"\\-  **{new_audio.get_title()} [{new_audio.get_duration_str()}]**"
+                            loading_msg, f"\\-  [{num}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]"
                         )
 
                 # 网易云列表下载异常处理
                 except errors.StorageFull:
                     logger.rp("库已满，播放列表添加失败", self.ctx.guild, is_error=True)
-                    await ec(loading_msg, "机器人当前处理音频过多，无法完成播放列表添加")
+                    await ec(loading_msg, "**机器人当前处理音频过多，无法完成播放列表添加**")
                     return  # 终止
                 except yt_dlp.utils.DownloadError:
-                    loading_msg = await ec(loading_msg, "网易云下载失败，该音乐可能已失效或存在区域版权限制")
-                    logger.rp("触发异常yt_dlp.utils.DownloadError，网易云下载失败，该音乐可能已失效或存在区域版权限制", self.ctx.guild, is_error=True)
+                    view = AskForSearchingView(self.ctx, title)
+                    loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 下载失败，资源可能已失效或存在区域版权限制")
+                    logger.rp(
+                        f"触发异常yt_dlp.utils.DownloadError，网易云下载失败，{title}资源可能已失效或存在区域版权限制",
+                        self.ctx.guild, is_error=True
+                    )
+                    ask_msg = await self.ctx.send(f"[{num}] **{title}** 获取失败，是否要重新进行搜索？", view=view)
+                    await view.set_original_msg(ask_msg)
                     continue
                 except yt_dlp.utils.ExtractorError:
-                    loading_msg = await ec(loading_msg, "视频获取失败")
-                    logger.rp("触发异常yt_dlp.utils.ExtractorError，视频不可用", self.ctx.guild, is_error=True)
+                    loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 获取失败")
+                    logger.rp(f"触发异常yt_dlp.utils.ExtractorError，{title}音频不可用", self.ctx.guild, is_error=True)
                     continue
                 except yt_dlp.utils.UnavailableVideoError:
-                    loading_msg = await ec(loading_msg, "视频不可用")
-                    logger.rp("触发异常yt_dlp.utils.UnavailableVideoError，视频不可用", self.ctx.guild, is_error=True)
+                    loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 音频不可用")
+                    logger.rp(f"触发异常yt_dlp.utils.UnavailableVideoError，{title}音频不可用", self.ctx.guild, is_error=True)
                     continue
                 except discord.HTTPException:
-                    loading_msg = await ec(loading_msg, "视频获取失败")
-                    logger.rp("触发异常discord.HTTPException", self.ctx.guild, is_error=True)
+                    loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 音频获取失败，请稍后再试")
+                    logger.rp(f"触发异常discord.HTTPException", self.ctx.guild, is_error=True)
                     continue
+                else:
+                    success_num += 1
 
-            await ec(loading_msg, f"完成添加，已将{total_num}个音频加入播放列表")
+            await ec(loading_msg, f"完成添加，已将{success_num}个音频加入播放列表")
 
         else:
             logger.rp("未知的播放源", self.ctx.guild)
@@ -2793,14 +2854,10 @@ class SearchedAudioSelectionView(View):
 
 
 class AskForSearchingView(View):
-
     def __init__(self, ctx, query, response: Union[discord.Interaction, discord.InteractionMessage, None] = None,
-                 timeout=10):
+                 timeout=30):
         """
-        提示是否查看合集或播放列表的View
-        source:
-            - bilibili_collection
-            - youtube_playlist
+        询问是否搜索指定<query>的View
         """
         super().__init__(timeout=timeout)
         self.ctx = ctx
