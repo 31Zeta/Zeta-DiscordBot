@@ -677,9 +677,9 @@ async def info_callback(ctx: discord.ApplicationContext) -> None:
     :param ctx: 指令原句
     :return:
     """
-    await ctx.respond(f"**Zeta-Discord机器人 [版本 {version}]**\n"
-                      f"   基于 Pycord v{pycord_version} 制作\n"
-                      f"   版本更新日期：**{update_time}**\n"
+    await ctx.respond(f"**Zeta-Discord机器人 [版本 v{version}]**\n"
+                      f"   基于 Pycord v{pycord_version} 运行\n"
+                      f"   版本更新日期：{update_time}\n"
                       f"   作者：炤铭Zeta (31Zeta)")
 
 
