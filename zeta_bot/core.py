@@ -33,7 +33,7 @@ from zeta_bot import (
 )
 from zeta_bot.help import HelpMenuView
 
-version = "0.11.2"
+version = "0.11.3"
 author = "炤铭Zeta (31Zeta)"
 python_path = sys.executable
 pycord_version = discord.__version__
