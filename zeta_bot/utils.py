@@ -303,6 +303,16 @@ def get_url_from_str(input_str, url_type) -> Union[str, None]:
         return None
 
 
+def get_legal_netease_url(input_str) -> Union[str, None]:
+    if "song?id=" in input_str:
+        id_position = re.search("song\?id=\d+", input_str).span()
+    elif "playlist?id=" in input_str:
+        id_position = re.search("playlist\?id=\d+", input_str).span()
+    else:
+        return None
+    return "https://music.163.com/#/" + input_str[id_position[0]:id_position[1]]
+
+
 def get_redirect_url(url) -> str:
     headers = {
         "User-Agent": "Mozilla/5.0",

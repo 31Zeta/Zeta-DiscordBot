@@ -33,7 +33,7 @@ from zeta_bot import (
 )
 from zeta_bot.help import HelpMenuView
 
-version = "0.11.3"
+version = "0.11.4"
 author = "炤铭Zeta (31Zeta)"
 python_path = sys.executable
 pycord_version = discord.__version__
@@ -625,21 +625,21 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
 
 @bot.slash_command(name_localizations=lang.get_command_name("move"), description="移动播放列表中音频的位置")
 @option(
-    "from_number", int,
+    "move", int,
     description="需要移动的音频的序号",
     required=True,
     min_value=1
 )
 @option(
-    "to_number", int,
+    "to", int,
     description="需要移动到第几号位置",
     required=True,
     min_value=1
 )
-async def move(ctx, from_number: int, to_number: int):
+async def move(ctx, move: int, to: int):
     if not await command_check(ctx):
         return
-    await move_callback(ctx, from_number, to_number)
+    await move_callback(ctx, move, to)
 
 
 @bot.slash_command(name_localizations=lang.get_command_name("volume"), description=f"调整{bot_name}的语音频道音量")
@@ -1239,6 +1239,8 @@ async def play_netease(ctx: discord.ApplicationContext, link, response=None) -> 
     :return: 播放的音频（如果为播放列表或获取失败则返回None）
     """
     try:
+        # 截取出yt-dlp可读取的部分（目前已知yt-dlp 2024.07.25不能读取包含/my/m/music/的链接）
+        link = utils.get_legal_netease_url(link)
         # 先提取信息
         info_dict = netease.get_info(link)
 
@@ -1639,26 +1641,26 @@ async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Un
 
     # 将音频移到当前位置
     elif to_number == 1:
-        current_audio = current_playlist.get(0)
-        target_song = current_playlist.get(from_number - 1)
-        title = target_song.title
-        current_playlist.remove_select(from_number - 1)
-        current_playlist.add_audio(current_audio, 1)
-        current_playlist.add_audio(target_song, 1)
+        current_audio = current_playlist.get_audio(0)
+        target_song = current_playlist.get_audio(from_number - 1)
+        title = target_song.get_title()
+        current_playlist.remove_audio(from_number - 1)
+        current_playlist.insert_audio(current_audio, 1)
+        current_playlist.insert_audio(target_song, 1)
         voice_client.stop()
 
         logger.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
         await ctx.respond(f"**{title}** 已被移至播放列表第 **{to_number}** 位")
 
     else:
-        target_song = current_playlist.get(from_number - 1)
-        title = target_song.title
+        target_song = current_playlist.get_audio(from_number - 1)
+        title = target_song.get_title()
         if from_number < to_number:
-            current_playlist.add_audio(target_song, to_number)
-            current_playlist.remove_select(from_number - 1)
+            current_playlist.insert_audio(target_song, to_number)
+            current_playlist.remove_audio(from_number - 1)
         else:
-            current_playlist.add_audio(target_song, to_number - 1)
-            current_playlist.remove_select(from_number)
+            current_playlist.insert_audio(target_song, to_number - 1)
+            current_playlist.remove_audio(from_number)
 
         logger.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
         await ctx.respond(f"**{title}** 已被移至播放列表第 **{to_number}** 位")
