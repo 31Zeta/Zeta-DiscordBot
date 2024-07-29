@@ -77,7 +77,7 @@ def audio_download(netease_url, info_dict, download_path, download_type="netease
     logger.rp(
         f"下载完成\n"
         f"文件名：{audio_path_title}.{audio_name_extension}\n"
-        f"来源：[YouTube] {audio_id}\n"
+        f"来源：[NetEase] {audio_id}\n"
         f"路径：{download_path}\n"
         f"大小：{size[0]} {size[1]}\n"
         f"时长：{utils.convert_duration_to_str(audio_duration)}",

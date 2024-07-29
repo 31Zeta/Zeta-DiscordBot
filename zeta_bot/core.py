@@ -33,7 +33,7 @@ from zeta_bot import (
 )
 from zeta_bot.help import HelpMenuView
 
-version = "0.11.0"
+version = "0.11.1"
 author = "炤铭Zeta (31Zeta)"
 python_path = sys.executable
 pycord_version = discord.__version__
@@ -476,7 +476,7 @@ async def leave(ctx: discord.ApplicationContext) -> None:
     await leave_callback(ctx)
 
 
-@bot.slash_command(name_localizations=lang.get_command_name("search_audio"), description="播放来自哔哩哔哩或Youtube的音频")
+@bot.slash_command(name_localizations=lang.get_command_name("search_audio"), description="搜索并播放来自哔哩哔哩，Youtube的音频")
 @option(
     "query",
     description="搜索的名称",
@@ -495,7 +495,7 @@ async def search_audio(ctx: discord.ApplicationContext, query, site) -> None:
     await search_audio_callback(ctx, query, site)
 
 
-@bot.slash_command(name_localizations=lang.get_command_name("play"), description="播放来自哔哩哔哩或Youtube的音频")
+@bot.slash_command(name_localizations=lang.get_command_name("play"), description="播放来自哔哩哔哩，Youtube，网易云音乐的音频")
 @option(
     "link",
     description="要播放的音频（视频）的链接或者哔哩哔哩BV号",
@@ -1278,8 +1278,8 @@ async def play_netease(ctx: discord.ApplicationContext, link, response=None) -> 
         await eos(ctx, response, "机器人当前处理音频过多，请稍后再试")
         return
     except yt_dlp.utils.DownloadError:
-        await eos(ctx, response, "网易云下载失败，该视频可能已失效或存在区域版权限制")
-        logger.rp("触发异常yt_dlp.utils.DownloadError，网易云下载失败，该视频可能已失效或存在区域版权限制", ctx.guild, is_error=True)
+        await eos(ctx, response, "网易云下载失败，该音乐可能已失效或存在区域版权限制")
+        logger.rp("触发异常yt_dlp.utils.DownloadError，网易云下载失败，该音乐可能已失效或存在区域版权限制", ctx.guild, is_error=True)
         return
     except yt_dlp.utils.ExtractorError:
         await eos(ctx, response, "音频获取失败")
@@ -2555,8 +2555,8 @@ class EpisodeSelectView(View):
                     await ec(loading_msg, "机器人当前处理音频过多，无法完成播放列表添加")
                     return  # 终止
                 except yt_dlp.utils.DownloadError:
-                    loading_msg = await ec(loading_msg, "网易云下载失败，该视频可能已失效或存在区域版权限制")
-                    logger.rp("触发异常yt_dlp.utils.DownloadError，网易云下载失败，该视频可能已失效或存在区域版权限制", self.ctx.guild, is_error=True)
+                    loading_msg = await ec(loading_msg, "网易云下载失败，该音乐可能已失效或存在区域版权限制")
+                    logger.rp("触发异常yt_dlp.utils.DownloadError，网易云下载失败，该音乐可能已失效或存在区域版权限制", self.ctx.guild, is_error=True)
                     continue
                 except yt_dlp.utils.ExtractorError:
                     loading_msg = await ec(loading_msg, "视频获取失败")
