@@ -2,7 +2,6 @@ from zeta_bot import (
     utils
 )
 
-
 class Audio:
 
     def __init__(self, title: str, source: str, source_id: str, path: str, duration: int) -> None:

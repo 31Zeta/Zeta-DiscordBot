@@ -5,7 +5,7 @@ from zeta_bot import (
     errors,
     language,
     utils,
-    decorators
+    decorator
 )
 
 # 多语言模块
@@ -184,7 +184,7 @@ default_permission_config = {
 }
 
 
-@decorators.Singleton
+@decorator.Singleton
 class MemberLibrary:
     """
     用于管理本地用户文件以及#Members文件

@@ -1,8 +1,8 @@
+from typing import *
 import os
-from typing import Union, List, Tuple
 from zeta_bot import (
     errors,
-    decorators
+    decorator
 )
 
 locale_dict = {
@@ -15,7 +15,7 @@ locale_dict = {
 DEFAULT_LANGUAGE = "zh-CN"
 
 
-@decorators.Singleton
+@decorator.Singleton
 class Lang:
     def __init__(self, default_lang_code=DEFAULT_LANGUAGE):
         file_path = f"./zeta_bot/lang/{default_lang_code}.lang"
@@ -80,32 +80,42 @@ class Lang:
         else:
             raise errors.LanguageNotFound
 
-    def get_string(self, str_id: str, locale_code=None, slash_n=False) -> str:
+    def get_string(self, str_id: str, args: Optional[Union[str, list]] = None, format: bool = True, locale_code: str = None,  slash_n: bool = False) -> str:
         """
         返回对应lang_code中对应str_id的字符串，如lang_code不包含此字符串则尝试系统语言，
         如果系统语言中字符串仍不存在则返回str_id本身
         可使用slash_n来确定是否使用字符内的换行符
+        如format为True则对字符串进行格式化，字符串中的{序号}会被依次替换为args列表中对应的字符串
         """
         if locale_code is None:
             locale_code = self.system_language
-
+            
         if locale_code in self.language_dict and str_id in self.language_dict[locale_code]:
             locale_code = locale_code
-
         elif str_id in self.language_dict[self.system_language]:
             locale_code = self.system_language
-
         else:
             return str_id
 
         # 是否使用内置换行符
         if slash_n:
-            return self.language_dict[locale_code][str_id].replace('\\n', '\n')
+            result_str = self.language_dict[locale_code][str_id].replace('\\n', '\n')
         else:
-            return self.language_dict[locale_code][str_id]
+            result_str = self.language_dict[locale_code][str_id]
 
-    def printl(self, str_id: str, locale_code=None, slash_n=False):
-        print(self.get_string(str_id, locale_code, slash_n))
+        # 格式化
+        if not format or args is None or len(args) == 0:
+            return result_str
+        else:
+            if isinstance(args, list):
+                for argc, arg in enumerate(args):
+                    result_str = result_str.replace("{" + f"{argc}" + "}", str(arg))
+                return result_str
+            else:
+                return result_str.replace("{0}", str(args))
+
+    def printl(self, str_id: str, args: Optional[Union[str, list]] = None, format: bool = True, locale_code: str = None,  slash_n: bool = False):
+        print(self.get_string(str_id, args, format, locale_code, slash_n))
 
     def get_command_name(self, name: str) -> dict:
         if name in self.command_names:

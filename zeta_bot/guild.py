@@ -5,15 +5,16 @@ from typing import Union
 from zeta_bot import (
     errors,
     language,
-    decorators,
+    decorator,
     utils,
-    log,
+    console,
     file_management,
     member,
     audio,
     playlist
 )
 
+console = console.Console()
 
 class Guild:
     def __init__(self, guild: discord.guild, lib_root: str, audio_file_library: file_management.AudioFileLibrary):
@@ -24,7 +25,6 @@ class Guild:
         self._root = f"{self._lib_root}/{self._guild.id}"
         self._path = f"{self._root}/{self._guild.id}.json"
         self._audio_file_library = audio_file_library
-        self._logger = log.Log()
         self._play_mode = 0
         self._active_views = {}
 
@@ -47,8 +47,6 @@ class Guild:
             self.save()
 
         self.voice_volume = 100.0
-
-        self._logger.rp(f"服务器相关信息初始化完成：{self._name}", self._name)
 
     def __str__(self):
         return self._name
@@ -121,14 +119,13 @@ class Guild:
         }
 
 
-@decorators.Singleton
+@decorator.Singleton
 class GuildLibrary:
     def __init__(self):
         self._root = "./data/guilds"
         utils.create_folder(self._root)
         self._guild_dict = {}
         self._hashtag_file_path = f"{self._root}/#Guilds.json"
-        self._logger = log.Log()
 
         # 检查#Guilds文件
         if not os.path.exists(self._hashtag_file_path):
@@ -152,7 +149,7 @@ class GuildLibrary:
                 new_key = key
             self.hashtag_file[new_key] = loaded_dict[key]
 
-    def check(self, ctx: Union[discord.ApplicationContext, discord.AutocompleteContext],
+    async def check(self, ctx: Union[discord.ApplicationContext, discord.AutocompleteContext],
               audio_file_library: file_management.AudioFileLibrary) -> None:
         if isinstance(ctx, discord.ApplicationContext):
             guild_id = ctx.guild.id
@@ -165,8 +162,13 @@ class GuildLibrary:
         if guild_id not in self._guild_dict:
             if isinstance(ctx, discord.ApplicationContext):
                 self._guild_dict[guild_id] = Guild(ctx.guild, self._root, audio_file_library)
+                await console.rp(f"服务器相关信息初始化完成：{ctx.guild.name}", ctx.guild.name)
             else:
                 self._guild_dict[guild_id] = Guild(ctx.interaction.guild, self._root, audio_file_library)
+                await console.rp(
+                    f"服务器相关信息初始化完成：{ctx.interaction.guild.name}",
+                    ctx.interaction.guild.name
+                )
 
         # 更新#Guilds文件
         self.load_hashtag_file()
@@ -174,13 +176,14 @@ class GuildLibrary:
             self.hashtag_file[guild_id] = guild_name
             self.save_hashtag_file()
 
-    def check_by_guild_obj(self, guild: discord.Guild, audio_file_library: file_management.AudioFileLibrary) -> None:
+    async def check_by_guild_obj(self, guild: discord.Guild, audio_file_library: file_management.AudioFileLibrary) -> None:
         guild_id = guild.id
         guild_name = guild.name
 
         # 如果guild_dict中不存在本Discord服务器
         if guild_id not in self._guild_dict:
             self._guild_dict[guild_id] = Guild(guild, self._root, audio_file_library)
+            await console.rp(f"服务器相关信息初始化完成：{guild.name}", guild.name)
 
         # 更新#Guilds文件
         self.load_hashtag_file()
@@ -200,11 +203,11 @@ class GuildLibrary:
         else:
             return None
 
-    def save_all(self) -> None:
-        self._logger.rp("开始保存各Discord服务器数据", "[Discord服务器库]")
+    async def save_all(self) -> None:
+        await console.rp("开始保存各Discord服务器数据", "[Discord服务器库]")
         for key in self._guild_dict:
             self._guild_dict[key].save()
-        self._logger.rp("各Discord服务器数据保存完毕", "[Discord服务器库]")
+        await console.rp("各Discord服务器数据保存完毕", "[Discord服务器库]")
 
 
 class GuildPlaylist(playlist.Playlist):

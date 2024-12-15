@@ -1,0 +1,7 @@
+Please place ffmpeg or ffmpeg.exe in this folder
+请将ffmpeg或ffmpeg.exe文件放在此文件夹内
+
+Windows系统请前往ffmpeg官网 https://ffmpeg.org/download.html 获取ffmpeg.exe
+（或使用 https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-full.7z 下载后解压bin文件夹内的ffmpeg.exe）
+
+Linux系统可使用库内bin文件夹内自带的ffmpeg或前往ffmpeg官网 https://ffmpeg.org/download.html 获取最新版ffmpeg

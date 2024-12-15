@@ -1,21 +1,17 @@
 from __future__ import unicode_literals
-from typing import Union
+from typing import *
 from yt_dlp import YoutubeDL
-from yt_dlp import version as yt_dlp_version
 from zeta_bot import (
-    log,
+    console,
     utils,
     audio
 )
 
+console = console.Console()
+
 level = "YouTube模块"
-api_version = yt_dlp_version.__version__
 
-
-def get_info(ytb_url):
-
-    # 获取日志记录器
-    logger = log.Log()
+async def get_info(ytb_url):
 
     ydl_opts = {
         'format': 'bestaudio/best',
@@ -23,7 +19,7 @@ def get_info(ytb_url):
         "quiet": True,
     }
 
-    logger.rp(f"开始提取信息：{ytb_url}", f"[{level}]")
+    await console.rp(f"开始提取信息：{ytb_url}", f"[{level}]")
 
     with YoutubeDL(ydl_opts) as ydl:
         info_dict = ydl.extract_info(ytb_url, download=False)
@@ -31,7 +27,7 @@ def get_info(ytb_url):
     video_id = info_dict["id"]
     video_title = info_dict["title"]
 
-    logger.rp(f"信息提取完毕：{video_title} [{video_id}]", f"[{level}]")
+    await console.rp(f"信息提取完毕：{video_title} [{video_id}]", f"[{level}]")
 
     return info_dict
 
@@ -43,10 +39,7 @@ def get_filesize(info_dict: dict) -> Union[int, None]:
         return None
 
 
-def audio_download(youtube_url, info_dict, download_path, download_type="youtube_single") -> audio.Audio:
-
-    # 获取日志记录器
-    logger = log.Log()
+async def audio_download(youtube_url, info_dict, download_path, download_type="youtube_single") -> audio.Audio:
 
     if download_path.endswith("/"):
         download_path = download_path.rstrip("/")
@@ -67,13 +60,13 @@ def audio_download(youtube_url, info_dict, download_path, download_type="youtube
         "quiet": True,
     }
 
-    logger.rp(f"开始下载：{video_path_title}.{video_name_extension}", f"[{level}]")
+    await console.rp(f"开始下载：{video_path_title}.{video_name_extension}", f"[{level}]")
 
     with YoutubeDL(ydl_opts) as ydl:
         ydl.download([youtube_url])
 
     new_audio = audio.Audio(video_title, download_type, video_id, video_path, video_duration)
-    logger.rp(
+    await console.rp(
         f"下载完成\n"
         f"文件名：{video_path_title}.{video_name_extension}\n"
         f"来源：[YouTube] {video_id}\n"
@@ -86,9 +79,7 @@ def audio_download(youtube_url, info_dict, download_path, download_type="youtube
     return new_audio
 
 
-def search(query, query_num=5) -> list:
-    # 获取日志记录器
-    logger = log.Log()
+async def search(query, query_num=5) -> list:
 
     query = query.strip()
 
@@ -103,7 +94,7 @@ def search(query, query_num=5) -> list:
     if query == "":
         return []
 
-    logger.rp(f"开始搜索：{query}", f"[{level}]")
+    await console.rp(f"开始搜索：{query}", f"[{level}]")
 
     with YoutubeDL(ydl_opts) as ydl:
         extracted_info = ydl.extract_info(f"ytsearch{query_num}:{query}", download=False)
@@ -128,6 +119,6 @@ def search(query, query_num=5) -> list:
         log_message += f"\n{counter}. {item['id']}：{item['title']} [{utils.convert_duration_to_str(item['duration'])}]"
         counter += 1
 
-    logger.rp(log_message, f"[{level}]")
+    await console.rp(log_message, f"[{level}]")
 
     return result

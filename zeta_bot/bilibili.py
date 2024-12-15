@@ -1,12 +1,11 @@
+from typing import *
 import aiohttp
-from typing import Union
 import html
 from bilibili_api import video, Credential, sync
 from bilibili_api import search as bilibili_search
-from bilibili_api import BILIBILI_API_VERSION
 
 from zeta_bot import (
-    log,
+    console,
     utils,
     audio
 )
@@ -20,10 +19,10 @@ BUVID3 = ""
 # FFMPEG 路径，查看：http://ffmpeg.org/
 FFMPEG_PATH = "./zeta_bot/bin/ffmpeg"
 
-# logger = log.Log()
-level = "哔哩哔哩模块"
-api_version = BILIBILI_API_VERSION
+# 控制台设置
+console = console.Console()
 
+level = "哔哩哔哩模块"
 
 async def get_info(bvid) -> dict:
     """
@@ -32,10 +31,7 @@ async def get_info(bvid) -> dict:
     :param bvid: 目标视频BV号
     :return:
     """
-    # 获取日志记录器
-    logger = log.Log()
-
-    logger.rp(f"开始提取信息：{bvid}", f"[{level}]")
+    await console.rp(f"开始提取信息：{bvid}", f"[{level}]")
 
     # 实例化 Credential 类
     credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
@@ -46,7 +42,7 @@ async def get_info(bvid) -> dict:
 
     video_id = info_dict["bvid"]
     video_title = info_dict["title"]
-    logger.rp(f"信息提取完毕：{video_title} [{video_id}]", f"[{level}]")
+    await console.rp(f"信息提取完毕：{video_title} [{video_id}]", f"[{level}]")
 
     return info_dict
 
@@ -85,9 +81,6 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
         - httpx.ConnectTimeout 连接超时（可重试）
         - httpx.RemoteProtocolError 服务器违反了协议（可重试）
     """
-    # 获取日志记录器
-    logger = log.Log()
-
     bvid = info_dict["bvid"]
     # 实例化 Credential 类
     credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
@@ -124,7 +117,7 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
         async with sess.get(audio_url, headers=headers) as resp:
             length = resp.headers.get('content-length')
             size = utils.convert_byte(int(length))
-            logger.rp(f"开始下载：{title}.mp3 大小：{size[0]} {size[1]}", f"[{level}]")
+            await console.rp(f"开始下载：{title}.mp3 大小：{size[0]} {size[1]}", f"[{level}]")
             with open(path, 'wb') as f:
                 process = 0
                 while True:
@@ -160,7 +153,7 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
             f"大小：{size[0]} {size[1]}\n"
             f"时长：{utils.convert_duration_to_str(duration)}"
         )
-    logger.rp(logger_prompt, f"[{level}]")
+    await console.rp(logger_prompt, f"[{level}]")
 
     return new_audio
 
@@ -169,16 +162,12 @@ async def search(query, query_num=5) -> list:
     """
     搜索哔哩哔哩的视频，最大返回20个结果（一页）
     """
-
-    # 获取日志记录器
-    logger = log.Log()
-
     query = query.strip()
 
     if query_num > 20:
         query_num = 20
 
-    logger.rp(f"开始搜索：{query}", f"[{level}]")
+    await console.rp(f"开始搜索：{query}", f"[{level}]")
 
     info_dict = await bilibili_search.search_by_type(query, search_type=bilibili_search.SearchObjectType.VIDEO)
 
@@ -210,6 +199,6 @@ async def search(query, query_num=5) -> list:
         log_message += f"\n{counter}. {item['bvid']}：{title} [{item['duration']}]"
         counter += 1
 
-    logger.rp(log_message, f"[{level}]")
+    await console.rp(log_message, f"[{level}]")
 
     return result

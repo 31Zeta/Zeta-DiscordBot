@@ -1,29 +1,25 @@
+from typing import *
 import yt_dlp.utils
 from yt_dlp import YoutubeDL
-from yt_dlp import version as yt_dlp_version
-from typing import Union
 
 from zeta_bot import (
-    log,
+    console,
     utils,
     audio
 )
 
 level = "网易云音乐模块"
 
+console = console.Console()
 
-def get_info(netease_url):
-
-    # 获取日志记录器
-    logger = log.Log()
-
+async def get_info(netease_url):
     ydl_opts = {
         'format': 'bestaudio/best',
         'extract_flat': True,
         "quiet": True,
     }
 
-    logger.rp(f"开始提取信息：{netease_url}", f"[{level}]")
+    await console.rp(f"开始提取信息：{netease_url}", f"[{level}]")
 
     with YoutubeDL(ydl_opts) as ydl:
         info_dict = ydl.extract_info(netease_url, download=False)
@@ -31,7 +27,7 @@ def get_info(netease_url):
     audio_id = info_dict["id"]
     audio_title = info_dict["title"]
 
-    logger.rp(f"信息提取完毕：{audio_title} [{audio_id}]", f"[{level}]")
+    await console.rp(f"信息提取完毕：{audio_title} [{audio_id}]", f"[{level}]")
 
     return info_dict
 
@@ -43,10 +39,7 @@ def get_filesize(info_dict: dict) -> Union[int, None]:
         return None
 
 
-def audio_download(netease_url, info_dict, download_path, download_type="netease_single") -> audio.Audio:
-
-    # 获取日志记录器
-    logger = log.Log()
+async def audio_download(netease_url, info_dict, download_path, download_type="netease_single") -> audio.Audio:
 
     if download_path.endswith("/"):
         download_path = download_path.rstrip("/")
@@ -68,13 +61,13 @@ def audio_download(netease_url, info_dict, download_path, download_type="netease
         "quiet": True,
     }
 
-    logger.rp(f"开始下载：{audio_path_title}.{audio_name_extension}", f"[{level}]")
+    await console.rp(f"开始下载：{audio_path_title}.{audio_name_extension}", f"[{level}]")
 
     with YoutubeDL(ydl_opts) as ydl:
         ydl.download([netease_url])
 
     new_audio = audio.Audio(audio_title, download_type, audio_id, audio_path, audio_duration)
-    logger.rp(
+    await console.rp(
         f"下载完成\n"
         f"文件名：{audio_path_title}.{audio_name_extension}\n"
         f"来源：[NetEase] {audio_id}\n"

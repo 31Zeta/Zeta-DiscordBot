@@ -1,12 +1,24 @@
+from typing import *
 from discord.errors import *
 
 """
 虽然没必要，就是写着玩
 """
 
+class UninitializedError(RuntimeError):
+    def __init__(self, name: Optional[str]):
+        super().__init__()
+        self.name = name
+
+    def __str__(self):
+        if self.name is None:
+            return "模块未初始化"
+        else:
+            return f"{self.name}未初始化"
+
 
 class InitializationFailed(RuntimeError):
-    def __init__(self, name, description):
+    def __init__(self, name: str, description: str):
         super().__init__()
         self.name = name
         self.description = description
@@ -16,7 +28,7 @@ class InitializationFailed(RuntimeError):
 
 
 class InitializationError(RuntimeError):
-    def __init__(self, name, description):
+    def __init__(self, name: str, description: str):
         super().__init__()
         self.name = name
         self.description = description
@@ -74,7 +86,7 @@ class SettingChanged(RuntimeError):
 
 
 class JSONFileError(RuntimeError):
-    def __init__(self, path):
+    def __init__(self, path: str):
         super().__init__()
         self.path = path
 
@@ -83,7 +95,7 @@ class JSONFileError(RuntimeError):
 
 
 class KeyAlreadyExists(RuntimeError):
-    def __init__(self, key):
+    def __init__(self, key: str):
         super().__init__()
         self.key = key
 
@@ -93,12 +105,24 @@ class KeyAlreadyExists(RuntimeError):
 
 class KeyNotFound(RuntimeError):
     """就是不用KeyError啊哈哈"""
-    def __init__(self, key):
+    def __init__(self, key: str):
         super().__init__()
         self.key = key
 
     def __str__(self):
         return f"键值<{self.key}>不存在"
+
+
+class NoResponse(RuntimeError):
+    def __init__(self, name: Optional[str]):
+        super().__init__()
+        self.name = name
+
+    def __str__(self):
+        if self.name is None:
+            return f"无响应"
+        else:
+            return f"<{self.name}>无响应"
 
 
 class StorageFull(RuntimeError):

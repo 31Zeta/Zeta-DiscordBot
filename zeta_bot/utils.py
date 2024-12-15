@@ -35,17 +35,7 @@ def create_folder(path: str) -> None:
     检测在指定目录是否存在文件夹，如果不存在则创建
     """
     if not os.path.exists(path):
-        name = path[path.rfind("/") + 1:]
         os.mkdir(path)
-        print(f"创建{name}文件夹")
-
-
-def path_exists(path: str) -> bool:
-    """
-    检测指定目录或者文件是否存在
-    重新包装os.path.exists
-    """
-    return os.path.exists(path)
 
 
 def json_save(json_path: str, saving_item) -> None:
@@ -54,8 +44,15 @@ def json_save(json_path: str, saving_item) -> None:
     **警告**：json格式的键值必须为字符串，否则会被转换为字符串
     """
     with open(json_path, "w", encoding="utf-8") as file:
-        file.write(json.dumps(saving_item, default=lambda x: x.encode(),
-                              sort_keys=False, indent=4))
+        file.write(
+            json.dumps(
+                saving_item,
+                default=lambda x: x.encode(),
+                sort_keys=False,
+                indent=4,
+                ensure_ascii=False
+            )
+        )
 
 
 def json_load(json_path: str) -> Union[dict, list]:

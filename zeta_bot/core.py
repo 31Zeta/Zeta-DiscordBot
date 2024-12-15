@@ -1,3 +1,4 @@
+from typing import *
 import discord
 import sys
 import os
@@ -7,37 +8,35 @@ import requests
 import platform
 import bilibili_api
 import yt_dlp
-from typing import Any, Union, List, Dict
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 from discord import Component
 from discord.ext import commands
 from discord.commands import option
 from discord.ui import Button, View
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
+from bilibili_api import BILIBILI_API_VERSION
+from yt_dlp import version as yt_dlp_version
 
+# 底层模块
 from zeta_bot import (
     errors,
-    language,
     utils,
+    language,
     setting,
-    log,
-    playlist,
-    member,
-    guild,
-    audio,
-    file_management,
-    bilibili,
-    youtube,
-    netease,
+    console
 )
-from zeta_bot.help import HelpMenuView
 
-version = "0.11.4"
+startup_time = utils.time()
+
+version = "0.12.0"
 author = "炤铭Zeta (31Zeta)"
 python_path = sys.executable
 pycord_version = discord.__version__
-update_time = "2024.07.29"
+bilibili_api_version = BILIBILI_API_VERSION
+yt_dlp_version = yt_dlp_version.__version__
+update_time = "2024.12.12"
 
 supported_search_sites = ["哔哩哔哩", "YouTube"]
 
@@ -51,28 +50,17 @@ logo = (
     "    \\|_______|\\|_______|   \\|__|  \\|__|\\|__|             \\|_______|\\|_______|    \\|__|"
 )
 
-version_header = (f"Zeta-Bot Version：{version}\n"
-                  f"Pycord Version：{pycord_version}\n"
-                  f"Bilibili API Version：{bilibili.api_version}\n"
-                  f"yt-dlp Version：{youtube.api_version}")
-
-print(f"Zeta-Bot程序启动\n{logo}\n\n{version_header}\n")
-
-# 系统检测
-if platform.system().lower() == "windows":
-    ffmpeg_path = "./bin/ffmpeg.exe"
-else:
-    ffmpeg_path = "./bin/ffmpeg"
+version_header = (
+    f"Zeta-Bot Version：{version}\n"
+    f"Pycord Version：{pycord_version}\n"
+    f"Bilibili API Version：{bilibili_api_version}\n"
+    f"yt-dlp Version：{yt_dlp_version}"
+)
 
 # 多语言模块
 lang = language.Lang()
 _ = lang.get_string
 printl = lang.printl
-
-# 初始化机器人设置
-intents = discord.Intents.all()
-bot = discord.Bot(help_command=None, case_insensitive=True, intents=intents)
-startup_time = utils.time()
 
 # 设置配置文件
 utils.create_folder("./configs")
@@ -81,12 +69,37 @@ lang.set_system_language(lang_setting.value("language"))
 setting = setting.Setting("./configs/system_config.json", setting.bot_setting_configs, lang_setting.value("language"))
 bot_name = setting.value("bot_name")
 
-# 设置日志记录器
-utils.create_folder("./logs")
+# 设置控制台日志记录器
+LOG_DIRECTORY_PATH = "./logs"
+utils.create_folder(LOG_DIRECTORY_PATH)
 log_name_time = startup_time.replace(":", "_")
-error_log_path = f"./logs/{log_name_time}_errors.log"
-log_path = f"./logs/{log_name_time}.log"
-logger = log.Log(error_log_path, log_path, setting.value("log"), version_header)
+console = console.Console(LOG_DIRECTORY_PATH, log_name_time, setting.value("log"), version_header)
+
+# 功能型模块
+from zeta_bot import (
+    bilibili,
+    youtube,
+    netease,
+    file_management,
+    member,
+    guild,
+    audio,
+    playlist,
+    ai
+)
+from zeta_bot.help import HelpMenuView
+
+print(f"\nZeta-Bot程序启动\n{logo}\n\n{version_header}\n")
+
+# 系统检测
+if platform.system().lower() == "windows":
+    ffmpeg_path = "./bin/ffmpeg.exe"
+else:
+    ffmpeg_path = "./bin/ffmpeg"
+
+# 初始化机器人设置
+intents = discord.Intents.all()
+bot = discord.Bot(help_command=None, case_insensitive=True, intents=intents)
 
 # 设置用户和Discord服务器管理
 utils.create_folder("./data")
@@ -102,8 +115,18 @@ audio_lib_main = file_management.AudioFileLibrary(
     setting.value("audio_library_storage_capacity") * 1024 * 1024  # 要求用户输入的单位为MB，转换为字节Byte
 )
 
-logger.rp("初始化完成", "[系统]")
-
+# 设置聊天AI
+if setting.value("chat_ai"):
+    utils.create_folder("./data/ai")
+    chat_ai = ai.ChatAI(
+        setting.value("chat_ai_base_url"),
+        setting.value("chat_ai_api_key"),
+        setting.value("chat_ai_model_name"),
+        "./data/ai",
+        bot_name
+    )
+else:
+    chat_ai = None
 
 def start(mode: str) -> None:
     """
@@ -135,12 +158,12 @@ def run_bot() -> None:
 
 @bot.event
 async def on_error(exception):
-    logger.on_error(exception)
+    await console.on_error(exception)
 
 
 @bot.event
 async def on_application_command_error(ctx, exception):
-    logger.on_application_command_error(ctx, exception)
+    await console.on_application_command_error(ctx, exception)
 
     # 向用户回复发生错误
     await ctx.respond("发生错误")
@@ -155,13 +178,13 @@ async def command_check(ctx: discord.ApplicationContext) -> bool:
     operation = str(ctx.command)
     # 如果用户是机器人所有者
     if str(ctx.user.id) == setting.value("owner"):
-        logger.rp(f"用户 {ctx.user} [用户组: 机器人所有者] 发送指令：<{operation}>", ctx.guild)
+        await console.rp(f"用户 {ctx.user} [用户组: 机器人所有者] 发送指令：<{operation}>", ctx.guild)
         return True
     elif member_lib.allow(ctx.user.id, operation):
-        logger.rp(f"用户 {ctx.user} [用户组: {user_group}] 发送指令：<{operation}>", ctx.guild)
+        await console.rp(f"用户 {ctx.user} [用户组: {user_group}] 发送指令：<{operation}>", ctx.guild)
         return True
     else:
-        logger.rp(f"用户 {ctx.user} [用户组: {user_group}] 发送指令：<{operation}>，权限不足，操作已被拒绝", ctx.guild)
+        await console.rp(f"用户 {ctx.user} [用户组: {user_group}] 发送指令：<{operation}>，权限不足，操作已被拒绝", ctx.guild)
         await ctx.respond("权限不足")
         return False
 
@@ -174,7 +197,7 @@ async def on_ready():
     """
 
     current_time = utils.time()
-    logger.rp(f"登录完成：以{bot.user}的身份登录，登录时间：{current_time}", "[系统]")
+    await console.rp(f"登录完成：以{bot.user}的身份登录，登录时间：{current_time}", "[系统]")
 
     # 启动定时任务框架
     scheduler_ar_1 = AsyncIOScheduler()
@@ -204,21 +227,35 @@ async def on_ready():
         scheduler_ar_1.start()
         scheduler_ar_2.start()
 
-        logger.rp(
-            f"设置自动重启时间为 {ar_time[0]}时{ar_time[1]}分{ar_time[2]}秒", "[系统]"
+        await console.rp(
+            f"设置自动重启时间为 {ar_time[0]}时{ar_time[1]}分{ar_time[2]}秒",
+            "[系统]"
         )
+
+    # 初始化主音频库
+    await audio_lib_main.initialize()
 
     # 设置机器人状态
     bot_activity_type = discord.ActivityType.playing
     await bot.change_presence(
-        activity=discord.Activity(type=bot_activity_type, name=setting.value("default_activity")))
+        activity=discord.Activity(type=bot_activity_type, name=setting.value("default_activity"))
+    )
 
-    logger.rp(f"启动完成", "[系统]")
+    # FFmpeg检测
+    if not os.path.exists(ffmpeg_path):
+        await console.rp(
+            "警告：未发现FFmpeg程序，将无法使用音频播放相关功能，请下载FFmpeg并将其放在程序根目录内的bin文件夹内",
+            "[系统]",
+            is_error=True
+        )
 
+    await console.rp(f"启动完成", "[系统]")
+
+# 需要@某人时：<@{user_id}>
 
 # 文字频道中收到信息时
 @bot.event
-async def on_message(message):
+async def on_message(message: discord.Message):
     """
     当检测到消息时调用
 
@@ -228,11 +265,41 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
+    if bot.user.mentioned_in(message):
+        if setting.value("chat_ai") and chat_ai is not None:
+            loading_message = await chat_ai.loading_message()
+            respond_message = await message.channel.send(loading_message)
+
+            channel_id = str(message.channel.id)
+            ai_response = await chat_ai.chat(channel_id, f"{message.content[message.content.find('>') + 2:]}", str(message.author.name))
+
+            if isinstance(ai_response, dict) and "message" in ai_response:
+                if len(ai_response["message"]) == 0:
+                    no_response_message = await chat_ai.no_response_message()
+                    await respond_message.edit(content=no_response_message)
+                else:
+                    await respond_message.edit(content=f"{ai_response['message']}")
+                    if ai_response["function_call"] == "play_music":
+                        pass  # TODO 完成音乐调用
+            else:
+                error_message = await chat_ai.error_message()
+                await respond_message.edit(content=error_message)
+        else:
+            await message.channel.send(f"机器人未启用人工智能功能，详情请咨询管理员")
+
     if message.content.startswith(bot_name):
-        await message.channel.send("我在")
+        await message.channel.send(f"{message.author.mention} 我在")
 
     if message.content.startswith("test"):
         await message.channel.send(_("custom.reply_1"))
+
+
+# 新成员加入时调用
+@bot.event
+async def on_member_join(new_member):
+    await new_member.send(
+        f"你好，{new_member.mention}！我是{bot_name}，可以在语言频道内播放音乐！使用 /帮助 指令来看看我的用法吧！"
+    )
 
 
 async def auto_reboot():
@@ -240,8 +307,8 @@ async def auto_reboot():
     用于执行定时重启，如果<auto_reboot_announcement>为True则广播重启消息
     """
     current_time = utils.time()
-    logger.rp(f"执行自动定时重启", "[系统]")
-    guild_lib.save_all()
+    await console.rp(f"执行自动定时重启", "[系统]")
+    await guild_lib.save_all()
     # user_library.save()
     if setting.value("ar_announcement"):
         for current_guild in bot.guilds:
@@ -256,12 +323,14 @@ async def auto_reboot_reminder():
     向机器人仍在语音频道中的所有服务器的第一个文字频道发送即将重启通知
     """
     ar_time = setting.value("ar_time")
-    logger.rp(f"发送自动重启通知", "[系统]")
+    await console.rp(f"发送自动重启通知", "[系统]")
     for current_guild in bot.guilds:
         voice_client = current_guild.voice_client
         if voice_client is not None:
             await current_guild.text_channels[0].send(f"注意：将在{ar_time}时自动重启")
 
+# TODO 【指令统一修改】指令被调用时如果加载较长时间，discord端会直接报“该应用程序未响应”，导致后续加载完成后ctx.respond会找不到要回复的语句 “404 Not Found (error code: 10062): Unknown interaction”（应该是这个原因）
+# TODO 是否可以统一在命令调用时先进行一个ctx.respond回复类似准备的语句，后续内容全部调用eos对回复的准备语句进行修改
 
 async def eos(ctx: discord.ApplicationContext, response, content: str, view=None, debug=False)\
         -> Union[discord.InteractionMessage, discord.Message]:
@@ -345,7 +414,7 @@ async def autocomplete_search_sites(ctx: discord.AutocompleteContext):
     """
     search指令用自动填充 - 可选的搜索平台
     """
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
     return supported_search_sites
 
 
@@ -353,7 +422,7 @@ async def autocomplete_skip_playlist(ctx: discord.AutocompleteContext):
     """
     skip指令用自动填充 - 播放列表音频名称列表生成
     """
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
 
     audio_str_list = ["全部"]
     audio_str_list += guild_lib.get_guild(ctx).get_playlist().get_audio_str_list(index_start=True)
@@ -364,7 +433,7 @@ async def autocomplete_skipi_playlist_index(ctx: discord.AutocompleteContext):
     """
     skipi指令用自动填充 - 播放列表序号列表生成
     """
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
 
     playlist_len = len(guild_lib.get_guild(ctx).get_playlist())
     number_list = []
@@ -377,7 +446,7 @@ async def get_guild_playlist_length(ctx: discord.AutocompleteContext) -> int:
     """
     获取<ctx>对应的服务器的主播放列表长度
     """
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
     return len(guild_lib.get_guild(ctx).get_playlist())
 
 
@@ -389,7 +458,7 @@ async def debug1(ctx):
     if not await command_check(ctx):
         return
 
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
     current_guild = guild_lib.get_guild(ctx)
     await current_guild.refresh_list_view()
 
@@ -404,7 +473,7 @@ async def debug2(ctx):
     if not await command_check(ctx):
         return
 
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
     voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
@@ -545,7 +614,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
     if not await command_check(ctx):
         return
 
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
@@ -562,7 +631,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
                 start_index = int(start[1:start.find("]")])
             else:
                 await ctx.respond("参数错误")
-                logger.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
+                await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
                 return
             await skip_callback(ctx, first_index=start_index, command_call=True)
 
@@ -576,7 +645,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
                 start_index = int(end[1:end.find("]")])
             else:
                 await ctx.respond("参数错误")
-                logger.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
+                await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
                 return
             await skip_callback(ctx, first_index=start_index, command_call=True)
 
@@ -590,7 +659,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
                 end_index = int(end[1:end.find("]")])
             else:
                 await ctx.respond("参数错误")
-                logger.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
+                await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
                 return
             await skip_callback(ctx, first_index=1, second_index=end_index, command_call=True)
         elif end == "全部":
@@ -600,7 +669,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
                 start_index = int(start[1:start.find("]")])
             else:
                 await ctx.respond("参数错误")
-                logger.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
+                await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
                 return
             await skip_callback(ctx, first_index=start_index, second_index=len(current_playlist), command_call=True)
         else:
@@ -610,7 +679,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
                 start_index = int(start[1:start.find("]")])
             else:
                 await ctx.respond("参数错误")
-                logger.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
+                await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
                 return
             if end.isdigit():
                 end_index = int(end)
@@ -618,7 +687,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
                 end_index = int(end[1:end.find("]")])
             else:
                 await ctx.respond("参数错误")
-                logger.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
+                await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
                 return
             await skip_callback(ctx, first_index=start_index, second_index=end_index, command_call=True)
 
@@ -722,14 +791,14 @@ async def join_callback(
     :param command_call: 该指令是否是由用户指令调用
     :return: 布尔值，是否成功加入频道
     """
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
     current_guild = guild_lib.get_guild(ctx)
 
     # 未输入参数的情况
     if channel is None:
         # 指令发送者未加入频道的情况
         if not ctx.user.voice:
-            logger.rp(f"频道加入失败，用户 {ctx.user} 发送指令时未加入任何语音频道", ctx.guild)
+            await console.rp(f"频道加入失败，用户 {ctx.user} 发送指令时未加入任何语音频道", ctx.guild)
             await ctx.respond("您未加入任何语音频道")
             return False
 
@@ -752,7 +821,7 @@ async def join_callback(
         if command_call:
             await ctx.respond(f"转移语音频道：***{previous_channel}***  ->  ***{channel.name}***")
 
-    logger.rp(f"加入语音频道：{channel.name}", ctx.guild)
+    await console.rp(f"加入语音频道：{channel.name}", ctx.guild)
     await current_guild.refresh_list_view()
     return True
 
@@ -764,7 +833,7 @@ async def leave_callback(ctx: discord.ApplicationContext) -> None:
     :param ctx: 指令原句
     :return:
     """
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
@@ -778,7 +847,7 @@ async def leave_callback(ctx: discord.ApplicationContext) -> None:
         last_channel = voice_client.channel
         await voice_client.disconnect(force=False)
 
-        logger.rp(f"离开语音频道：{last_channel}", ctx.guild)
+        await console.rp(f"离开语音频道：{last_channel}", ctx.guild)
 
         await ctx.respond(f"离开语音频道：<- ***{last_channel}***")
 
@@ -790,10 +859,10 @@ async def leave_callback(ctx: discord.ApplicationContext) -> None:
 
 async def search_audio_callback(ctx: discord.ApplicationContext, query, site=None, query_num=5,
                                 response: Union[discord.Interaction, discord.InteractionMessage, None] = None) -> None:
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
     current_guild = guild_lib.get_guild(ctx)
 
-    search_result = {key: None for key in supported_search_sites}
+    search_result: Dict[str, list] = {key: None for key in supported_search_sites}
 
     if response is None:
         loading_msg = await ctx.respond(f"正在搜索：{query}")
@@ -806,7 +875,7 @@ async def search_audio_callback(ctx: discord.ApplicationContext, query, site=Non
     if site == "哔哩哔哩" or site is None:
         search_result["哔哩哔哩"] = await bilibili.search(query, query_num=query_num)
     if site == "YouTube" or site is None:
-        search_result["YouTube"] = youtube.search(query, query_num=query_num)
+        search_result["YouTube"] = await youtube.search(query, query_num=query_num)
 
     title_str = f"## 搜索：{query}\n"
     address_str = f"## 搜索：{query}\n"
@@ -847,7 +916,7 @@ async def play_callback(ctx: discord.ApplicationContext, link,
     # 用户记录增加音乐播放计数
     member_lib.play_counter_increment(ctx.user.id)
 
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
     voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
@@ -858,7 +927,7 @@ async def play_callback(ctx: discord.ApplicationContext, link,
 
     # 检测机器人是否已经加入语音频道
     if ctx.guild.voice_client is None:
-        logger.rp("机器人未在任何语音频道中，尝试加入语音频道", ctx.guild)
+        await console.rp("机器人未在任何语音频道中，尝试加入语音频道", ctx.guild)
         join_result = await join_callback(ctx, command_call=False)
         if join_result:
             # 更新加入频道后的voice_client
@@ -887,10 +956,10 @@ async def play_callback(ctx: discord.ApplicationContext, link,
                 link = utils.get_redirect_url(link)
             except requests.exceptions.InvalidSchema:
                 await eos(ctx, response, "链接异常")
-                logger.rp(f"链接重定向失败", ctx.guild, is_error=True)
+                await console.rp(f"链接重定向失败", ctx.guild, is_error=True)
                 return
 
-            logger.rp(f"获取的重定向链接为 {link}", ctx.guild)
+            await console.rp(f"获取的重定向链接为 {link}", ctx.guild)
 
         if response is None:
             loading_msg = await ctx.respond("正在加载哔哩哔哩音频信息")
@@ -906,10 +975,10 @@ async def play_callback(ctx: discord.ApplicationContext, link,
                 link = utils.get_redirect_url(link)
             except requests.exceptions.InvalidSchema:
                 await eos(ctx, response, "链接异常")
-                logger.rp(f"链接重定向失败", ctx.guild, is_error=True)
+                await console.rp(f"链接重定向失败", ctx.guild, is_error=True)
                 return
 
-            logger.rp(f"获取的重定向链接为 {link}", ctx.guild)
+            await console.rp(f"获取的重定向链接为 {link}", ctx.guild)
 
         if response is None:
             loading_msg = await ctx.respond("正在加载Youtube音频信息")
@@ -925,10 +994,10 @@ async def play_callback(ctx: discord.ApplicationContext, link,
                 link = utils.get_redirect_url(link)
             except requests.exceptions.InvalidSchema:
                 await eos(ctx, response, "链接异常")
-                logger.rp(f"链接重定向失败", ctx.guild, is_error=True)
+                await console.rp(f"链接重定向失败", ctx.guild, is_error=True)
                 return
 
-            logger.rp(f"获取的重定向链接为 {link}", ctx.guild)
+            await console.rp(f"获取的重定向链接为 {link}", ctx.guild)
 
         if response is None:
             loading_msg = await ctx.respond("正在加载网易云音频信息")
@@ -975,7 +1044,7 @@ async def play_audio(ctx: discord.ApplicationContext, target_audio: audio.Audio,
     voice_client.source.volume = current_guild.get_voice_volume() / 100.0
 
     if not function_call:
-        logger.rp(f"开始播放：{target_audio.get_path()} 时长：{target_audio.get_duration_str()}", ctx.guild)
+        await console.rp(f"开始播放：{target_audio.get_path()} 时长：{target_audio.get_duration_str()}", ctx.guild)
         await eos(ctx, response, f"正在播放：**{target_audio.get_title()} [{target_audio.get_duration_str()}]**")
 
     await current_guild.refresh_list_view()
@@ -991,7 +1060,7 @@ async def play_next(ctx: discord.ApplicationContext) -> None:
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
-    logger.rp(f"触发 play_next", ctx.guild)
+    await console.rp(f"触发 play_next", ctx.guild)
 
     # 移除上一个音频
     finished_audio = current_playlist.pop_audio(0)
@@ -1005,7 +1074,7 @@ async def play_next(ctx: discord.ApplicationContext) -> None:
         await play_audio(ctx, next_audio, response=None)
 
     else:
-        logger.rp("播放队列已结束", ctx.guild)
+        await console.rp("播放队列已结束", ctx.guild)
         await ctx.send("播放队列已结束")
 
     await current_guild.refresh_list_view()
@@ -1027,7 +1096,7 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
         bvid = utils.get_bvid_from_url(link)
         if bvid is None:
             await eos(ctx, response, "无效的Bilibili链接")
-            logger.rp(f"{link} 为无效的链接", ctx.guild, is_error=True)
+            await console.rp(f"{link} 为无效的链接", ctx.guild, is_error=True)
             return
     else:
         bvid = link
@@ -1071,20 +1140,35 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
         return
     except bilibili_api.ResponseCodeException:
         await eos(ctx, response, "哔哩哔哩无响应，该视频可能已失效或存在区域版权限制")
-        logger.rp("触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，该视频内容可能已失效或存在区域版权限制", ctx.guild,
-                  is_error=True)
+        await console.rp(
+            "触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，该视频内容可能已失效或存在区域版权限制",
+            ctx.guild,
+            is_error=True
+        )
         return
     except bilibili_api.ArgsException:
         await eos(ctx, response, "参数错误，请检查链接中的BV号是否正确完整")
-        logger.rp("触发异常bilibili_api.ArgsException，参数异常，可能为bvid错误", ctx.guild, is_error=True)
+        await console.rp(
+            "触发异常bilibili_api.ArgsException，参数异常，可能为bvid错误",
+            ctx.guild,
+            is_error=True
+        )
         return
     except httpx.ConnectTimeout:
         await eos(ctx, response, "网络主机连接超时，请稍后再试")
-        logger.rp("触发异常httpx.ConnectTimeout，网络主机连接超时", ctx.guild, is_error=True)
+        await console.rp(
+            "触发异常httpx.ConnectTimeout，网络主机连接超时",
+            ctx.guild,
+            is_error=True
+        )
         return
     except httpx.RemoteProtocolError:
         await eos(ctx, response, "服务器协议错误，请稍后再试")
-        logger.rp("触发异常httpx.RemoteProtocolError，服务器协议错误", ctx.guild, is_error=True)
+        await console.rp(
+            "触发异常httpx.RemoteProtocolError，服务器协议错误",
+            ctx.guild,
+            is_error=True
+        )
         return
 
 
@@ -1107,7 +1191,10 @@ async def add_bilibili_audio(ctx: discord.ApplicationContext, info_dict, audio_t
             await eos(ctx, response, f"已加入播放列表：**{new_audio.get_title()} [{new_audio.get_duration_str()}]**")
 
         current_playlist.append_audio(new_audio)
-        logger.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表", ctx.guild)
+        await console.rp(
+            f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表",
+            ctx.guild
+        )
 
         await current_guild.refresh_list_view()
 
@@ -1125,18 +1212,18 @@ async def play_youtube(ctx: discord.ApplicationContext, link, response=None) -> 
     """
     try:
         # 先提取信息
-        info_dict = youtube.get_info(link)
+        info_dict = await youtube.get_info(link)
 
         # 带播放列表信息的独立视频
         if "_type" in info_dict and info_dict["_type"] == "url":
             # 截出播放列表信息
             link_playlist = info_dict["url"]
             playlist_title = info_dict['title']
-            info_dict_playlist = youtube.get_info(link_playlist)
+            info_dict_playlist = await youtube.get_info(link_playlist)
 
             # 重新获取独立视频信息
             link = link[:link.find("&list")]
-            info_dict = youtube.get_info(link)
+            info_dict = await youtube.get_info(link)
             link_type = "youtube_single"
 
             # 询问是否查看播放列表
@@ -1182,19 +1269,35 @@ async def play_youtube(ctx: discord.ApplicationContext, link, response=None) -> 
         return
     except yt_dlp.utils.DownloadError:
         await eos(ctx, response, "YouTube下载失败，该视频可能已失效或存在区域版权限制")
-        logger.rp("触发异常yt_dlp.utils.DownloadError，YouTube下载失败，该视频可能已失效或存在区域版权限制", ctx.guild, is_error=True)
+        await console.rp(
+            "触发异常yt_dlp.utils.DownloadError，YouTube下载失败，该视频可能已失效或存在区域版权限制",
+            ctx.guild,
+            is_error=True
+        )
         return
     except yt_dlp.utils.ExtractorError:
         await eos(ctx, response, "音频获取失败")
-        logger.rp("触发异常yt_dlp.utils.ExtractorError，视频不可用", ctx.guild, is_error=True)
+        await console.rp(
+            "触发异常yt_dlp.utils.ExtractorError，视频不可用",
+            ctx.guild,
+            is_error=True
+        )
         return
     except yt_dlp.utils.UnavailableVideoError:
         await eos(ctx, response, "音频不可用")
-        logger.rp("触发异常yt_dlp.utils.UnavailableVideoError，视频不可用", ctx.guild, is_error=True)
+        await console.rp(
+            "触发异常yt_dlp.utils.UnavailableVideoError，视频不可用",
+            ctx.guild,
+            is_error=True
+        )
         return
     except discord.HTTPException:
         await eos(ctx, response, "音频获取失败")
-        logger.rp("触发异常discord.HTTPException", ctx.guild, is_error=True)
+        await console.rp(
+            "触发异常discord.HTTPException",
+            ctx.guild,
+            is_error=True
+        )
         return
 
 
@@ -1206,7 +1309,7 @@ async def add_youtube_audio(ctx: discord.ApplicationContext, link, info_dict, li
     current_playlist = current_guild.get_playlist()
 
     # 开始下载
-    new_audio = audio_lib_main.download_youtube(link, info_dict, link_type)
+    new_audio = await audio_lib_main.download_youtube(link, info_dict, link_type)
 
     if new_audio is not None:
         if current_playlist.is_empty() and not voice_client.is_playing():
@@ -1221,7 +1324,10 @@ async def add_youtube_audio(ctx: discord.ApplicationContext, link, info_dict, li
 
         # 添加至服务器播放列表
         current_playlist.append_audio(new_audio)
-        logger.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表", ctx.guild)
+        await console.rp(
+            f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表",
+            ctx.guild
+        )
 
         await current_guild.refresh_list_view()
 
@@ -1242,7 +1348,7 @@ async def play_netease(ctx: discord.ApplicationContext, link, response=None) -> 
         # 截取出yt-dlp可读取的部分（目前已知yt-dlp 2024.07.25不能读取包含/my/m/music/的链接）
         link = utils.get_legal_netease_url(link)
         # 先提取信息
-        info_dict = netease.get_info(link)
+        info_dict = await netease.get_info(link)
 
         # 播放列表
         if "_type" in info_dict and info_dict["_type"] == "playlist":
@@ -1281,19 +1387,35 @@ async def play_netease(ctx: discord.ApplicationContext, link, response=None) -> 
         return
     except yt_dlp.utils.DownloadError:
         await eos(ctx, response, "网易云下载失败，该音乐可能已失效或存在区域版权限制")
-        logger.rp("触发异常yt_dlp.utils.DownloadError，网易云下载失败，该音乐可能已失效或存在区域版权限制", ctx.guild, is_error=True)
+        await console.rp(
+            "触发异常yt_dlp.utils.DownloadError，网易云下载失败，该音乐可能已失效或存在区域版权限制",
+            ctx.guild,
+            is_error=True
+        )
         return
     except yt_dlp.utils.ExtractorError:
         await eos(ctx, response, "音频获取失败")
-        logger.rp("触发异常yt_dlp.utils.ExtractorError，音频不可用", ctx.guild, is_error=True)
+        await console.rp(
+            "触发异常yt_dlp.utils.ExtractorError，音频不可用",
+            ctx.guild,
+            is_error=True
+        )
         return
     except yt_dlp.utils.UnavailableVideoError:
         await eos(ctx, response, "音频不可用")
-        logger.rp("触发异常yt_dlp.utils.UnavailableVideoError，音频不可用", ctx.guild, is_error=True)
+        await console.rp(
+            "触发异常yt_dlp.utils.UnavailableVideoError，音频不可用",
+            ctx.guild,
+            is_error=True
+        )
         return
     except discord.HTTPException:
         await eos(ctx, response, "音频获取失败")
-        logger.rp("触发异常discord.HTTPException", ctx.guild, is_error=True)
+        await console.rp(
+            "触发异常discord.HTTPException",
+            ctx.guild,
+            is_error=True
+        )
         return
 
 
@@ -1305,7 +1427,7 @@ async def add_netease_audio(ctx: discord.ApplicationContext, link, info_dict, li
     current_playlist = current_guild.get_playlist()
 
     # 开始下载
-    new_audio = audio_lib_main.download_netease(link, info_dict, link_type)
+    new_audio = await audio_lib_main.download_netease(link, info_dict, link_type)
 
     if new_audio is not None:
         if current_playlist.is_empty() and not voice_client.is_playing():
@@ -1320,7 +1442,10 @@ async def add_netease_audio(ctx: discord.ApplicationContext, link, info_dict, li
 
         # 添加至服务器播放列表
         current_playlist.append_audio(new_audio)
-        logger.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表", ctx.guild)
+        await console.rp(
+            f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表",
+            ctx.guild
+        )
 
         await current_guild.refresh_list_view()
 
@@ -1336,14 +1461,14 @@ async def pause_callback(ctx: discord.ApplicationContext, command_call: bool = F
     :param command_call: 该指令是否是由用户指令调用
     :return:
     """
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
 
     if voice_client is not None and voice_client.is_playing():
         # if ctx.user.voice and voice_client.channel == ctx.user.voice.channel:
         voice_client.pause()
-        logger.rp("暂停播放", ctx.guild)
+        await console.rp("暂停播放", ctx.guild)
         if command_call:
             await ctx.respond("暂停播放")
         # else:
@@ -1351,12 +1476,12 @@ async def pause_callback(ctx: discord.ApplicationContext, command_call: bool = F
         #     await ctx.respond(f"您不在{setting.value('bot_name')}所在的频道")
 
     elif voice_client.is_paused():
-        logger.rp("收到pause指令时机器人已经处于暂停状态", ctx.guild)
+        await console.rp("收到pause指令时机器人已经处于暂停状态", ctx.guild)
         if command_call:
             await ctx.respond("已在暂停中，使用 /resume 指令恢复播放")
 
     else:
-        logger.rp("收到pause指令时机器人未在播放任何音乐", ctx.guild)
+        await console.rp("收到pause指令时机器人未在播放任何音乐", ctx.guild)
         if command_call:
             await ctx.respond("未在播放任何音乐")
 
@@ -1369,7 +1494,7 @@ async def resume_callback(ctx: discord.ApplicationContext, command_call: bool = 
     :param command_call: 该函数是否是由用户指令调用
     :return:
     """
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
@@ -1383,7 +1508,7 @@ async def resume_callback(ctx: discord.ApplicationContext, command_call: bool = 
 
     # 未加入语音频道的情况
     if voice_client is None:
-        logger.rp("机器人未在任何语音频道中，尝试加入语音频道", ctx.guild)
+        await console.rp("机器人未在任何语音频道中，尝试加入语音频道", ctx.guild)
         join_result = await join_callback(ctx, command_call=False)
         if not join_result:
             return
@@ -1394,18 +1519,18 @@ async def resume_callback(ctx: discord.ApplicationContext, command_call: bool = 
     if voice_client.is_paused():
         if ctx.user.voice and voice_client.channel == ctx.user.voice.channel:
             voice_client.resume()
-            logger.rp("恢复播放", ctx.guild)
+            await console.rp("恢复播放", ctx.guild)
             if command_call:
                 await ctx.respond("恢复播放")
         else:
-            logger.rp(f"收到pause指令时指令发出者 {ctx.author} 不在机器人所在的频道", ctx.guild)
+            await console.rp(f"收到pause指令时指令发出者 {ctx.author} 不在机器人所在的频道", ctx.guild)
             if command_call:
                 await ctx.respond(f"您不在{setting.value('bot_name')}所在的频道")
 
     # 没有被暂停并且正在播放的情况
     elif voice_client.is_playing():
         if command_call:
-            logger.rp("收到resume指令时机器人正在播放音频", ctx.guild)
+            await console.rp("收到resume指令时机器人正在播放音频", ctx.guild)
             await ctx.respond(f"{bot_name}正在频道{voice_client.channel}播放音频")
 
     # 没有被暂停，没有正在播放，并且播放列表中存在歌曲的情况
@@ -1414,13 +1539,13 @@ async def resume_callback(ctx: discord.ApplicationContext, command_call: bool = 
 
         await play_audio(ctx, current_audio, function_call=True)
 
-        logger.rp("恢复中断的播放列表", ctx.guild)
+        await console.rp("恢复中断的播放列表", ctx.guild)
         if command_call:
             await ctx.respond(f"恢复上次中断的播放列表")
 
     else:
         if command_call:
-            logger.rp("收到resume指令时机器人没有任何被暂停的音乐", ctx.guild)
+            await console.rp("收到resume指令时机器人没有任何被暂停的音乐", ctx.guild)
             await ctx.respond("当前没有任何被暂停的音乐")
 
     await current_guild.refresh_list_view()
@@ -1433,7 +1558,7 @@ async def list_callback(ctx: discord.ApplicationContext):
     :param ctx: 指令原句
     :return:
     """
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
 
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
@@ -1485,7 +1610,7 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
     :param command_call: 该函数是否是由用户指令调用
     :return:
     """
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
@@ -1508,7 +1633,7 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
             else:
                 current_playlist.remove_audio(0)
 
-            logger.rp(f"第1个音频 {title} 已被用户 {ctx.user} 移出播放列表", ctx.guild)
+            await console.rp(f"第1个音频 {title} 已被用户 {ctx.user} 移出播放列表", ctx.guild)
             if command_call:
                 await ctx.respond(f"已跳过当前音频：**{title} [{duration_str}]**")
             else:
@@ -1531,14 +1656,14 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
                 else:
                     current_playlist.remove_audio(0)
 
-                logger.rp(f"第1个音频 {title} 已被用户 {ctx.user} 移出播放列表", ctx.guild)
+                await console.rp(f"第1个音频 {title} 已被用户 {ctx.user} 移出播放列表", ctx.guild)
                 if command_call:
                     await ctx.respond(f"已跳过当前音频：**{title} [{duration_str}]**")
                 else:
                     await ctx.send(f"已跳过当前音频：**{title} [{duration_str}]**")
 
             elif int(first_index) > len(current_playlist):
-                logger.rp(f"用户 {ctx.author} 输入的序号不在范围内", ctx.guild)
+                await console.rp(f"用户 {ctx.author} 输入的序号不在范围内", ctx.guild)
                 if command_call:
                     await ctx.respond(f"选择的序号不在范围内")
                 else:
@@ -1551,7 +1676,7 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
                 duration_str = select_audio.get_duration_str()
                 current_playlist.remove_audio(first_index - 1)
 
-                logger.rp(f"第{first_index}个音频 {title} 已被用户 {ctx.user} 移出播放列表", ctx.guild)
+                await console.rp(f"第{first_index}个音频 {title} 已被用户 {ctx.user} 移出播放列表", ctx.guild)
                 if command_call:
                     await ctx.respond(f"第{first_index}个音频 **{title} [{duration_str}]** 已被移出播放列表")
                 else:
@@ -1572,14 +1697,17 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
                 else:
                     current_playlist.remove_audio(0)
 
-                logger.rp(f"第{first_index}到第{second_index}个音频被用户 {ctx.author} 移出播放列表", ctx.guild)
+                await console.rp(
+                    f"第{first_index}到第{second_index}个音频被用户 {ctx.author} 移出播放列表",
+                    ctx.guild
+                )
                 if command_call:
                     await ctx.respond(f"第{first_index}到第{second_index}个音频已被移出播放列表")
                 else:
                     await ctx.send(f"第{first_index}到第{second_index}个音频已被移出播放列表")
 
             elif int(first_index) > len(current_playlist) or int(second_index) > len(current_playlist):
-                logger.rp(f"用户 {ctx.author} 输入的序号不在范围内", ctx.guild)
+                await console.rp(f"用户 {ctx.author} 输入的序号不在范围内", ctx.guild)
                 if command_call:
                     await ctx.respond(f"选择的序号不在范围内")
                 else:
@@ -1590,7 +1718,10 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
                 for i in range(second_index, first_index - 1, -1):
                     current_playlist.remove_audio(i - 1)
 
-                logger.rp(f"第{first_index}到第{second_index}个音频被用户 {ctx.author} 移出播放列表", ctx.guild)
+                await console.rp(
+                    f"第{first_index}到第{second_index}个音频被用户 {ctx.author} 移出播放列表",
+                    ctx.guild
+                )
                 if command_call:
                     await ctx.respond(f"第{first_index}到第{second_index}个音频已被移出播放列表")
                 else:
@@ -1601,7 +1732,7 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
                 await ctx.respond("参数错误")
             else:
                 await ctx.send("参数错误")
-            logger.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
+            await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
 
     else:
         if command_call:
@@ -1613,7 +1744,7 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
 
 
 async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Union[int, None] = None):
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
@@ -1636,7 +1767,7 @@ async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Un
         current_playlist.insert_audio(current_audio, to_number)
         voice_client.stop()
 
-        logger.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
+        await console.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
         await ctx.respond(f"**{title}** 已被移至播放列表第 **{to_number}** 位")
 
     # 将音频移到当前位置
@@ -1649,7 +1780,7 @@ async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Un
         current_playlist.insert_audio(target_song, 1)
         voice_client.stop()
 
-        logger.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
+        await console.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
         await ctx.respond(f"**{title}** 已被移至播放列表第 **{to_number}** 位")
 
     else:
@@ -1662,7 +1793,7 @@ async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Un
             current_playlist.insert_audio(target_song, to_number - 1)
             current_playlist.remove_audio(from_number)
 
-        logger.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
+        await console.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
         await ctx.respond(f"**{title}** 已被移至播放列表第 **{to_number}** 位")
 
     await current_guild.refresh_list_view()
@@ -1678,7 +1809,7 @@ async def clear(ctx):
     # if not await command_check(ctx):
     #     return
 
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
@@ -1693,13 +1824,13 @@ async def clear(ctx):
     else:
         current_playlist.remove_all()
 
-    logger.rp(f"用户 {ctx.author} 已清空所在服务器的播放列表", ctx.guild)
+    await console.rp(f"用户 {ctx.author} 已清空所在服务器的播放列表", ctx.guild)
     await ctx.respond("播放列表已清空")
 
 
 async def volume_callback(ctx: discord.ApplicationContext, volume_num=None) -> None:
     voice_client = ctx.guild.voice_client
-    guild_lib.check(ctx, audio_lib_main)
+    await guild_lib.check(ctx, audio_lib_main)
     current_volume = guild_lib.get_guild(ctx).get_voice_volume()
 
     if volume_num is None:
@@ -1715,7 +1846,7 @@ async def volume_callback(ctx: discord.ApplicationContext, volume_num=None) -> N
             voice_client.source.volume = current_volume / 100.0
         guild_lib.get_guild(ctx).set_voice_volume(current_volume)
 
-        logger.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
+        await console.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
         await ctx.respond(f"将音量提升至 **{current_volume}%**")
 
     elif volume_num == "down" or volume_num == "d" or volume_num == "-":
@@ -1728,7 +1859,7 @@ async def volume_callback(ctx: discord.ApplicationContext, volume_num=None) -> N
             voice_client.source.volume = current_volume / 100.0
         guild_lib.get_guild(ctx).set_voice_volume(current_volume)
 
-        logger.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
+        await console.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
         await ctx.respond(f"将音量降低至 **{current_volume}%**")
 
     else:
@@ -1748,7 +1879,7 @@ async def volume_callback(ctx: discord.ApplicationContext, volume_num=None) -> N
                 voice_client.source.volume = current_volume / 100.0
             guild_lib.get_guild(ctx).set_voice_volume(current_volume)
 
-            logger.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
+            await console.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
             await ctx.respond(f"将音量设置为 **{current_volume}%**")
 
 
@@ -1756,7 +1887,7 @@ async def reboot_callback(ctx):
     """
     重启程序
     """
-    guild_lib.save_all()
+    await guild_lib.save_all()
 
     await ctx.respond("正在重启")
 
@@ -1767,7 +1898,7 @@ async def shutdown_callback(ctx):
     """
     退出程序
     """
-    guild_lib.save_all()
+    await guild_lib.save_all()
 
     await ctx.respond("正在关闭")
     await bot.close()
@@ -2028,7 +2159,7 @@ class PlaylistMenu(View):
             # await self.ctx.edit(content=self.first_page, view=self)
             await eos(self.ctx, response=self.original_msg, content="播放列表菜单已被覆盖", view=self)
             # await self.ctx.edit(content="播放列表菜单已被覆盖", view=self)
-            logger.rp(f"{self.occur_time}生成的播放列表菜单已被覆盖", self.ctx.guild)
+            await console.rp(f"{self.occur_time}生成的播放列表菜单已被覆盖", self.ctx.guild)
 
     async def on_timeout(self):
 
@@ -2045,7 +2176,7 @@ class PlaylistMenu(View):
             # await self.ctx.edit(content=self.first_page, view=self)
             await eos(self.ctx, response=self.original_msg, content="播放列表菜单已超时", view=self)
             # await self.ctx.edit(content="播放列表菜单已超时", view=self)
-            logger.rp(f"{self.occur_time}生成的播放列表菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
+            await console.rp(f"{self.occur_time}生成的播放列表菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
 
 
 class EpisodeSelectView(View):
@@ -2223,7 +2354,7 @@ class EpisodeSelectView(View):
         msg = interaction.response
         self.clear_items()
         await msg.edit_message(content=f"已取消", view=self)
-        logger.rp("用户已取消选择界面", self.ctx.guild)
+        await console.rp("用户已取消选择界面", self.ctx.guild)
 
     @discord.ui.button(label="确定", style=discord.ButtonStyle.green,
                        custom_id="button_confirm", row=4)
@@ -2432,7 +2563,7 @@ class EpisodeSelectView(View):
                     return  # 终止
                 except bilibili_api.ResponseCodeException:
                     loading_msg = await ec(loading_msg, f"\\-  **错误：{num_p}p** 无响应，资源可能已失效或存在区域版权限制")
-                    logger.rp(
+                    await console.rp(
                         f"触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，{num_p}p可能已失效或存在区域版权限制",
                         self.ctx.guild,
                         is_error=True
@@ -2440,15 +2571,27 @@ class EpisodeSelectView(View):
                     continue
                 except bilibili_api.ArgsException:
                     loading_msg = await ec(loading_msg, f"\\-  **错误：{num_p}p** 参数错误，请检查链接中的BV号是否正确完整")
-                    logger.rp(f"触发异常bilibili_api.ArgsException，{num_p}p获取失败，参数异常，可能为bvid错误", self.ctx.guild, is_error=True)
+                    await console.rp(
+                        f"触发异常bilibili_api.ArgsException，{num_p}p获取失败，参数异常，可能为bvid错误",
+                        self.ctx.guild,
+                        is_error=True
+                    )
                     continue
                 except httpx.ConnectTimeout:
                     loading_msg = await ec(loading_msg, f"\\-  **错误：{num_p}p** 获取失败，网络主机连接超时，请稍后再试")
-                    logger.rp(f"触发异常httpx.ConnectTimeout，{num_p}p获取失败，网络主机连接超时", self.ctx.guild, is_error=True)
+                    await console.rp(
+                        f"触发异常httpx.ConnectTimeout，{num_p}p获取失败，网络主机连接超时",
+                        self.ctx.guild,
+                        is_error=True
+                    )
                     continue
                 except httpx.RemoteProtocolError:
                     loading_msg = await ec(loading_msg, f"\\-  **错误：{num_p}p** 获取失败，服务器协议错误，请稍后再试")
-                    logger.rp(f"触发异常httpx.RemoteProtocolError，{num_p}p获取失败，服务器协议错误", self.ctx.guild, is_error=True)
+                    await console.rp(
+                        f"触发异常httpx.RemoteProtocolError，{num_p}p获取失败，服务器协议错误",
+                        self.ctx.guild,
+                        is_error=True
+                    )
                     continue
                 else:
                     success_num += 1
@@ -2483,7 +2626,7 @@ class EpisodeSelectView(View):
                 except bilibili_api.ResponseCodeException:
                     view = AskForSearchingView(self.ctx, title)
                     loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 无响应，资源可能已失效或存在区域版权限制")
-                    logger.rp(
+                    await console.rp(
                         f"触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，{title}可能已失效或存在区域版权限制",
                         self.ctx.guild,
                         is_error=True
@@ -2493,16 +2636,27 @@ class EpisodeSelectView(View):
                     continue
                 except bilibili_api.ArgsException:
                     loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 参数错误，请检查链接中的BV号是否正确完整")
-                    logger.rp(f"触发异常bilibili_api.ArgsException，{title}获取失败，参数异常，可能为bvid错误", self.ctx.guild,
-                              is_error=True)
+                    await console.rp(
+                        f"触发异常bilibili_api.ArgsException，{title}获取失败，参数异常，可能为bvid错误",
+                        self.ctx.guild,
+                        is_error=True
+                    )
                     continue
                 except httpx.ConnectTimeout:
                     loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 获取失败，网络主机连接超时，请稍后再试")
-                    logger.rp(f"触发异常httpx.ConnectTimeout，{title}获取失败，网络主机连接超时", self.ctx.guild, is_error=True)
+                    await console.rp(
+                        f"触发异常httpx.ConnectTimeout，{title}获取失败，网络主机连接超时",
+                        self.ctx.guild,
+                        is_error=True
+                    )
                     continue
                 except httpx.RemoteProtocolError:
                     loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 获取失败，服务器协议错误，请稍后再试")
-                    logger.rp(f"触发异常httpx.RemoteProtocolError，{title}获取失败，服务器协议错误", self.ctx.guild, is_error=True)
+                    await console.rp(
+                        f"触发异常httpx.RemoteProtocolError，{title}获取失败，服务器协议错误",
+                        self.ctx.guild,
+                        is_error=True
+                    )
                     continue
                 else:
                     success_num += 1
@@ -2545,13 +2699,13 @@ class EpisodeSelectView(View):
 
                     # YouTube列表下载异常处理
                     except errors.StorageFull:
-                        logger.rp("库已满，播放列表添加失败", self.ctx.guild, is_error=True)
+                        await console.rp("库已满，播放列表添加失败", self.ctx.guild, is_error=True)
                         await ec(loading_msg, "**机器人当前处理音频过多，无法完成播放列表添加**")
                         return  # 终止
                     except yt_dlp.utils.DownloadError:
                         view = AskForSearchingView(self.ctx, title)
                         loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 下载失败，资源可能已失效或存在区域版权限制")
-                        logger.rp(
+                        await console.rp(
                             f"触发异常yt_dlp.utils.DownloadError，YouTube下载失败，{title}可能已失效或存在区域版权限制",
                             self.ctx.guild, is_error=True
                         )
@@ -2560,17 +2714,23 @@ class EpisodeSelectView(View):
                         continue
                     except yt_dlp.utils.ExtractorError:
                         loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 获取失败")
-                        logger.rp(f"触发异常yt_dlp.utils.ExtractorError，{title}视频不可用", self.ctx.guild,
-                                  is_error=True)
+                        await console.rp(
+                            f"触发异常yt_dlp.utils.ExtractorError，{title}视频不可用",
+                            self.ctx.guild,
+                            is_error=True
+                        )
                         continue
                     except yt_dlp.utils.UnavailableVideoError:
                         loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 视频不可用")
-                        logger.rp(f"触发异常yt_dlp.utils.UnavailableVideoError，{title}视频不可用", self.ctx.guild,
-                                  is_error=True)
+                        await console.rp(
+                            f"触发异常yt_dlp.utils.UnavailableVideoError，{title}视频不可用",
+                            self.ctx.guild,
+                            is_error=True
+                        )
                         continue
                     except discord.HTTPException:
                         loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 视频获取失败，请稍后再试")
-                        logger.rp(f"触发异常discord.HTTPException", self.ctx.guild, is_error=True)
+                        await console.rp(f"触发异常discord.HTTPException", self.ctx.guild, is_error=True)
                         continue
                     else:
                         success_num += 1
@@ -2614,13 +2774,13 @@ class EpisodeSelectView(View):
 
                 # 网易云列表下载异常处理
                 except errors.StorageFull:
-                    logger.rp("库已满，播放列表添加失败", self.ctx.guild, is_error=True)
+                    await console.rp("库已满，播放列表添加失败", self.ctx.guild, is_error=True)
                     await ec(loading_msg, "**机器人当前处理音频过多，无法完成播放列表添加**")
                     return  # 终止
                 except yt_dlp.utils.DownloadError:
                     view = AskForSearchingView(self.ctx, title)
                     loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 下载失败，资源可能已失效或存在区域版权限制")
-                    logger.rp(
+                    await console.rp(
                         f"触发异常yt_dlp.utils.DownloadError，网易云下载失败，{title}资源可能已失效或存在区域版权限制",
                         self.ctx.guild, is_error=True
                     )
@@ -2629,15 +2789,27 @@ class EpisodeSelectView(View):
                     continue
                 except yt_dlp.utils.ExtractorError:
                     loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 获取失败")
-                    logger.rp(f"触发异常yt_dlp.utils.ExtractorError，{title}音频不可用", self.ctx.guild, is_error=True)
+                    await console.rp(
+                        f"触发异常yt_dlp.utils.ExtractorError，{title}音频不可用",
+                        self.ctx.guild,
+                        is_error=True
+                    )
                     continue
                 except yt_dlp.utils.UnavailableVideoError:
                     loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 音频不可用")
-                    logger.rp(f"触发异常yt_dlp.utils.UnavailableVideoError，{title}音频不可用", self.ctx.guild, is_error=True)
+                    await console.rp(
+                        f"触发异常yt_dlp.utils.UnavailableVideoError，{title}音频不可用",
+                        self.ctx.guild,
+                        is_error=True
+                    )
                     continue
                 except discord.HTTPException:
                     loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 音频获取失败，请稍后再试")
-                    logger.rp(f"触发异常discord.HTTPException", self.ctx.guild, is_error=True)
+                    await console.rp(
+                        f"触发异常discord.HTTPException",
+                        self.ctx.guild,
+                        is_error=True
+                    )
                     continue
                 else:
                     success_num += 1
@@ -2645,7 +2817,7 @@ class EpisodeSelectView(View):
             await ec(loading_msg, f"完成添加，已将{success_num}个音频加入播放列表")
 
         else:
-            logger.rp("未知的播放源", self.ctx.guild)
+            await console.rp("未知的播放源", self.ctx.guild)
 
     async def on_timeout(self):
         self.clear_items()
@@ -2653,7 +2825,7 @@ class EpisodeSelectView(View):
             await self.ctx.edit(view=self)
         else:
             await self.ctx.edit(content="分集选择菜单已超时", view=self)
-        logger.rp(f"{self.occur_time}生成的搜索选择菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
+        await console.rp(f"{self.occur_time}生成的搜索选择菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
 
 
 class CheckCollectionView(View):
@@ -2736,7 +2908,7 @@ class CheckCollectionView(View):
     async def on_timeout(self):
         if not self.finish and self.original_msg is not None:
             await self.original_msg.delete()
-        logger.rp(f"{self.occur_time}生成的合集查看选择栏已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
+        await console.rp(f"{self.occur_time}生成的合集查看选择栏已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
 
 
 class SearchedAudioSelectionView(View):
@@ -2852,7 +3024,7 @@ class SearchedAudioSelectionView(View):
         msg = interaction.response
         self.clear_items()
         await msg.edit_message(content=f"已关闭搜索结果选择菜单", view=self)
-        logger.rp("用户已关闭搜索选择菜单", self.ctx.guild)
+        await console.rp("用户已关闭搜索选择菜单", self.ctx.guild)
 
     async def on_timeout(self):
         self.clear_items()
@@ -2860,7 +3032,7 @@ class SearchedAudioSelectionView(View):
             await self.ctx.edit(view=self)
         else:
             await self.ctx.edit(content="搜索选择菜单已超时", view=self)
-        logger.rp(f"{self.occur_time}生成的搜索选择菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
+        await console.rp(f"{self.occur_time}生成的搜索选择菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
 
 
 class AskForSearchingView(View):
@@ -2904,4 +3076,4 @@ class AskForSearchingView(View):
         self.clear_items()
         if not self.finish and self.original_msg is not None:
             await self.original_msg.delete()
-        logger.rp(f"{self.occur_time}生成的询问搜索选择栏已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
+        await console.rp(f"{self.occur_time}生成的询问搜索选择栏已超时(超时时间为{self.timeout}秒)", self.ctx.guild)

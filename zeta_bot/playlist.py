@@ -4,7 +4,7 @@ from zeta_bot import (
     errors,
     language,
     utils,
-    log,
+    console,
     audio,
 )
 
