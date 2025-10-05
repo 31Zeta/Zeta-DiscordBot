@@ -3,9 +3,9 @@
 作者目前业余编程，如有不规范的地方请多多包涵与指教  
 
 目前机器人只有中文可用  
-Only Chinese are available inside the bot for now.
+The display language currently available for this robot is Chinese only.  
 
-目录 Table of content
+目录 Table of contents
 ------------------------
 - [核心功能](#核心功能)
 - [如何安装并部署](#如何安装并部署)
@@ -46,6 +46,11 @@ Windows系统请前往ffmpeg官网 https://ffmpeg.org/download.html 获取ffmpeg
 Linux系统可使用库内bin文件夹内自带的ffmpeg或前往ffmpeg官网 https://ffmpeg.org/download.html 获取最新版ffmpeg  
 
 将解压出的ffmpeg文件放入库中的bin文件夹内  
+
+Linux系统还需要安装：  
+```
+sudo apt install libopus0
+```
 
 输入以下命令以运行机器人：  
 ```
@@ -96,7 +101,12 @@ Linux: Visit https://ffmpeg.org/download.html to get the most recent ffmpeg file
 
 Put the unzipped ffmpeg file into the bin folder.  
 
-Use the following command to start Discord Bot:  
+Linux also require：  
+```
+sudo apt install libopus0
+```
+
+Use the following command to start the Discord Bot:  
 ```
 python main.py
 ```
