@@ -841,8 +841,9 @@ async def leave_callback(ctx: discord.ApplicationContext) -> None:
 
     if voice_client is not None:
         # 防止因退出频道自动删除正在播放的音频
-        current_audio = current_playlist.get_audio(0)
-        current_playlist.insert_audio(current_audio, 0)
+        if len(current_playlist) > 0:
+            current_audio = current_playlist.get_audio(0)
+            current_playlist.insert_audio(current_audio, 0)
 
         last_channel = voice_client.channel
         await voice_client.disconnect(force=False)
