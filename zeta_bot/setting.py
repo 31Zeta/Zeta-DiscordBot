@@ -388,48 +388,48 @@ bot_setting_configs = [
         "options": None,
         "value": "23:55:00"
     },
-    {
-        "id": "chat_ai",
-        "name": "聊天AI",
-        "type": "bool",
-        "description": "当机器人被@时调用API进行回复（目前使用Deepbricks测试）",
-        "input_description": "请设置是否连接至聊天AI的API（输入y为开启，输入n为关闭）",
-        "dependent": None,
-        "regex": None,
-        "options": None,
-        "value": False
-    },
-    {
-        "id": "chat_ai_base_url",
-        "name": "聊天AI - API链接",
-        "type": "str",
-        "description": "API的链接，具体请参考API网站",
-        "input_description": "请设置API的链接",
-        "dependent": "chat_ai",
-        "regex": None,
-        "options": None,
-        "value": "None"
-    },
-    {
-        "id": "chat_ai_api_key",
-        "name": "聊天AI - API秘钥",
-        "type": "str",
-        "description": "API的秘钥，具体请参考API网站",
-        "input_description": "请设置API秘钥",
-        "dependent": "chat_ai",
-        "regex": None,
-        "options": None,
-        "value": "None"
-    },
-    {
-        "id": "chat_ai_model_name",
-        "name": "聊天AI - 模型名称",
-        "type": "str",
-        "description": "要使用的模型名称",
-        "input_description": "请设置模型名称",
-        "dependent": "chat_ai",
-        "regex": None,
-        "options": None,
-        "value": "None"
-    },
+    # {
+    #     "id": "chat_ai",
+    #     "name": "聊天AI",
+    #     "type": "bool",
+    #     "description": "当机器人被@时调用API进行回复（目前使用Deepbricks测试）",
+    #     "input_description": "请设置是否连接至聊天AI的API（输入y为开启，输入n为关闭）",
+    #     "dependent": None,
+    #     "regex": None,
+    #     "options": None,
+    #     "value": False
+    # },
+    # {
+    #     "id": "chat_ai_base_url",
+    #     "name": "聊天AI - API链接",
+    #     "type": "str",
+    #     "description": "API的链接，具体请参考API网站",
+    #     "input_description": "请设置API的链接",
+    #     "dependent": "chat_ai",
+    #     "regex": None,
+    #     "options": None,
+    #     "value": "None"
+    # },
+    # {
+    #     "id": "chat_ai_api_key",
+    #     "name": "聊天AI - API秘钥",
+    #     "type": "str",
+    #     "description": "API的秘钥，具体请参考API网站",
+    #     "input_description": "请设置API秘钥",
+    #     "dependent": "chat_ai",
+    #     "regex": None,
+    #     "options": None,
+    #     "value": "None"
+    # },
+    # {
+    #     "id": "chat_ai_model_name",
+    #     "name": "聊天AI - 模型名称",
+    #     "type": "str",
+    #     "description": "要使用的模型名称",
+    #     "input_description": "请设置模型名称",
+    #     "dependent": "chat_ai",
+    #     "regex": None,
+    #     "options": None,
+    #     "value": "None"
+    # },
 ]

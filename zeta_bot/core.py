@@ -116,17 +116,18 @@ audio_lib_main = file_management.AudioFileLibrary(
 )
 
 # 设置聊天AI
-if setting.value("chat_ai"):
-    utils.create_folder("./data/ai")
-    chat_ai = ai.ChatAI(
-        setting.value("chat_ai_base_url"),
-        setting.value("chat_ai_api_key"),
-        setting.value("chat_ai_model_name"),
-        "./data/ai",
-        bot_name
-    )
-else:
-    chat_ai = None
+# 聊天AI API 效果较差，暂时弃用
+# if setting.value("chat_ai"):
+#     utils.create_folder("./data/ai")
+#     chat_ai = ai.ChatAI(
+#         setting.value("chat_ai_base_url"),
+#         setting.value("chat_ai_api_key"),
+#         setting.value("chat_ai_model_name"),
+#         "./data/ai",
+#         bot_name
+#     )
+# else:
+#     chat_ai = None
 
 def start(mode: str) -> None:
     """
@@ -266,26 +267,27 @@ async def on_message(message: discord.Message):
         return
 
     if bot.user.mentioned_in(message):
-        if setting.value("chat_ai") and chat_ai is not None:
-            loading_message = await chat_ai.loading_message()
-            respond_message = await message.channel.send(loading_message)
-
-            channel_id = str(message.channel.id)
-            ai_response = await chat_ai.chat(channel_id, f"{message.content[message.content.find('>') + 2:]}", str(message.author.name))
-
-            if isinstance(ai_response, dict) and "message" in ai_response:
-                if len(ai_response["message"]) == 0:
-                    no_response_message = await chat_ai.no_response_message()
-                    await respond_message.edit(content=no_response_message)
-                else:
-                    await respond_message.edit(content=f"{ai_response['message']}")
-                    if ai_response["function_call"] == "play_music":
-                        pass  # TODO 完成音乐调用
-            else:
-                error_message = await chat_ai.error_message()
-                await respond_message.edit(content=error_message)
-        else:
-            await message.channel.send(f"机器人未启用人工智能功能，详情请咨询管理员")
+        respond_message = await message.channel.send(f"{message.author.mention} 你好！如果需要我可以使用 /help 查看帮助菜单")
+        # if setting.value("chat_ai") and chat_ai is not None:
+        #     loading_message = await chat_ai.loading_message()
+        #     respond_message = await message.channel.send(loading_message)
+        #
+        #     channel_id = str(message.channel.id)
+        #     ai_response = await chat_ai.chat(channel_id, f"{message.content[message.content.find('>') + 2:]}", str(message.author.name))
+        #
+        #     if isinstance(ai_response, dict) and "message" in ai_response:
+        #         if len(ai_response["message"]) == 0:
+        #             no_response_message = await chat_ai.no_response_message()
+        #             await respond_message.edit(content=no_response_message)
+        #         else:
+        #             await respond_message.edit(content=f"{ai_response['message']}")
+        #             if ai_response["function_call"] == "play_music":
+        #                 pass  # TODO 完成音乐调用
+        #     else:
+        #         error_message = await chat_ai.error_message()
+        #         await respond_message.edit(content=error_message)
+        # else:
+        #     await message.channel.send(f"机器人未启用人工智能功能，详情请咨询管理员")
 
     if message.content.startswith(bot_name):
         await message.channel.send(f"{message.author.mention} 我在")
