@@ -2230,7 +2230,7 @@ class EpisodeSelectView(View):
                     f"第[{page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：{num}")
 
     @discord.ui.button(label="1", style=discord.ButtonStyle.grey,
-                       custom_id="button_1", row=1)
+                       custom_id="button_1", row=0)
     async def button_1_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
@@ -2238,7 +2238,7 @@ class EpisodeSelectView(View):
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="2", style=discord.ButtonStyle.grey,
-                       custom_id="button_2", row=1)
+                       custom_id="button_2", row=0)
     async def button_2_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
@@ -2246,15 +2246,26 @@ class EpisodeSelectView(View):
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="3", style=discord.ButtonStyle.grey,
-                       custom_id="button_3", row=1)
+                       custom_id="button_3", row=0)
     async def button_3_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
         self.result.append("3")
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
+    @discord.ui.button(label="<-", style=discord.ButtonStyle.grey,
+                       custom_id="button_backspace", row=0)
+    async def button_backspace_callback(self, button, interaction):
+        button.disabled = False
+        msg = interaction.response
+        if len(self.result) <= 0:
+            pass
+        else:
+            self.result.pop()
+            await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
+
     @discord.ui.button(label="4", style=discord.ButtonStyle.grey,
-                       custom_id="button_4", row=2)
+                       custom_id="button_4", row=1)
     async def button_4_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
@@ -2262,7 +2273,7 @@ class EpisodeSelectView(View):
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="5", style=discord.ButtonStyle.grey,
-                       custom_id="button_5", row=2)
+                       custom_id="button_5", row=1)
     async def button_5_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
@@ -2270,15 +2281,39 @@ class EpisodeSelectView(View):
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="6", style=discord.ButtonStyle.grey,
-                       custom_id="button_6", row=2)
+                       custom_id="button_6", row=1)
     async def button_6_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
         self.result.append("6")
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
+    @discord.ui.button(label="全部", style=discord.ButtonStyle.blurple,
+                       custom_id="button_all", row=1)
+    async def button_all_callback(self, button, interaction):
+        button.disabled = False
+        self.finish = True
+        msg = interaction.response
+
+        total_num = 0
+        final_result = []
+        if self.source == "bilibili_p":
+            total_num = len(self.info_dict["pages"])
+        elif self.source == "bilibili_collection":
+            total_num = len(
+                self.info_dict["ugc_season"]["sections"][0]["episodes"])
+        elif self.source == "youtube_playlist" or self.source == "netease_playlist":
+            total_num = len(self.info_dict["entries"])
+
+        for num in range(1, total_num + 1):
+            final_result.append(num)
+
+        self.clear_items()
+        await msg.edit_message(content=f"已选择全部[{total_num}]首", view=self)
+        await self.play_select(final_result)
+
     @discord.ui.button(label="7", style=discord.ButtonStyle.grey,
-                       custom_id="button_7", row=3)
+                       custom_id="button_7", row=2)
     async def button_7_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
@@ -2286,7 +2321,7 @@ class EpisodeSelectView(View):
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="8", style=discord.ButtonStyle.grey,
-                       custom_id="button_8", row=3)
+                       custom_id="button_8", row=2)
     async def button_8_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
@@ -2294,15 +2329,46 @@ class EpisodeSelectView(View):
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="9", style=discord.ButtonStyle.grey,
-                       custom_id="button_9", row=3)
+                       custom_id="button_9", row=2)
     async def button_9_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
         self.result.append("9")
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
+    @discord.ui.button(label="取消", style=discord.ButtonStyle.red,
+                       custom_id="button_cancel", row=2)
+    async def button_cancel_callback(self, button, interaction):
+        button.disabled = True
+        self.finish = True
+        msg = interaction.response
+        self.clear_items()
+        await msg.edit_message(content=f"已取消", view=self)
+        await console.rp("用户已取消选择界面", self.ctx.guild)
+
+    @discord.ui.button(label="上一页", style=discord.ButtonStyle.blurple,
+                       custom_id="button_previous", row=2)
+    async def button_previous_callback(self, button, interaction):
+        button.disabled = False
+        msg = interaction.response
+        num = ""
+        for i in self.result:
+            num = num + i
+        # 翻页
+        if self.page_num == 0:
+            return
+        else:
+            self.page_num -= 1
+        if self.list_title is not None:
+            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
+                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
+        else:
+            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
+                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
+        await msg.edit_message(content=content, view=self)
+
     @discord.ui.button(label="-", style=discord.ButtonStyle.grey,
-                       custom_id="button_dash", row=4)
+                       custom_id="button_dash", row=3)
     async def button_dash_callback(self, button, interaction):
         button.disabled = False
 
@@ -2317,7 +2383,7 @@ class EpisodeSelectView(View):
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label="0", style=discord.ButtonStyle.grey,
-                       custom_id="button_0", row=4)
+                       custom_id="button_0", row=3)
     async def button_0_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
@@ -2325,7 +2391,7 @@ class EpisodeSelectView(View):
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
     @discord.ui.button(label=",", style=discord.ButtonStyle.grey,
-                       custom_id="button_comma", row=4)
+                       custom_id="button_comma", row=3)
     async def button_comma_callback(self, button, interaction):
         button.disabled = False
 
@@ -2338,29 +2404,8 @@ class EpisodeSelectView(View):
         self.dash_finish = True
         await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
 
-    @discord.ui.button(label="<-", style=discord.ButtonStyle.grey,
-                       custom_id="button_backspace", row=1)
-    async def button_backspace_callback(self, button, interaction):
-        button.disabled = False
-        msg = interaction.response
-        if len(self.result) <= 0:
-            pass
-        else:
-            self.result.pop()
-            await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
-
-    @discord.ui.button(label="取消", style=discord.ButtonStyle.red,
-                       custom_id="button_cancel", row=3)
-    async def button_cancel_callback(self, button, interaction):
-        button.disabled = True
-        self.finish = True
-        msg = interaction.response
-        self.clear_items()
-        await msg.edit_message(content=f"已取消", view=self)
-        await console.rp("用户已取消选择界面", self.ctx.guild)
-
     @discord.ui.button(label="确定", style=discord.ButtonStyle.green,
-                       custom_id="button_confirm", row=4)
+                       custom_id="button_confirm", row=3)
     async def button_confirm_callback(self, button, interaction):
         message = "已选择"
         button.disabled = False
@@ -2469,29 +2514,8 @@ class EpisodeSelectView(View):
 
         await self.play_select(final_result)
 
-    @discord.ui.button(label="上一页", style=discord.ButtonStyle.blurple,
-                       custom_id="button_previous", row=3)
-    async def button_previous_callback(self, button, interaction):
-        button.disabled = False
-        msg = interaction.response
-        num = ""
-        for i in self.result:
-            num = num + i
-        # 翻页
-        if self.page_num == 0:
-            return
-        else:
-            self.page_num -= 1
-        if self.list_title is not None:
-            content = f"## 播放列表 | {self.list_title}\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        else:
-            content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
-                      f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
-        await msg.edit_message(content=content, view=self)
-
     @discord.ui.button(label="下一页", style=discord.ButtonStyle.blurple,
-                       custom_id="button_next", row=4)
+                       custom_id="button_next", row=3)
     async def button_next_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
@@ -2510,30 +2534,6 @@ class EpisodeSelectView(View):
             content = f"## 播放列表\n请选择要播放的集数:\n{self.menu_list[self.page_num]}\n" \
                       f"第[{self.page_num + 1}]页，共[{len(self.menu_list)}]页\n已输入：" + num
         await msg.edit_message(content=content, view=self)
-
-    @discord.ui.button(label="全部", style=discord.ButtonStyle.blurple,
-                       custom_id="button_all", row=2)
-    async def button_all_callback(self, button, interaction):
-        button.disabled = False
-        self.finish = True
-        msg = interaction.response
-
-        total_num = 0
-        final_result = []
-        if self.source == "bilibili_p":
-            total_num = len(self.info_dict["pages"])
-        elif self.source == "bilibili_collection":
-            total_num = len(
-                self.info_dict["ugc_season"]["sections"][0]["episodes"])
-        elif self.source == "youtube_playlist" or self.source == "netease_playlist":
-            total_num = len(self.info_dict["entries"])
-
-        for num in range(1, total_num + 1):
-            final_result.append(num)
-
-        self.clear_items()
-        await msg.edit_message(content=f"已选择全部[{total_num}]首", view=self)
-        await self.play_select(final_result)
 
     async def play_select(self, final_result):
         total_num = len(final_result)
