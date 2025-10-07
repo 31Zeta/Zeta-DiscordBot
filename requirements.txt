@@ -1,4 +1,4 @@
-py-cord>=2.6.0
+py-cord>=2.7.0rc1
 bilibili-api-python
 yt-dlp
 aiohttp
