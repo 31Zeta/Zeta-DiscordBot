@@ -2710,7 +2710,7 @@ class EpisodeSelectView(View):
                     url = f"https://www.youtube.com/watch?v={self.info_dict['entries'][num - 1]['id']}"
                     try:
                         # 单独提取信息
-                        current_info_dict = youtube.get_info(url)
+                        current_info_dict = await youtube.get_info(url)
                         # 每个音频作为“youtube_single”单独添加
                         new_audio = await add_youtube_audio(
                             self.ctx, url, current_info_dict, "youtube_single", list_add_call=True, response=None
