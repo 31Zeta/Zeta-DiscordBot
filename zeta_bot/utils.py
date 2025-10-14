@@ -801,37 +801,37 @@ def check_url_source(url) -> Union[str, None]:
 def get_url_from_str(input_str, url_type) -> Union[str, None]:
 
     if url_type == "bilibili_url":
-        url_position = re.search("bilibili\.com[^ ]*", input_str).span()
+        url_position = re.search(r"bilibili\.com[^ ]*", input_str).span()
         url = "https://" + input_str[url_position[0]:url_position[1]]
         return url
 
     elif url_type == "bilibili_short_url":
-        url_position = re.search("b23\.tv[^ ]*", input_str).span()
+        url_position = re.search(r"b23\.tv[^ ]*", input_str).span()
         url = "https://" + input_str[url_position[0]:url_position[1]]
         return url
 
     elif url_type == "bilibili_bvid":
-        bvid_position = re.search("BV(\d|[a-zA-Z]){10}", input_str).span()
+        bvid_position = re.search(r"BV(\d|[a-zA-Z]){10}", input_str).span()
         bvid = input_str[bvid_position[0]:bvid_position[1]]
         return bvid
 
     elif url_type == "youtube_url":
-        url_position = re.search("youtube\.com[^ ]*", input_str).span()
+        url_position = re.search(r"youtube\.com[^ ]*", input_str).span()
         url = "https://" + input_str[url_position[0]:url_position[1]]
         return url
 
     elif url_type == "youtube_short_url":
-        url_position = re.search("youtu\.be[^ ]*", input_str).span()
+        url_position = re.search(r"youtu\.be[^ ]*", input_str).span()
         url = "https://" + input_str[url_position[0]:url_position[1]]
         return url
 
     elif url_type == "netease_url":
-        url_position = re.search("music.163\.com[^ ]*", input_str).span()
+        url_position = re.search(r"music.163\.com[^ ]*", input_str).span()
         url = "https://" + input_str[url_position[0]:url_position[1]]
         return url
 
     elif url_type == "netease_short_url":
-        url_position = re.search("163cn\.tv[^ ]*", input_str).span()
+        url_position = re.search(r"163cn\.tv[^ ]*", input_str).span()
         url = "https://" + input_str[url_position[0]:url_position[1]]
         return url
 
