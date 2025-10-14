@@ -72,6 +72,11 @@ async def get_filesize(info_dict: dict, num_p=0) -> Union[int, None]:
             return int(length)
 
 
+# TODO 检查下载报错代码，是否和异步并发有关
+# aiohttp.http_exceptions.ContentLengthError: 400, message:
+#   Not enough data to satisfy content length header.
+# aiohttp.client_exceptions.ClientPayloadError: Response payload is not completed: <ContentLengthError: 400, message='Not enough data to satisfy content length header.'>
+
 async def audio_download(info_dict: dict, download_path: str, download_type="bilibili_single", num_p=0) -> audio.Audio:
     """
     使用bilibili_api，下载来自哔哩哔哩的音频

@@ -136,7 +136,7 @@ class ChatAI:
                 "message": response_content,
                 "memories": None
             }
-            await console.rp(f"AI输出格式错误：{response}", level=f"[{level}]", is_error=True)
+            await console.rp(f"AI输出格式错误：{response}", level=f"[{level}]", message_type=utils.PrintType.ERROR, print_head=True)
 
         # 移除本轮记忆回顾和本轮系统限制（防止AI遗忘限制）
         self.threads[thread_id].pop(-2)

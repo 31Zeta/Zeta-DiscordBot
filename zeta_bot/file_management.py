@@ -106,9 +106,10 @@ class AudioFileLibrary:
                         f"可通过--setting修改设置中的音频库缓存容量上限，"
                         f"或者手动修改文件./configs/system_config.json中的audio_library_storage_capacity",
                         f"[{self._name}]",
-                        is_error=True
+                        message_type=utils.PrintType.ERROR,
+                        print_head=True
                     )
-                    raise errors.InitializationFailed(
+                    raise errors.InitializationError(
                         self._name,
                         f"{self._name}容量超出上限且且无法继续清除文件，"
                         f"请检查设置中的音频库缓存容量上限。可通过--setting修改设置中的音频库缓存容量上限，"
@@ -238,8 +239,8 @@ class AudioFileLibrary:
             converted_used_size = utils.convert_byte(self._used_storage_size)
             converted_capacity = utils.convert_byte(self._storage_capacity)
             await console.rp(f"添加文件：{new_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
-                            f"已用容量：{converted_used_size[0]}{converted_used_size[1]}/"
-                            f"{converted_capacity[0]}{converted_capacity[1]}"
+                            f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
+                            f"{converted_capacity[0]} {converted_capacity[1]}"
                             f" -> {self.get_used_storage_percentage(2)}%",
                             f"[{self._name}]")
 
@@ -269,8 +270,8 @@ class AudioFileLibrary:
             converted_used_size = utils.convert_byte(self._used_storage_size)
             converted_capacity = utils.convert_byte(self._storage_capacity)
             await console.rp(f"删除文件：{target_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
-                            f"已用容量：{converted_used_size[0]}{converted_used_size[1]}/"
-                            f"{converted_capacity[0]}{converted_capacity[1]}"
+                            f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
+                            f"{converted_capacity[0]} {converted_capacity[1]}"
                             f" -> {self.get_used_storage_percentage(2)}%",
                             f"[{self._name}]")
 
@@ -334,8 +335,8 @@ class AudioFileLibrary:
             converted_capacity = utils.convert_byte(self._storage_capacity)
             await console.rp(f"文件已在库中：{exists_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
                             f"路径：{exists_audio.get_path()}\n"
-                            f"已用容量：{converted_used_size[0]}{converted_used_size[1]}/"
-                            f"{converted_capacity[0]}{converted_capacity[1]}"
+                            f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
+                            f"{converted_capacity[0]} {converted_capacity[1]}"
                             f" -> {self.get_used_storage_percentage(2)}% ",
                             f"[{self._name}]")
             # 将再次使用的音频挪至最新
@@ -381,8 +382,8 @@ class AudioFileLibrary:
             await console.rp(
                 f"文件已在库中：{exists_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
                 f"路径：{exists_audio.get_path()}\n"
-                f"已用容量：{converted_used_size[0]}{converted_used_size[1]}/"
-                f"{converted_capacity[0]}{converted_capacity[1]}"
+                f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
+                f"{converted_capacity[0]} {converted_capacity[1]}"
                 f" -> {self.get_used_storage_percentage(2)}%",
                 f"[{self._name}]"
             )
@@ -427,8 +428,8 @@ class AudioFileLibrary:
             converted_capacity = utils.convert_byte(self._storage_capacity)
             await console.rp(f"文件已在库中：{exists_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
                             f"路径：{exists_audio.get_path()}\n"
-                            f"已用容量：{converted_used_size[0]}{converted_used_size[1]}/"
-                            f"{converted_capacity[0]}{converted_capacity[1]}"
+                            f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
+                            f"{converted_capacity[0]} {converted_capacity[1]}"
                             f" -> {self.get_used_storage_percentage(2)}%",
                             f"[{self._name}]")
             # 将再次使用的音频挪至最新

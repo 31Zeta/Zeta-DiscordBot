@@ -5,7 +5,7 @@ from discord.errors import *
 虽然没必要，就是写着玩
 """
 
-class UninitializedError(RuntimeError):
+class UninitializedError(Exception):
     def __init__(self, name: Optional[str]):
         super().__init__()
         self.name = name
@@ -17,59 +17,29 @@ class UninitializedError(RuntimeError):
             return f"{self.name}未初始化"
 
 
-class InitializationFailed(RuntimeError):
+class InitializationError(Exception):
     def __init__(self, name: str, description: str):
         super().__init__()
         self.name = name
         self.description = description
 
     def __str__(self):
-        return f"{self.name}初始化失败，描述为：{self.description}"
+        return f"{self.name}初始化失败：{self.description}"
 
 
-class InitializationError(RuntimeError):
-    def __init__(self, name: str, description: str):
+class UserCancelled(Exception):
+    def __init__(self, description: Optional[str] = None):
         super().__init__()
-        self.name = name
         self.description = description
 
     def __str__(self):
-        return f"{self.name}初始化出现错误，描述为：{self.description}"
+        if self.description is None:
+            return "用户取消操作"
+        else:
+            return f"用户取消操作：{self.description}"
 
 
-class BootModeNotFound(RuntimeError):
-    def __init__(self):
-        super().__init__()
-
-    def __str__(self):
-        return "未找到指定启动模式"
-
-
-class UserCancelled(RuntimeError):
-    def __init__(self):
-        super().__init__()
-
-    def __str__(self):
-        return "用户取消了该操作"
-
-
-class SettingKeyNotFound(RuntimeError):
-    def __init__(self):
-        super().__init__()
-
-    def __str__(self):
-        return "未能找到该项设置"
-
-
-class MemberGroupNotFound(RuntimeError):
-    def __init__(self):
-        super().__init__()
-
-    def __str__(self):
-        return "未能找到该用户组"
-
-
-class LanguageNotFound(RuntimeError):
+class LanguageNotFound(Exception):
     def __init__(self):
         super().__init__()
 
@@ -77,15 +47,7 @@ class LanguageNotFound(RuntimeError):
         return "未能找到此语言"
 
 
-class SettingChanged(RuntimeError):
-    def __init__(self):
-        super().__init__()
-
-    def __str__(self):
-        return "设置不匹配，设置选项可能发生过变更"
-
-
-class JSONFileError(RuntimeError):
+class JSONFileError(Exception):
     def __init__(self, path: str):
         super().__init__()
         self.path = path
@@ -94,7 +56,7 @@ class JSONFileError(RuntimeError):
         return f"Json文件<{self.path}>已损坏"
 
 
-class KeyAlreadyExists(RuntimeError):
+class KeyAlreadyExists(KeyError):
     def __init__(self, key: str):
         super().__init__()
         self.key = key
@@ -103,17 +65,7 @@ class KeyAlreadyExists(RuntimeError):
         return f"键值<{self.key}>已经存在"
 
 
-class KeyNotFound(RuntimeError):
-    """就是不用KeyError啊哈哈"""
-    def __init__(self, key: str):
-        super().__init__()
-        self.key = key
-
-    def __str__(self):
-        return f"键值<{self.key}>不存在"
-
-
-class NoResponse(RuntimeError):
+class NoResponse(Exception):
     def __init__(self, name: Optional[str]):
         super().__init__()
         self.name = name
@@ -125,7 +77,7 @@ class NoResponse(RuntimeError):
             return f"<{self.name}>无响应"
 
 
-class StorageFull(RuntimeError):
+class StorageFull(Exception):
     def __init__(self, library_name=None):
         super().__init__()
         self.library_name = library_name
@@ -137,7 +89,7 @@ class StorageFull(RuntimeError):
             return "库已满"
 
 
-class GetInfoDownloadError(RuntimeError):
+class GetInfoDownloadError(Exception):
     def __init__(self, original_error, info: dict):
         super().__init__()
         self.original_error = original_error

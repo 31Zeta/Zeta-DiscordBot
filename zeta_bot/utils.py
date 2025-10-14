@@ -1,9 +1,14 @@
-import datetime
+from typing import *
+import sys
 import os
+import time
+import datetime
+from enum import Enum
 import json
 import re
 import requests
-from typing import Any, Union, Tuple
+import getpass
+import shutil
 
 from zeta_bot import (
     errors,
@@ -16,15 +21,17 @@ _ = lang.get_string
 printl = lang.printl
 
 
-def time() -> str:
+def ctime_str() -> str:
     """
+    当前时间：字符串形式（Current Time String）
     :return: 当前时间的字符串（格式为：年-月-日 时:分:秒）
     """
     return str(datetime.datetime.now())[:19]
 
 
-def time_datetime() -> datetime.datetime:
+def ctime_datetime() -> datetime.datetime:
     """
+    当前时间：datetime形式（Current Time datetime）
     :return: 当前时间的datetime
     """
     return datetime.datetime.now()
@@ -115,18 +122,548 @@ def legal_name(name_str: str) -> str:
     return name_str
 
 
-def input_yes_no(description: str) -> bool:
+class SGR(Enum):
+    """
+    ANSI标准转义序列的选择图形呈现（Select Graphic Rendition）的枚举类
+    \\033：ESC（Escape）控制字符
+    [：CSI（Control Sequence Introducer）
+    m：表示设置SGR模式
+    SGR的使用方法为 “\033[SGRm 信息 \033[0m”
+    其中[之后使用可以使用分号分隔开若干SGR序列
+    """
+    # 样式
+    RESET = 0  # 重置/默认样式
+    BOLD = 1  # 粗体/高亮
+    FAINT = 2  # 细体/弱化
+    ITALIC = 3  # 斜体
+    UNDERLINE = 4  # 下划线
+    BLINK = 5  # 闪烁
+    BLINK_FAST = 6  # 闪烁快速（支持较少）
+    NEGATIVE = 7  # 反显/反色
+    INVISIBLE = 8  # 隐藏
+    STRIKETHROUGH = 9  # 删除线
+    OVERLINE = 53  # 上划线
+
+    STYLE_LIST = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 53]
+    STYLE_NAME_LIST = ["RESET", "BOLD", "FAINT", "ITALIC", "UNDERLINE", "BLINK", "BLINK_FAST", "NEGATIVE", "INVISIBLE", "STRIKETHROUGH", "OVERLINE"]
+
+    # 关闭样式
+    BOLD_OFF = 21  # 关闭粗体/高亮
+    FAINT_OFF = 22  # 关闭细体/弱化
+    ITALIC_OFF = 23  # 关闭斜体
+    UNDERLINE_OFF = 24  # 关闭下划线
+    BLINK_OFF = 25  # 关闭闪烁
+    BLINK_FAST_OFF = 26  # 关闭闪烁快速（支持较少）
+    NEGATIVE_OFF = 27  # 关闭反显/反色
+    INVISIBLE_OFF = 28  # 关闭隐藏
+    STRIKETHROUGH_OFF = 29  # 关闭删除线
+    OVERLINE_OFF = 55  # 关闭上划线
+
+    STYLE_OFF_LIST = [21, 22, 23, 24, 25, 26, 27, 28, 29, 55]
+    STYLE_OFF_NAME_LIST = ["RESET_OFF", "BOLD_OFF", "FAINT_OFF", "ITALIC_OFF", "UNDERLINE_OFF", "BLINK_OFF", "BLINK_FAST_OFF", "NEGATIVE_OFF", "INVISIBLE_OFF", "STRIKETHROUGH_OFF", "OVERLINE_OFF"]
+
+    # 颜色
+    BLACK = 30  # 黑色
+    RED = 31  # 红色
+    GREEN = 32  # 绿色
+    YELLOW = 33  # 黄色
+    BLUE = 34  # 蓝色
+    MAGENTA = 35  # 品红色
+    CYAN = 36  # 青色
+    WHITE = 37  # 白色
+    BLACK_BRIGHT = 90  # 亮黑色
+    RED_BRIGHT = 91  # 亮红色
+    GREEN_BRIGHT = 92  # 亮绿色
+    YELLOW_BRIGHT = 93  # 亮黄色
+    BLUE_BRIGHT = 94  # 亮蓝色
+    MAGENTA_BRIGHT = 95  # 亮品红色
+    CYAN_BRIGHT = 96  # 亮青色
+    WHITE_BRIGHT = 97  # 亮白色
+
+    COLOR_LIST = [30, 31, 32, 33, 34, 35, 36, 37, 90, 91, 92, 93, 94, 95, 96, 97]
+    COLOR_NAME_LIST = [
+        "BLACK", "RED", "GREEN", "YELLOW", "BLUE", "MAGENTA", "CYAN", "WHITE",
+        "BLACK_BRIGHT", "RED_BRIGHT", "GREEN_BRIGHT", "YELLOW_BRIGHT", "BLUE_BRIGHT", "MAGENTA_BRIGHT", "CYAN_BRIGHT", "WHITE_BRIGHT"
+    ]
+
+    # 背景色
+    BACKGROUND_BLACK = 40  # 黑色背景
+    BACKGROUND_RED = 41  # 红色背景
+    BACKGROUND_GREEN = 42  # 绿色背景
+    BACKGROUND_YELLOW = 43  # 黄色背景
+    BACKGROUND_BLUE = 44  # 蓝色背景
+    BACKGROUND_MAGENTA = 45  # 品红色背景
+    BACKGROUND_CYAN = 46  # 青色背景
+    BACKGROUND_WHITE = 47  # 白色背景
+    BACKGROUND_BLACK_BRIGHT = 100  # 亮黑色背景
+    BACKGROUND_RED_BRIGHT = 101  # 亮红色背景
+    BACKGROUND_GREEN_BRIGHT = 102  # 亮绿色背景
+    BACKGROUND_YELLOW_BRIGHT = 103  # 亮黄色背景
+    BACKGROUND_BLUE_BRIGHT = 104  # 亮蓝色背景
+    BACKGROUND_MAGENTA_BRIGHT = 105  # 亮品红色背景
+    BACKGROUND_CYAN_BRIGHT = 106  # 亮青色背景
+    BACKGROUND_WHITE_BRIGHT = 107  # 亮白色背景
+
+    BACKGROUND_LIST = [40, 41, 42, 43, 44, 45, 46, 47, 100, 101, 102, 103, 104, 105, 106, 107]
+    BACKGROUND_NAME_LIST = [
+        "BACKGROUND_BLACK", "BACKGROUND_RED", "BACKGROUND_GREEN", "BACKGROUND_YELLOW", "BACKGROUND_BLUE", "BACKGROUND_MAGENTA", "BACKGROUND_CYAN", "BACKGROUND_WHITE",
+        "BACKGROUND_BLACK_BRIGHT", "BACKGROUND_RED_BRIGHT", "BACKGROUND_GREEN_BRIGHT", "BACKGROUND_YELLOW_BRIGHT", "BACKGROUND_BLUE_BRIGHT", "BACKGROUND_MAGENTA_BRIGHT", "BACKGROUND_CYAN_BRIGHT", "BACKGROUND_WHITE_BRIGHT"
+    ]
+
+# 使用集合推导式获得所有SGR枚举类下的代码
+SGR_CODES = {member.value for member in SGR.__members__.values() if isinstance(member.value, int)}
+
+
+def sgr_value(sgr: Union["SGR", int, str]) -> int:
+    """
+    获取SGR的值
+
+    :param sgr: 一个用于查找SGR值的对象，可以为SGR枚举类，SGR值本身，或SGR值名称
+    :return: SGR值
+    :raise ValueError: 未能找到对应的SGR值
+    :raise TypeError: 输入参数的类型不正确
+    """
+    if isinstance(sgr, SGR):
+        if not isinstance(sgr.value, int):
+            raise ValueError(f"SGR: {sgr}")
+        return sgr.value
+    elif isinstance(sgr, int):
+        if sgr in SGR_CODES:
+            return sgr
+        else:
+            raise ValueError(f"SGR: {sgr}")
+    elif isinstance(sgr, str):
+        if sgr not in SGR.__members__:
+            raise ValueError(f"SGR: {sgr}")
+        target_value = SGR[sgr].value
+        if not isinstance(target_value, int):
+            raise ValueError(f"SGR: {sgr}")
+        return target_value
+    raise TypeError(f"SGR: {sgr}, Type: {type(sgr)}")
+
+
+def sgr_format(input_str: str, sgr: Union[SGR, int, str, List[Union[SGR, int, str]], Tuple[Union[SGR, int, str]]]) -> str:
+    """
+    为字符串添加ANSI SGR转义
+
+    :param input_str: 要添加转义的字符串
+    :param sgr: 要添加的SGR效果的枚举类
+    """
+    result = f"\033["
+    if isinstance(sgr, list) or isinstance(sgr, tuple):
+        for sgr_item in sgr:
+            result += f"{str(sgr_value(sgr_item))};"
+        result = result.rstrip(";")
+    else:
+        result += str(sgr_value(sgr))
+    result += "m"
+    result += input_str
+    result += f"\033[0m"
+    return result
+
+
+class PrintType(Enum):
+    """
+    字符串输出类型枚举类
+    标准类型value为None
+    value为一个元组，第一个元素为类型名称，第二个元素为颜色SGR枚举类
+    """
+    NORMAL = None
+    CAUTION = ("注意", SGR.CYAN_BRIGHT)
+    WARNING = ("警告", SGR.YELLOW)
+    ERROR = ("错误", SGR.RED)
+    TITLE = ("标题", SGR.BLUE_BRIGHT)
+    OPTION = ("选项", SGR.BLACK_BRIGHT)
+    DEBUG = ("调试", SGR.CYAN)
+
+
+def print_format(
+    message: str,
+    extra_message: Optional[str] = None,
+    message_type: Union[PrintType, SGR, int, str, List[Union[SGR, int, str]], Tuple[Union[SGR, int, str]]] = PrintType.NORMAL,
+    gap: bool = False,
+    print_time: bool = False,
+    message_newline: bool = False,
+    indent: int = 0,
+    indent_newline: int = 4,
+    sgr_all: bool = False,
+    print_head: bool = False
+) -> str:
+    """
+    格式化字符串
+
+    :param message: 信息
+    :param extra_message: 额外信息，显示在信息之前，如果message_newline为True则额外信息显示在信息的上一行
+    :param message_type: 信息的字符串输出类型枚举类
+    :param gap: 是否与上方信息间隔一行（输出前额外输出一个换行符）
+    :param print_time: 是否打印当前时间
+    :param message_newline: message是否另起新一行
+    :param indent: 缩进空格数
+    :param indent_newline: 只在message_newline为True时生效，为message新起一行的相较于indent的“额外”缩进空格数
+    :param sgr_all: 是否对全部打印内容进行SGR转义，如果为False将跳过时间和额外信息
+    :param print_head: 是否在信息前打印message_type的名称
+    """
+    ctime = ctime_str()
+    final_msg = ""
+
+    message = str(message)
+
+    # 间隔
+    if gap:
+        final_msg += "\n"
+    # 初始缩进
+    final_msg += f"{' ' * indent}"
+    # 当前时间
+    if print_time:
+        final_msg += f"{ctime} "
+    # 额外信息
+    if extra_message is not None:
+        final_msg += f"{extra_message} "
+
+    # 信息新起一行
+    if message_newline:
+        msg_indent = indent + indent_newline
+        final_msg = final_msg.rstrip(" ")
+        final_msg += f"\n{' ' * msg_indent}"
+    else:
+        msg_indent = indent
+
+    msg = ""
+    # 类型头
+    if isinstance(message_type, PrintType) and message_type != PrintType.NORMAL and print_head:
+        msg_head, msg_sgr = message_type.value
+        msg += f"[{msg_head}] "
+    # 信息缩进
+    for char in message:
+        if char == "\n":
+            msg += f"\n{' ' * msg_indent}"
+        else:
+            msg += char
+
+    # SGR转义
+    # 全部转义的情况
+    if sgr_all:
+        final_msg += msg
+        if isinstance(message_type, PrintType):
+            if message_type != PrintType.NORMAL:
+                msg_head, msg_sgr = message_type.value
+                final_msg = sgr_format(final_msg, msg_sgr)
+        else:
+            final_msg = sgr_format(final_msg, message_type)
+    # 跳过时间和额外信息的情况
+    else:
+        if isinstance(message_type, PrintType):
+            if message_type != PrintType.NORMAL:
+                msg_head, msg_sgr = message_type.value
+                msg = sgr_format(msg, msg_sgr)
+        else:
+            msg = sgr_format(msg, message_type)
+        final_msg += msg
+
+    return final_msg
+
+
+def cp(
+    message: str,
+    extra_message: Optional[str] = None,
+    message_type: Union[PrintType, SGR, int, str, List[Union[SGR, int, str]], Tuple[Union[SGR, int, str]]] = PrintType.NORMAL,
+    gap: bool = False,
+    indent: int = 0,
+    print_time: bool = False,
+    message_newline: bool = False,
+    indent_newline: int = 4,
+    sgr_all: bool = False,
+    print_head: bool = False,
+    sleep: int = 0
+) -> None:
+    """
+    向控制台打印一条信息 (Console Print)
+
+    :param message: 信息
+    :param extra_message: 额外信息，显示在信息之前，如果message_newline为True则额外信息显示在信息的上一行
+    :param message_type: 信息的字符串输出类型枚举类
+    :param gap: 是否与上方信息间隔一行（输出前额外输出一个换行符）
+    :param indent: 缩进空格数
+    :param print_time: 是否打印当前时间
+    :param message_newline: message是否另起新一行
+    :param indent_newline: 只在message_newline为True时生效，为message新起一行的相较于indent的“额外”缩进空格数
+    :param sgr_all: 是否对全部打印内容进行SGR转义，如果为False将跳过时间和额外信息
+    :param print_head: 是否在信息前打印message_type的名称
+    :param sleep: 打印完信息后程序暂停时长（同步），单位为秒
+    """
+    final_msg = print_format(
+        message,
+        extra_message=extra_message,
+        message_type=message_type,
+        gap=gap,
+        indent=indent,
+        print_time=print_time,
+        message_newline=message_newline,
+        indent_newline=indent_newline,
+        sgr_all=sgr_all,
+        print_head=print_head,
+    )
+    # 打印输出
+    print(final_msg)
+    # 暂停
+    if sleep != 0:
+        time.sleep(sleep)
+
+
+def ci(
+    prompt: str,
+    prompt_type: Union[PrintType, SGR, int, str, List[Union[SGR, int, str]], Tuple[Union[SGR, int, str]]] = PrintType.NORMAL,
+    gap: bool = False,
+    indent: int = 0,
+    print_head: bool = True,
+    prompt_end: str = "：",
+    input_type: Type[Union[int, float, str]] = Type[str],
+    password: bool = False,
+    verify_password: bool = False,
+    verify_prompt: str = "请再输入一次",
+) -> Optional[Union[str, int, float]]:
+    """
+    从标准输入读取字符串 (Console Input)
+    按下Ctrl+C可以取消操作
+
+    :param prompt: 输入提示
+    :param prompt_type: 字符串输出类型枚举类
+    :param gap: 是否与上方信息间隔一行（输出前额外输出一个换行符）
+    :param indent: 缩进空格数
+    :param print_head: 是否打印信息类型头
+    :param prompt_end: 输入提示的结尾，用于提示用户在这里输入
+    :param input_type: 要求用户输入的类型，如果为str则直接输出，如果为int或者float则会尝试类型转换，如果无法转换则会要求重新输入
+    :param password: 是否是密码
+    :param verify_password: 是否要再次输入密码并核验两次密码是否一致
+    :param verify_prompt: 再次输入密码时的提示
+    :return: 读取的字符串
+    :raise UserCancelledError: 当用户按下Ctrl+C取消输入时引发
+    """
+    final_prompt = ""
+    final_verify_prompt = ""
+
+    # 间隔
+    if gap:
+        final_prompt += "\n"
+    # 初始缩进
+    final_prompt += f"{' ' * indent}"
+    if verify_password:
+        final_verify_prompt += f"{' ' * indent}"
+    # 类型头
+    if isinstance(prompt_type, PrintType) and prompt_type != PrintType.NORMAL and print_head:
+        prompt_head, prompt_sgr = prompt_type.value
+        final_prompt += f"[{prompt_head}] "
+    # 缩进
+    for char in prompt:
+        if char == "\n":
+            final_prompt += f"\n{' ' * indent}"
+        else:
+            final_prompt += char
+    if verify_password:
+        for char in verify_prompt:
+            if char == "\n":
+                final_verify_prompt += f"\n{' ' * indent}"
+            else:
+                final_verify_prompt += char
+    # 添加输入提示结尾
+    final_prompt += prompt_end
+    final_verify_prompt += prompt_end
+    # SGR转义
+    if isinstance(prompt_type, PrintType):
+        if prompt_type != PrintType.NORMAL:
+            prompt_head, prompt_sgr = prompt_type.value
+            final_prompt = sgr_format(final_prompt, prompt_sgr)
+            if verify_password:
+                final_verify_prompt = sgr_format(final_verify_prompt, prompt_sgr)
+    else:
+        final_prompt = sgr_format(final_prompt, prompt_type)
+        if verify_password:
+            final_verify_prompt = sgr_format(final_verify_prompt, prompt_type)
+
     while True:
-        input_line = input(description)
-        input_option = input_line.lower()
-        if input_option == "true" or input_option == "yes" or \
-                input_option == "y":
+        try:
+            # 正常输入
+            if not password:
+                input_line = input(final_prompt)
+            # 密码类型
+            else:
+                while True:
+                    input_line = getpass.getpass(final_prompt)
+                    if verify_password:
+                        input_verify = getpass.getpass(final_verify_prompt)
+                        if input_line != input_verify:
+                            cp("两次输入不一致，请重试", message_type=PrintType.ERROR, sleep=2)
+                        else:
+                            break
+                    else:
+                        break
+
+            # 类型检测
+            if input_type is int:
+                try:
+                    input_line = int(input_line)
+                except ValueError:
+                    cp("请输入一个整数", message_type=PrintType.ERROR, sleep=2)
+                    continue
+            elif input_type is float:
+                try:
+                    input_line = float(input_line)
+                except ValueError:
+                    cp("请输入一个数", message_type=PrintType.ERROR, sleep=2)
+                    continue
+
+        # 用户取消
+        except KeyboardInterrupt:
+            raise errors.UserCancelled()
+        except EOFError:
+            raise errors.UserCancelled()
+        # 返回结果
+        else:
+            return input_line
+
+    return None
+
+
+def ci_bool(
+    prompt: str,
+    prompt_type: Union[PrintType, SGR, int, str, List[Union[SGR, int, str]], Tuple[Union[SGR, int, str]]] = PrintType.NORMAL,
+    gap: bool = False,
+    indent: int = 0,
+    print_head: bool = True,
+    prompt_end: str = ": ",
+) -> bool:
+    """
+    让用户输入Yes或者No
+
+    :param prompt: 输入提示
+    :param prompt_type: 字符串输出类型枚举类
+    :param gap: 是否与上方信息间隔一行（输出前额外输出一个换行符）
+    :param indent: 缩进空格数
+    :param print_head: 是否打印信息类型头
+    :param prompt_end: 输入提示的结尾，用于提示用户在这里输入
+    :return: 输入Yes返回True，输入No返回False
+    :raise UserCancelledError: 当用户按下Ctrl+C取消输入时引发
+    """
+    while True:
+        input_line = ci(prompt, prompt_type=prompt_type, gap=gap, indent=indent, print_head=print_head, prompt_end=prompt_end)
+        input_line = input_line.lower()
+        if input_line == "yes" or input_line == "y" or input_line == "true":
             return True
-        elif input_option == "false" or input_option == "no" or \
-                input_option == "n":
+        if input_line == "no" or input_line == "n" or input_line == "false":
             return False
         else:
-            print("请输入yes或者no")
+            cp("请输入yes或者no", message_type=PrintType.ERROR, sleep=2)
+
+
+def ci_select(
+    prompt: str,
+    options: Set[str],
+    ignore_case: bool = True,
+    prompt_type: Union[PrintType, SGR, int, str, List[Union[SGR, int, str]], Tuple[Union[SGR, int, str]]] = PrintType.NORMAL,
+    gap: bool = False,
+    indent: int = 0,
+    print_head: bool = True,
+    prompt_end: str = ": ",
+) -> str:
+    """
+    让用户输入一个选项
+    为确保选型唯一，选项列表为一个只包含字符串的集合
+
+    :param prompt: 输入提示
+    :param options: 可以选择的选项
+    :param ignore_case: 是否忽略选项的大小写
+    :param prompt_type: 字符串输出类型枚举类
+    :param gap: 是否与上方信息间隔一行（输出前额外输出一个换行符）
+    :param indent: 缩进空格数
+    :param print_head: 是否打印信息类型头
+    :param prompt_end: 输入提示的结尾，用于提示用户在这里输入
+    :return: 用户选择的选项（字符串）
+    :raise UserCancelledError: 当用户按下Ctrl+C取消输入时引发
+    """
+    # 格式化选项
+    options_formated = set()
+    for item in options:
+        item = str(item)
+        if ignore_case:
+            item = item.lower()
+        options_formated.add(item)
+    while True:
+        input_line = ci(prompt, prompt_type=prompt_type, gap=gap, indent=indent, print_head=print_head, prompt_end=prompt_end)
+        if ignore_case:
+            input_line = input_line.lower()
+        if input_line not in options_formated:
+            cp(f"不存在选项：{input_line}", message_type=PrintType.ERROR, sleep=2)
+        else:
+            return input_line
+
+
+def cmenu(
+    title: str,
+    message: str,
+    options: List[Tuple[str, str]],
+    none_option: str = "0",
+    none_option_prompt: str = "返回",
+    input_prompt: str = "请输入选项",
+    ignore_case: bool = True,
+    gap: bool = False,
+    title_indent: int = 0,
+    message_indent: int = 0,
+    option_indent: int = 2,
+    input_prompt_end: str = ": ",
+) -> Optional[str]:
+    """
+    向控制台打印菜单并请求输入选项（Console Menu）
+
+    :param title: 菜单的标题
+    :param message: 菜单的信息
+    :param options: 菜单的选项，一个列表，其中每个元素为一个元组，元组第一个元素为选项，第二个元素为选项描述
+    :param none_option: 返回None的选项，通常作为返回或者退出用的选项
+    :param none_option_prompt: 返回None的选项的提示
+    :param input_prompt: 输入时的提示
+    :param ignore_case: 是否忽略选项的大小写
+    :param gap: 是否与上方信息间隔一行（输出前额外输出一个换行符）
+    :param title_indent: 标题缩进空格数
+    :param message_indent: 信息缩进空格数
+    :param option_indent: 选项缩进空格数
+    :param input_prompt_end: 输入提示的结尾，用于提示用户在这里输入
+    :return: 用户选择的选项（字符串）
+    :raise UserCancelledError: 当用户按下Ctrl+C取消输入时引发
+    """
+    option_set = {option[0] for option in options}
+    if none_option in option_set:
+        raise ValueError(f"None选项{none_option}与Options中的选项重复，请单独设置None选项")
+
+    menu_str = ""
+    # 间隔
+    if gap:
+        menu_str += "\n"
+    # 标题缩进
+    menu_str += f"{' ' * title_indent}"
+    # 标题
+    menu_str += sgr_format(title, PrintType.TITLE.value[1]) + "\n"
+    # 菜单信息
+    menu_str += f"{' ' * message_indent}"
+    for char in message:
+        if char == "\n":
+            menu_str += f"\n{' ' * message_indent}"
+        else:
+            menu_str += char
+    menu_str += "\n"
+    # 选项列表
+    for option in options:
+        option_str = sgr_format(f"[{option[0]}]", PrintType.OPTION.value[1])
+        option_description = option[1]
+        menu_str += f"{' ' * option_indent}{option_str} {option_description}\n"
+    # None选项
+    none_option_str = sgr_format(f"[{none_option}]", PrintType.OPTION.value[1])
+    menu_str += f"{' ' * option_indent}{none_option_str} {none_option_prompt}\n"
+    option_set.add(none_option)
+
+    print(menu_str)
+    result = ci_select(input_prompt, option_set, ignore_case=ignore_case, prompt_end=input_prompt_end)
+    if result == none_option:
+        return None
+    return result
 
 
 def time_split(time_str: str) -> list:
@@ -213,21 +750,23 @@ def convert_str_to_duration(input_str: str) -> int:
             return int(num_list[0]) * 60 + int(num_list[1])
         elif len(num_list) == 3:
             return int(num_list[0]) * 3600 + int(num_list[1]) * 60 + int(num_list[2])
+        else:
+            return int(num_list[0])
     except ValueError:
         return 0
 
 
 def convert_byte(byte: int) -> Tuple[float, str]:
-    kb = byte / 1024
-    mb = kb / 1024
-    gb = mb / 1024
+    kib = byte / 1024
+    mib = kib / 1024
+    gib = mib / 1024
 
-    if gb >= 1.0:
-        return round(gb, 2), "GB"
-    elif mb >= 1.0:
-        return round(mb, 2), "MB"
-    elif kb >= 1.0:
-        return round(kb, 2), "KB"
+    if gib >= 1.0:
+        return round(gib, 2), "GiB"
+    elif mib >= 1.0:
+        return round(mib, 2), "MiB"
+    elif kib >= 1.0:
+        return round(kib, 2), "KiB"
     else:
         return byte, "字节"
 
@@ -471,7 +1010,7 @@ class DoubleLinkedListDict:
             result = self._node_dict[key].item
             return result
         else:
-            raise errors.KeyNotFound(key)
+            raise KeyError(key)
 
     def index_get(self, index: int) -> Any:
         """
@@ -498,7 +1037,7 @@ class DoubleLinkedListDict:
             self.key_remove(key)
             return result
         else:
-            raise errors.KeyNotFound(key)
+            raise KeyError(key)
 
     def index_pop(self, index: int) -> Any:
         """
@@ -600,7 +1139,7 @@ class DoubleLinkedListDict:
             self._remove_node_dict(key)
             self._length -= 1
         else:
-            raise errors.KeyNotFound(key)
+            raise KeyError(key)
 
     def index_remove(self, index: int) -> None:
         """
@@ -642,9 +1181,9 @@ class DoubleLinkedListDict:
         :param key_2: 需要移除的对象2对应的键值
         """
         if key_1 not in self._node_dict:
-            raise errors.KeyNotFound(key_1)
+            raise KeyError(key_1)
         if key_2 not in self._node_dict:
-            raise errors.KeyNotFound(key_2)
+            raise KeyError(key_2)
 
         node_1 = self._node_dict[key_1]
         node_2 = self._node_dict[key_2]
@@ -674,6 +1213,8 @@ class DoubleLinkedListDict:
     def _key_get_node(self, key) -> DoubleLinkedNode:
         if key in self._node_dict:
             return self._node_dict[key]
+        else:
+            raise KeyError(key)
 
     def _index_get_node(self, index: int) -> DoubleLinkedNode:
         if index < 0 or index >= self._length:
@@ -727,7 +1268,7 @@ class DoubleLinkedListDict:
 
     def _key_insert_node_before(self, key, new_node: DoubleLinkedNode, force=False):
         if key not in self._node_dict:
-            raise errors.KeyNotFound(key)
+            raise KeyError(key)
 
         if new_node.key in self._node_dict:
             if force:
@@ -752,7 +1293,7 @@ class DoubleLinkedListDict:
 
     def _key_insert_node_after(self, key, new_node: DoubleLinkedNode, force=False):
         if key not in self._node_dict:
-            raise errors.KeyNotFound(key)
+            raise KeyError(key)
 
         if new_node.key in self._node_dict:
             if force:

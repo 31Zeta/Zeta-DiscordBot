@@ -17,6 +17,7 @@ lang = language.Lang()
 _ = lang.get_string
 printl = lang.printl
 
+
 async def spinner():
     """
     一个旋转加载图标
@@ -46,13 +47,13 @@ class Console:
         self._spinner_task = None
 
         with open(self._error_log_path, "a", encoding="UTF-8") as log:
-            log.write(f"文件生成时间：{utils.time()}\n")
+            log.write(f"文件生成时间：{utils.ctime_str()}\n")
             if header != "":
                 log.write(f"{header}\n")
 
         if self._running_log:
             with open(self._log_path, "a", encoding="UTF-8") as log:
-                log.write(f"文件生成时间：{utils.time()}\n")
+                log.write(f"文件生成时间：{utils.ctime_str()}\n")
                 if header != "":
                     log.write(f"{header}\n")
 
@@ -135,24 +136,24 @@ class Console:
         记录运行日志
         """
         if self._running_log:
-            await self.write_log(self._log_path, utils.time(), content, level)
+            await self.write_log(self._log_path, utils.ctime_str(), content, level)
 
-    async def rp(self, content: str, level="", is_error=False):
+    async def rp(self, content: str, level="", message_type: utils.PrintType = utils.PrintType.NORMAL, print_head: bool = False) -> None:
         """
         Record and print
         记录运行日志，并打印到控制台
         """
-        current_time = utils.time()
-        await self.print_log(current_time, content, level, is_error)
+        current_time = utils.ctime_str()
+        await self.print_log(content, level, message_type=message_type, print_head=print_head)
         if self._running_log:
             await self.write_log(self._log_path, current_time, content, level)
 
-    async def debug(self, content: str):
+    async def debug(self, content: str) -> None:
         """
         记录调试信息，并打印到控制台
         """
-        current_time = utils.time()
-        await self.print_log(current_time, content, level="[DEBUG]", is_debug=True)
+        current_time = utils.ctime_str()
+        await self.print_log(content, level="[DEBUG]", message_type=utils.PrintType.DEBUG, print_head=True)
         if self._running_log:
             await self.debug_log(self._debug_log_path, current_time, content)
 
@@ -203,29 +204,47 @@ class Console:
             await self.print("\n程序退出")
             sys.exit(0)
 
-    async def print_log(self, time: str, content: str, level="", is_error=False, is_debug=False) -> None:
+    async def print_log(
+        self,
+        content: str,
+        level="",
+        message_type: utils.PrintType = utils.PrintType.NORMAL,
+        gap: bool = True,
+        print_time: bool = True,
+        message_newline: bool = True,
+        indent: int = 0,
+        indent_newline: int = 4,
+        sgr_all: bool = False,
+        print_head: bool = False
+    ) -> None:
         """
         在控制台打印一条包含位置的信息，并记录在运行日志中
 
-        :param time: 要记录的时间
         :param content: 要写入的信息
         :param level: 位置信息
-        :param is_error: 此条日志是否是一个报错信息
-        :param is_debug: 此条日志是否是一个调试信息
-        :return:
+        :param message_type: 信息的字符串输出类型枚举类
+        :param gap: 是否与上方信息间隔一行（输出前额外输出一个换行符）
+        :param print_time: 是否打印当前时间
+        :param message_newline: message是否另起新一行
+        :param indent: 缩进空格数
+        :param indent_newline: 只在message_newline为True时生效，为message新起一行的相较于indent的“额外”缩进空格数
+        :param sgr_all: 是否对全部打印内容进行SGR转义，如果为False将跳过时间和额外信息
+        :param print_head: 是否在信息前打印message_type的名称
         """
-        formatted_content = ""
-        for character in content:
-            formatted_content += character
-            if character == "\n":
-                formatted_content += "    "
-
-        if is_error:
-            await self.print(f"{time} {level}\n\033[0;31m    {formatted_content}\033[0m\n")
-        elif is_debug:
-            await self.print(f"{time} {level}\n\033[0;34m    {formatted_content}\033[0m\n")
-        else:
-            await self.print(f"{time} {level}\n    {formatted_content}\n")
+        await self.print(
+            utils.print_format(
+                content,
+                extra_message=level,
+                message_type=message_type,
+                gap=gap,
+                print_time=print_time,
+                message_newline=message_newline,
+                indent=indent,
+                indent_newline=indent_newline,
+                sgr_all=sgr_all,
+                print_head=print_head
+            )
+        )
 
     async def write_log(self, path: str, time: str, content: str, level="") -> None:
         """
@@ -258,7 +277,7 @@ class Console:
         """
         发生程序错误时调用
         """
-        current_time = utils.time()
+        current_time = utils.ctime_str()
         exception_formatted = traceback.format_exception(
             type(exception), exception, exception.__traceback__
         )
@@ -273,8 +292,9 @@ class Console:
 
         # 控制台输出错误信息
         await self.print_log(
-            current_time,
-            f"\033[0;31m发生错误：{exception}\n    详情请查看错误日志：根目录{self._error_log_path[1:]}\033[0m\n"
+            f"{exception}\n详情请查看错误日志：根目录{self._error_log_path[1:]}",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         # 系统活动日志写入错误信息
         await self.write_log(
@@ -289,7 +309,7 @@ class Console:
         发生程序指令错误时调用
         """
 
-        current_time = utils.time()
+        current_time = utils.ctime_str()
         exception_formatted = traceback.format_exception(
             type(exception), exception, exception.__traceback__
         )
@@ -304,9 +324,10 @@ class Console:
 
         # 控制台输出错误信息
         await self.print_log(
-            current_time,
-            f"\033[0;31m发生错误：{exception}\n    详情请查看错误日志：根目录{self._error_log_path[1:]}\033[0m",
-            f"{ctx.guild}"
+            f"{exception}\n详情请查看错误日志：根目录{self._error_log_path[1:]}",
+            f"{ctx.guild}",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         # 系统活动日志写入错误信息
         await self.write_log(

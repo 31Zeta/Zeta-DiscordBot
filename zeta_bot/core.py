@@ -28,15 +28,15 @@ from zeta_bot import (
     console
 )
 
-startup_time = utils.time()
+startup_time = utils.ctime_str()
 
-version = "0.12.0"
+version = "0.13.0"
 author = "炤铭Zeta (31Zeta)"
 python_path = sys.executable
 pycord_version = discord.__version__
 bilibili_api_version = BILIBILI_API_VERSION
 yt_dlp_version = yt_dlp_version.__version__
-update_time = "2024.12.12"
+update_time = "2025.10.07"
 
 supported_search_sites = ["哔哩哔哩", "YouTube"]
 
@@ -142,7 +142,7 @@ def start(mode: str) -> None:
         setting.reset_setting()
         run_bot()
     else:
-        raise errors.BootModeNotFound
+        raise ValueError("未找到指定启动模式")
 
 
 if __name__ == "__main__":
@@ -197,7 +197,7 @@ async def on_ready():
     当机器人启动完成时自动调用
     """
 
-    current_time = utils.time()
+    current_time = utils.ctime_str()
     await console.rp(f"登录完成：以{bot.user}的身份登录，登录时间：{current_time}", "[系统]")
 
     # 启动定时任务框架
@@ -245,9 +245,10 @@ async def on_ready():
     # FFmpeg检测
     if not os.path.exists(ffmpeg_path):
         await console.rp(
-            "警告：未发现FFmpeg程序，将无法使用音频播放相关功能，请下载FFmpeg并将其放在程序根目录内的bin文件夹内",
+            "未发现FFmpeg程序，将无法使用音频播放相关功能，请下载FFmpeg并将其放在程序根目录内的bin文件夹内",
             "[系统]",
-            is_error=True
+            message_type=utils.PrintType.WARNING,
+            print_head=True
         )
 
     await console.rp(f"启动完成", "[系统]")
@@ -267,7 +268,7 @@ async def on_message(message: discord.Message):
         return
 
     if bot.user.mentioned_in(message):
-        respond_message = await message.channel.send(f"{message.author.mention} 你好！如果需要我可以使用 /help 查看帮助菜单")
+        respond_message = await message.channel.send(f"{message.author.mention} 你好！如果需要我可以使用 /help 或 /帮助 查看帮助菜单")
         # if setting.value("chat_ai") and chat_ai is not None:
         #     loading_message = await chat_ai.loading_message()
         #     respond_message = await message.channel.send(loading_message)
@@ -300,7 +301,7 @@ async def on_message(message: discord.Message):
 @bot.event
 async def on_member_join(new_member):
     await new_member.send(
-        f"你好，{new_member.mention}！我是{bot_name}，可以在语言频道内播放音乐！使用 /帮助 指令来看看我的用法吧！"
+        f"你好，{new_member.mention}！我是{bot_name}，可以在语言频道内播放音乐！使用 /help 或 /帮助 指令来看看我的用法吧！"
     )
 
 
@@ -308,7 +309,7 @@ async def auto_reboot():
     """
     用于执行定时重启，如果<auto_reboot_announcement>为True则广播重启消息
     """
-    current_time = utils.time()
+    current_time = utils.ctime_str()
     await console.rp(f"执行自动定时重启", "[系统]")
     await guild_lib.save_all()
     # user_library.save()
@@ -959,7 +960,7 @@ async def play_callback(ctx: discord.ApplicationContext, link,
                 link = utils.get_redirect_url(link)
             except requests.exceptions.InvalidSchema:
                 await eos(ctx, response, "链接异常")
-                await console.rp(f"链接重定向失败", ctx.guild, is_error=True)
+                await console.rp(f"链接重定向失败", ctx.guild, message_type=utils.PrintType.ERROR, print_head=True)
                 return
 
             await console.rp(f"获取的重定向链接为 {link}", ctx.guild)
@@ -978,7 +979,7 @@ async def play_callback(ctx: discord.ApplicationContext, link,
                 link = utils.get_redirect_url(link)
             except requests.exceptions.InvalidSchema:
                 await eos(ctx, response, "链接异常")
-                await console.rp(f"链接重定向失败", ctx.guild, is_error=True)
+                await console.rp(f"链接重定向失败", ctx.guild, message_type=utils.PrintType.ERROR, print_head=True)
                 return
 
             await console.rp(f"获取的重定向链接为 {link}", ctx.guild)
@@ -997,7 +998,7 @@ async def play_callback(ctx: discord.ApplicationContext, link,
                 link = utils.get_redirect_url(link)
             except requests.exceptions.InvalidSchema:
                 await eos(ctx, response, "链接异常")
-                await console.rp(f"链接重定向失败", ctx.guild, is_error=True)
+                await console.rp(f"链接重定向失败", ctx.guild, message_type=utils.PrintType.ERROR, print_head=True)
                 return
 
             await console.rp(f"获取的重定向链接为 {link}", ctx.guild)
@@ -1099,7 +1100,7 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
         bvid = utils.get_bvid_from_url(link)
         if bvid is None:
             await eos(ctx, response, "无效的Bilibili链接")
-            await console.rp(f"{link} 为无效的链接", ctx.guild, is_error=True)
+            await console.rp(f"{link} 为无效的链接", ctx.guild, message_type=utils.PrintType.ERROR, print_head=True)
             return
     else:
         bvid = link
@@ -1146,7 +1147,8 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
         await console.rp(
             "触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，该视频内容可能已失效或存在区域版权限制",
             ctx.guild,
-            is_error=True
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         return
     except bilibili_api.ArgsException:
@@ -1154,7 +1156,8 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
         await console.rp(
             "触发异常bilibili_api.ArgsException，参数异常，可能为bvid错误",
             ctx.guild,
-            is_error=True
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         return
     except httpx.ConnectTimeout:
@@ -1162,7 +1165,8 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
         await console.rp(
             "触发异常httpx.ConnectTimeout，网络主机连接超时",
             ctx.guild,
-            is_error=True
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         return
     except httpx.RemoteProtocolError:
@@ -1170,7 +1174,8 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link,
         await console.rp(
             "触发异常httpx.RemoteProtocolError，服务器协议错误",
             ctx.guild,
-            is_error=True
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         return
 
@@ -1275,7 +1280,8 @@ async def play_youtube(ctx: discord.ApplicationContext, link, response=None) -> 
         await console.rp(
             "触发异常yt_dlp.utils.DownloadError，YouTube下载失败，该视频可能已失效或存在区域版权限制",
             ctx.guild,
-            is_error=True
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         return
     except yt_dlp.utils.ExtractorError:
@@ -1283,7 +1289,8 @@ async def play_youtube(ctx: discord.ApplicationContext, link, response=None) -> 
         await console.rp(
             "触发异常yt_dlp.utils.ExtractorError，视频不可用",
             ctx.guild,
-            is_error=True
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         return
     except yt_dlp.utils.UnavailableVideoError:
@@ -1291,7 +1298,8 @@ async def play_youtube(ctx: discord.ApplicationContext, link, response=None) -> 
         await console.rp(
             "触发异常yt_dlp.utils.UnavailableVideoError，视频不可用",
             ctx.guild,
-            is_error=True
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         return
     except discord.HTTPException:
@@ -1299,7 +1307,8 @@ async def play_youtube(ctx: discord.ApplicationContext, link, response=None) -> 
         await console.rp(
             "触发异常discord.HTTPException",
             ctx.guild,
-            is_error=True
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         return
 
@@ -1393,7 +1402,8 @@ async def play_netease(ctx: discord.ApplicationContext, link, response=None) -> 
         await console.rp(
             "触发异常yt_dlp.utils.DownloadError，网易云下载失败，该音乐可能已失效或存在区域版权限制",
             ctx.guild,
-            is_error=True
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         return
     except yt_dlp.utils.ExtractorError:
@@ -1401,7 +1411,8 @@ async def play_netease(ctx: discord.ApplicationContext, link, response=None) -> 
         await console.rp(
             "触发异常yt_dlp.utils.ExtractorError，音频不可用",
             ctx.guild,
-            is_error=True
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         return
     except yt_dlp.utils.UnavailableVideoError:
@@ -1409,7 +1420,8 @@ async def play_netease(ctx: discord.ApplicationContext, link, response=None) -> 
         await console.rp(
             "触发异常yt_dlp.utils.UnavailableVideoError，音频不可用",
             ctx.guild,
-            is_error=True
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         return
     except discord.HTTPException:
@@ -1417,7 +1429,8 @@ async def play_netease(ctx: discord.ApplicationContext, link, response=None) -> 
         await console.rp(
             "触发异常discord.HTTPException",
             ctx.guild,
-            is_error=True
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
         return
 
@@ -1554,6 +1567,7 @@ async def resume_callback(ctx: discord.ApplicationContext, command_call: bool = 
     await current_guild.refresh_list_view()
 
 
+# TODO 显示添加人
 async def list_callback(ctx: discord.ApplicationContext):
     """
     将当前服务器播放列表发送到服务器文字频道中
@@ -1921,7 +1935,7 @@ class PlaylistMenu(View):
         self.playlist = self.guild.get_playlist()
 
         self.page_num = 0
-        self.occur_time = utils.time()
+        self.occur_time = utils.ctime_str()
 
         self.playlist_pages = None
         self.voice_client = None
@@ -2212,7 +2226,7 @@ class EpisodeSelectView(View):
         self.page_num = 0
         self.result = []
         self.dash_finish = True
-        self.occur_time = utils.time()
+        self.occur_time = utils.ctime_str()
         self.voice_client = self.ctx.guild.voice_client
         self.current_playlist = guild_lib.get_guild(self.ctx).get_playlist()
 
@@ -2569,7 +2583,8 @@ class EpisodeSelectView(View):
                     await console.rp(
                         f"触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，{num_p}p可能已失效或存在区域版权限制",
                         self.ctx.guild,
-                        is_error=True
+                        message_type=utils.PrintType.ERROR,
+                        print_head=True
                     )
                     continue
                 except bilibili_api.ArgsException:
@@ -2577,7 +2592,8 @@ class EpisodeSelectView(View):
                     await console.rp(
                         f"触发异常bilibili_api.ArgsException，{num_p}p获取失败，参数异常，可能为bvid错误",
                         self.ctx.guild,
-                        is_error=True
+                        message_type=utils.PrintType.ERROR,
+                        print_head=True
                     )
                     continue
                 except httpx.ConnectTimeout:
@@ -2585,7 +2601,8 @@ class EpisodeSelectView(View):
                     await console.rp(
                         f"触发异常httpx.ConnectTimeout，{num_p}p获取失败，网络主机连接超时",
                         self.ctx.guild,
-                        is_error=True
+                        message_type=utils.PrintType.ERROR,
+                        print_head=True
                     )
                     continue
                 except httpx.RemoteProtocolError:
@@ -2593,7 +2610,8 @@ class EpisodeSelectView(View):
                     await console.rp(
                         f"触发异常httpx.RemoteProtocolError，{num_p}p获取失败，服务器协议错误",
                         self.ctx.guild,
-                        is_error=True
+                        message_type=utils.PrintType.ERROR,
+                        print_head=True
                     )
                     continue
                 else:
@@ -2632,7 +2650,8 @@ class EpisodeSelectView(View):
                     await console.rp(
                         f"触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，{title}可能已失效或存在区域版权限制",
                         self.ctx.guild,
-                        is_error=True
+                        message_type=utils.PrintType.ERROR,
+                        print_head=True
                     )
                     ask_msg = await self.ctx.send(f"[{num}] **{title}** 获取失败，是否要重新进行搜索？", view=view)
                     await view.set_original_msg(ask_msg)
@@ -2642,7 +2661,8 @@ class EpisodeSelectView(View):
                     await console.rp(
                         f"触发异常bilibili_api.ArgsException，{title}获取失败，参数异常，可能为bvid错误",
                         self.ctx.guild,
-                        is_error=True
+                        message_type=utils.PrintType.ERROR,
+                        print_head=True
                     )
                     continue
                 except httpx.ConnectTimeout:
@@ -2650,7 +2670,8 @@ class EpisodeSelectView(View):
                     await console.rp(
                         f"触发异常httpx.ConnectTimeout，{title}获取失败，网络主机连接超时",
                         self.ctx.guild,
-                        is_error=True
+                        message_type=utils.PrintType.ERROR,
+                        print_head=True
                     )
                     continue
                 except httpx.RemoteProtocolError:
@@ -2658,7 +2679,8 @@ class EpisodeSelectView(View):
                     await console.rp(
                         f"触发异常httpx.RemoteProtocolError，{title}获取失败，服务器协议错误",
                         self.ctx.guild,
-                        is_error=True
+                        message_type=utils.PrintType.ERROR,
+                        print_head=True
                     )
                     continue
                 else:
@@ -2702,7 +2724,8 @@ class EpisodeSelectView(View):
 
                     # YouTube列表下载异常处理
                     except errors.StorageFull:
-                        await console.rp("库已满，播放列表添加失败", self.ctx.guild, is_error=True)
+                        await console.rp("库已满，播放列表添加失败", self.ctx.guild, message_type=utils.PrintType.ERROR,
+                                         print_head=True)
                         await ec(loading_msg, "**机器人当前处理音频过多，无法完成播放列表添加**")
                         return  # 终止
                     except yt_dlp.utils.DownloadError:
@@ -2710,7 +2733,8 @@ class EpisodeSelectView(View):
                         loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 下载失败，资源可能已失效或存在区域版权限制")
                         await console.rp(
                             f"触发异常yt_dlp.utils.DownloadError，YouTube下载失败，{title}可能已失效或存在区域版权限制",
-                            self.ctx.guild, is_error=True
+                            self.ctx.guild, message_type=utils.PrintType.ERROR,
+                            print_head=True
                         )
                         ask_msg = await self.ctx.send(f"[{num}] **{title}** 获取失败，是否要重新进行搜索？", view=view)
                         await view.set_original_msg(ask_msg)
@@ -2720,7 +2744,8 @@ class EpisodeSelectView(View):
                         await console.rp(
                             f"触发异常yt_dlp.utils.ExtractorError，{title}视频不可用",
                             self.ctx.guild,
-                            is_error=True
+                            message_type=utils.PrintType.ERROR,
+                            print_head=True
                         )
                         continue
                     except yt_dlp.utils.UnavailableVideoError:
@@ -2728,12 +2753,13 @@ class EpisodeSelectView(View):
                         await console.rp(
                             f"触发异常yt_dlp.utils.UnavailableVideoError，{title}视频不可用",
                             self.ctx.guild,
-                            is_error=True
+                            message_type=utils.PrintType.ERROR,
+                            print_head=True
                         )
                         continue
                     except discord.HTTPException:
                         loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 视频获取失败，请稍后再试")
-                        await console.rp(f"触发异常discord.HTTPException", self.ctx.guild, is_error=True)
+                        await console.rp(f"触发异常discord.HTTPException", self.ctx.guild, message_type=utils.PrintType.ERROR, print_head=True)
                         continue
                     else:
                         success_num += 1
@@ -2777,7 +2803,7 @@ class EpisodeSelectView(View):
 
                 # 网易云列表下载异常处理
                 except errors.StorageFull:
-                    await console.rp("库已满，播放列表添加失败", self.ctx.guild, is_error=True)
+                    await console.rp("库已满，播放列表添加失败", self.ctx.guild, message_type=utils.PrintType.ERROR, print_head=True)
                     await ec(loading_msg, "**机器人当前处理音频过多，无法完成播放列表添加**")
                     return  # 终止
                 except yt_dlp.utils.DownloadError:
@@ -2785,7 +2811,9 @@ class EpisodeSelectView(View):
                     loading_msg = await ec(loading_msg, f"\\-  [{num}] **错误：{title}** 下载失败，资源可能已失效或存在区域版权限制")
                     await console.rp(
                         f"触发异常yt_dlp.utils.DownloadError，网易云下载失败，{title}资源可能已失效或存在区域版权限制",
-                        self.ctx.guild, is_error=True
+                        self.ctx.guild,
+                        message_type=utils.PrintType.ERROR,
+                        print_head=True
                     )
                     ask_msg = await self.ctx.send(f"[{num}] **{title}** 获取失败，是否要重新进行搜索？", view=view)
                     await view.set_original_msg(ask_msg)
@@ -2795,7 +2823,8 @@ class EpisodeSelectView(View):
                     await console.rp(
                         f"触发异常yt_dlp.utils.ExtractorError，{title}音频不可用",
                         self.ctx.guild,
-                        is_error=True
+                        message_type=utils.PrintType.ERROR,
+                        print_head=True
                     )
                     continue
                 except yt_dlp.utils.UnavailableVideoError:
@@ -2803,7 +2832,8 @@ class EpisodeSelectView(View):
                     await console.rp(
                         f"触发异常yt_dlp.utils.UnavailableVideoError，{title}音频不可用",
                         self.ctx.guild,
-                        is_error=True
+                        message_type=utils.PrintType.ERROR,
+                        print_head=True
                     )
                     continue
                 except discord.HTTPException:
@@ -2811,7 +2841,8 @@ class EpisodeSelectView(View):
                     await console.rp(
                         f"触发异常discord.HTTPException",
                         self.ctx.guild,
-                        is_error=True
+                        message_type=utils.PrintType.ERROR,
+                        print_head=True
                     )
                     continue
                 else:
@@ -2846,7 +2877,7 @@ class CheckCollectionView(View):
         self.source = source
         self.response = response
         self.info_dict = info_dict
-        self.occur_time = utils.time()
+        self.occur_time = utils.ctime_str()
         self.finish = False
         self.original_msg = None
 
@@ -2924,7 +2955,7 @@ class SearchedAudioSelectionView(View):
         super().__init__(timeout=timeout)
         self.ctx = ctx
         self.response = response
-        self.occur_time = utils.time()
+        self.occur_time = utils.ctime_str()
         self.finish = False
 
         self.show_address = False
@@ -3047,7 +3078,7 @@ class AskForSearchingView(View):
         super().__init__(timeout=timeout)
         self.ctx = ctx
         self.response = response
-        self.occur_time = utils.time()
+        self.occur_time = utils.ctime_str()
         self.finish = False
         self.original_msg = None
         self.query = query

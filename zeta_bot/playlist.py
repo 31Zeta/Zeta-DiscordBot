@@ -8,6 +8,7 @@ from zeta_bot import (
     audio,
 )
 
+# TODO 完成自建歌单
 
 class Playlist:
 
@@ -85,6 +86,7 @@ class Playlist:
             self._duration -= target_audio.get_duration()
             return target_audio
 
+    # TODO 记录添加人
     def append_audio(self, new_audio: audio.Audio) -> bool:
         """
         向播放列表的末尾添加一个音频，并更新播放列表时长

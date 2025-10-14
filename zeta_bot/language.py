@@ -21,7 +21,7 @@ class Lang:
         file_path = f"./zeta_bot/lang/{default_lang_code}.lang"
 
         if default_lang_code not in locale_dict or not os.path.exists(file_path):
-            raise errors.InitializationFailed("系统语言", "找不到对应语言或文件")
+            raise errors.InitializationError("系统语言", "找不到对应语言或文件")
 
         self.system_language = default_lang_code
         self.command_names = {}

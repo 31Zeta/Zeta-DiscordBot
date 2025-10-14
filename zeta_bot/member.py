@@ -222,7 +222,7 @@ class MemberLibrary:
             utils.json_save(self.group_config_path, self.group_config)
 
         except errors.JSONFileError:
-            raise errors.InitializationFailed("MemberLibrary", "组权限文件读取错误")
+            raise errors.InitializationError("MemberLibrary", "组权限文件读取错误")
 
         self.hashtag_file_path = f"{self.root}/#Members.json"
         self.group_list = list(self.group_config.keys())
@@ -281,7 +281,7 @@ class MemberLibrary:
                 "guilds": {ctx.guild.id: {
                     "nickname": ctx.user.nick},
                 },
-                "data": {"first_contact": utils.time(), "play_counter": 0},
+                "data": {"first_contact": utils.ctime_str(), "play_counter": 0},
                 "property": {"playlists": []}
             }
             utils.json_save(path, temp_dict)
