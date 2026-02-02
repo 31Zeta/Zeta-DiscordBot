@@ -293,5 +293,8 @@ def guild_playlist_loader(guild_playlist: GuildPlaylist, info_dict: dict) -> Non
     GuildPlaylist加载器，传入一个GuildPlaylist以及它的encode()生成的字典，重建并加入字典中的Audio，在AudioFileLibrary锁定这些Audio
     """
     for item in info_dict["playlist"]:
+        # 防止null被插入到guild json的playlist中
+        if item is None:
+            continue
         current_audio = audio.audio_decoder(item)
         guild_playlist.append_audio(current_audio)
