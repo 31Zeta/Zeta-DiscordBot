@@ -31,12 +31,12 @@ from zeta_bot import (
 startup_time = utils.ctime_str()
 
 version = "0.13.0"
-author = "炤铭Zeta (31Zeta)"
+author = "炤融Zeta (31Zeta)"
 python_path = sys.executable
 pycord_version = discord.__version__
 bilibili_api_version = BILIBILI_API_VERSION
 yt_dlp_version = yt_dlp_version.__version__
-update_time = "2025.10.07"
+update_time = "2026.03.07"
 
 supported_search_sites = ["哔哩哔哩", "YouTube"]
 
@@ -115,8 +115,8 @@ audio_lib_main = file_management.AudioFileLibrary(
     setting.value("audio_library_storage_capacity") * 1024 * 1024  # 要求用户输入的单位为MB，转换为字节Byte
 )
 
-# 设置聊天AI
 # 聊天AI API 效果较差，暂时弃用
+# 设置聊天AI
 # if setting.value("chat_ai"):
 #     utils.create_folder("./data/ai")
 #     chat_ai = ai.ChatAI(
@@ -128,6 +128,7 @@ audio_lib_main = file_management.AudioFileLibrary(
 #     )
 # else:
 #     chat_ai = None
+
 
 def start(mode: str) -> None:
     """
@@ -269,6 +270,7 @@ async def on_message(message: discord.Message):
 
     if bot.user.mentioned_in(message):
         respond_message = await message.channel.send(f"{message.author.mention} 你好！如果需要我可以使用 /help 或 /帮助 查看帮助菜单")
+        await message.channel.send(respond_message)
         # if setting.value("chat_ai") and chat_ai is not None:
         #     loading_message = await chat_ai.loading_message()
         #     respond_message = await message.channel.send(loading_message)
@@ -283,7 +285,7 @@ async def on_message(message: discord.Message):
         #         else:
         #             await respond_message.edit(content=f"{ai_response['message']}")
         #             if ai_response["function_call"] == "play_music":
-        #                 pass  # TODO 完成音乐调用
+        #                 pass
         #     else:
         #         error_message = await chat_ai.error_message()
         #         await respond_message.edit(content=error_message)

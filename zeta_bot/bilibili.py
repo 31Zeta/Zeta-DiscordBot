@@ -71,6 +71,8 @@ async def get_filesize(info_dict: dict, num_p=0) -> Union[int, None]:
             length = resp.headers.get('content-length')
             return int(length)
 
+    return None
+
 
 # TODO 检查下载报错代码，是否和异步并发有关
 # aiohttp.http_exceptions.ContentLengthError: 400, message:

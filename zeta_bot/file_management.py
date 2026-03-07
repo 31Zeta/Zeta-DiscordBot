@@ -87,7 +87,7 @@ class AudioFileLibrary:
                     f"来源：[{audio_dict['source']}] {audio_dict['source_id']}\n"
                     f"路径：{audio_dict['path']}\n"
                     f"时长：{audio_dict['duration_str']}",
-                    f"[{self._name}]"
+                    f"[{self._name}]", message_type=utils.PrintType.WARNING
                 )
                 continue
             self._used_storage_size += file_size
@@ -254,14 +254,13 @@ class AudioFileLibrary:
         try:
             os.remove(target_audio.get_path())
         except FileNotFoundError:
-            await console.rp(f"尝试删除文件失败：{target_audio.get_path()}，文件已不存在",
-                            f"[{self._name}]")
+            await console.rp(f"尝试删除文件失败：{target_audio.get_path()}，文件已不存在", f"[{self._name}]", message_type=utils.PrintType.CAUTION)
             # 将已不存在的文件移出dl_list
             self._dl_list.key_remove(key)
             raise FileNotFoundError
         except PermissionError:
             await console.rp(f"尝试删除文件失败：{target_audio.get_path()}，文件正在使用中或程序权限不足",
-                            f"[{self._name}]")
+                            f"[{self._name}]", message_type=utils.PrintType.ERROR)
             raise PermissionError
         else:
             self._dl_list.key_remove(key)
@@ -288,7 +287,7 @@ class AudioFileLibrary:
         try:
             target_audio = self._dl_list.index_get(depth)
         except IndexError:
-            await console.rp(f"{self._name}超出容量限制，尝试删除文件失败，库中已不包含任何可删除的文件", f"[{self._name}]")
+            await console.rp(f"{self._name}超出容量限制，尝试删除文件失败，库中已不包含任何可删除的文件", f"[{self._name}]", message_type=utils.PrintType.ERROR)
             return False
         if not self.using(target_audio):
             try:
@@ -310,7 +309,7 @@ class AudioFileLibrary:
             else:
                 return True
         else:
-            await console.rp(f"尝试删除文件失败：{target_audio.get_path()}，文件正在使用中", f"[{self._name}]")
+            await console.rp(f"尝试删除文件失败：{target_audio.get_path()}，文件正在使用中", f"[{self._name}]", message_type=utils.PrintType.ERROR)
             # 如果当前尝试删除的文件并不是正在播放的话，继续尝试删除下一最久不使用的文件，
             # 因为唯一一种较旧文件被锁定而较新文件没被锁定的情况就是较旧文件正在播放的情况
             if not self.now_playing(target_audio) or depth + 1 >= len(self._dl_list):
@@ -344,6 +343,9 @@ class AudioFileLibrary:
             return exists_audio
 
         new_file_size = await bilibili.get_filesize(info_dict, num_option)
+        if new_file_size is None:
+            await console.rp(f"无法获得目标文件大小", f"[{self._name}]", message_type=utils.PrintType.ERROR)
+            return None
 
         # 如果下载此音频库会满，尝试删除最不常使用的文件
         if self.storage_will_full(new_file_size):
@@ -357,7 +359,7 @@ class AudioFileLibrary:
                     await console.rp(f"下载失败，超出音频库容量上限且无法清理出足够空间，"
                                     f"目标文件大小：{converted_file_size[0]}{converted_file_size[1]}，"
                                     f"音频库可用容量：{converted_available_size[0]}{converted_available_size[1]}",
-                                    f"[{self._name}]")
+                                    f"[{self._name}]", message_type=utils.PrintType.ERROR)
                     raise errors.StorageFull(self._name)
 
         # 下载
@@ -405,7 +407,7 @@ class AudioFileLibrary:
                     await console.rp(f"下载失败，超出音频库容量上限且无法清理出足够空间，"
                                     f"目标文件大小：{converted_file_size[0]}{converted_file_size[1]}，"
                                     f"音频库可用容量：{converted_available_size[0]}{converted_available_size[1]}",
-                                    f"[{self._name}]")
+                                    f"[{self._name}]", message_type=utils.PrintType.ERROR)
                     raise errors.StorageFull(self._name)
 
         new_audio = await youtube.audio_download(url, info_dict, self._root, download_type)
@@ -450,7 +452,7 @@ class AudioFileLibrary:
                     await console.rp(f"下载失败，超出音频库容量上限且无法清理出足够空间，"
                                     f"目标文件大小：{converted_file_size[0]}{converted_file_size[1]}，"
                                     f"音频库可用容量：{converted_available_size[0]}{converted_available_size[1]}",
-                                    f"[{self._name}]")
+                                    f"[{self._name}]", message_type=utils.PrintType.ERROR)
                     raise errors.StorageFull(self._name)
 
         new_audio = await netease.audio_download(url, info_dict, self._root, download_type)
