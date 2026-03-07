@@ -269,8 +269,7 @@ async def on_message(message: discord.Message):
         return
 
     if bot.user.mentioned_in(message):
-        respond_message = await message.channel.send(f"{message.author.mention} 你好！如果需要我可以使用 /help 或 /帮助 查看帮助菜单")
-        await message.channel.send(respond_message)
+        await message.channel.send(f"{message.author.mention} 你好！如果需要我可以使用 /help 或 /帮助 查看帮助菜单")
         # if setting.value("chat_ai") and chat_ai is not None:
         #     loading_message = await chat_ai.loading_message()
         #     respond_message = await message.channel.send(loading_message)
