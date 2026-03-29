@@ -1,10 +1,11 @@
 import discord
 import os
 
+import errors
+import utils
+
 from zeta_bot import (
-    errors,
     language,
-    utils,
     decorator
 )
 

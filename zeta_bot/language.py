@@ -1,7 +1,9 @@
 from typing import *
 import os
+
+import errors
+
 from zeta_bot import (
-    errors,
     decorator
 )
 

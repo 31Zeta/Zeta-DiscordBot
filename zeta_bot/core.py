@@ -12,17 +12,16 @@ import yt_dlp
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from discord import Component
-from discord.ext import commands
 from discord.commands import option
 from discord.ui import Button, View
 from bilibili_api import BILIBILI_API_VERSION
 from yt_dlp import version as yt_dlp_version
 
+import errors
+import utils
+
 # 底层模块
 from zeta_bot import (
-    errors,
-    utils,
     language,
     setting,
     console
@@ -30,13 +29,13 @@ from zeta_bot import (
 
 startup_time = utils.ctime_str()
 
-version = "0.13.0"
+version = "0.14.0"
 author = "炤融Zeta (31Zeta)"
 python_path = sys.executable
 pycord_version = discord.__version__
 bilibili_api_version = BILIBILI_API_VERSION
 yt_dlp_version = yt_dlp_version.__version__
-update_time = "2026.03.07"
+update_time = "2026.03.28"
 
 supported_search_sites = ["哔哩哔哩", "YouTube"]
 
@@ -69,6 +68,8 @@ lang.set_system_language(lang_setting.value("language"))
 setting = setting.Setting("./configs/system_config.json", setting.bot_setting_configs, lang_setting.value("language"))
 bot_name = setting.value("bot_name")
 
+# TODO 添加维护模式
+
 # 设置控制台日志记录器
 LOG_DIRECTORY_PATH = "./logs"
 utils.create_folder(LOG_DIRECTORY_PATH)
@@ -85,7 +86,6 @@ from zeta_bot import (
     guild,
     audio,
     playlist,
-    ai
 )
 from zeta_bot.help import HelpMenuView
 
@@ -302,7 +302,7 @@ async def on_message(message: discord.Message):
 @bot.event
 async def on_member_join(new_member):
     await new_member.send(
-        f"你好，{new_member.mention}！我是{bot_name}，可以在语言频道内播放音乐！使用 /help 或 /帮助 指令来看看我的用法吧！"
+        f"你好，{new_member.mention}！我是{bot_name}，可以在语言频道内播放音乐！使用 /help 或 /帮助 指令来查看我的用法吧！"
     )
 
 
@@ -810,20 +810,22 @@ async def join_callback(
         else:
             channel = ctx.user.voice.channel
 
+    loading_msg = await ctx.respond(f"正在尝试加入语音频道：***{channel.name}***")
+
     voice_client = ctx.guild.voice_client
 
     # 机器人未在任何语音频道的情况
     if voice_client is None:
         await channel.connect()
         if command_call:
-            await ctx.respond(f"加入语音频道：->  ***{channel.name}***")
+            await eos(ctx, loading_msg, f"已加入语音频道：->  ***{channel.name}***")
 
     # 机器人已经在一个频道的情况
     else:
         previous_channel = voice_client.channel
         await voice_client.move_to(channel)
         if command_call:
-            await ctx.respond(f"转移语音频道：***{previous_channel}***  ->  ***{channel.name}***")
+            await eos(ctx, loading_msg, f"已转移语音频道：***{previous_channel}***  ->  ***{channel.name}***")
 
     await console.rp(f"加入语音频道：{channel.name}", ctx.guild)
     await current_guild.refresh_list_view()
@@ -2037,6 +2039,7 @@ class PlaylistMenu(View):
                     button.disabled = True
                     break
 
+        # TODO 检查错误，未能成功禁用，检查生成后未刷新时第一次的情况
         # 如果在最后1页则禁用下一页按钮
         if self.page_num == len(self.playlist_pages) - 1:
             for button in self.children:

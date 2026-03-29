@@ -1,9 +1,12 @@
 from __future__ import unicode_literals
 from typing import *
 from yt_dlp import YoutubeDL
+
+import errors
+import utils
+
 from zeta_bot import (
     console,
-    utils,
     audio
 )
 

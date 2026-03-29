@@ -1,6 +1,5 @@
-from zeta_bot import (
-    utils
-)
+import utils
+
 
 class Audio:
 

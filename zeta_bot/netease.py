@@ -1,10 +1,11 @@
 from typing import *
-import yt_dlp.utils
 from yt_dlp import YoutubeDL
+
+import errors
+import utils
 
 from zeta_bot import (
     console,
-    utils,
     audio
 )
 

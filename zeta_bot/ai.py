@@ -4,9 +4,10 @@ import os
 import json
 import random
 
+import errors
+import utils
+
 from zeta_bot import (
-    errors,
-    utils,
     console
 )
 

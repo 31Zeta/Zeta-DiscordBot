@@ -9,16 +9,11 @@ import re
 import requests
 import getpass
 import shutil
+import platform
+import importlib.metadata
+import packaging.requirements
 
-from zeta_bot import (
-    errors,
-    language
-)
-
-# 多语言模块
-lang = language.Lang()
-_ = lang.get_string
-printl = lang.printl
+import errors
 
 
 def ctime_str() -> str:
@@ -120,6 +115,77 @@ def legal_name(name_str: str) -> str:
     name_str = name_str.replace("|", "_")
 
     return name_str
+
+
+def check_requirements(requirements_path: str, false_only: bool = False) -> Dict[str, dict]:
+    """
+    检查<requirements_path>中的包是否已安装且满足版本需求
+
+    :param requirements_path: 要检查的requirements文件的路径
+    :param false_only: 是否只将不符合要求的包放入返回的字典中
+    """
+    result = {}
+    with open(requirements_path, "r", encoding="utf-8") as file:
+        for i, raw_line in enumerate(file, start=1):
+            line = raw_line.strip()
+
+            # 跳过注释
+            if not line or line.startswith("#"):
+                continue
+            # 处理行尾注释
+            if " #" in line:
+                line = line.split(" #", 1)[0].strip()
+            if not line:
+                continue
+
+            try:
+                req = packaging.requirements.Requirement(line)
+            except packaging.requirements.InvalidRequirement:
+                print(f"{requirements_path} 第 {i} 行解析错误，跳过")
+                continue
+
+            package_name = req.name
+            extras = set(req.extras)
+
+            # 重复包情况
+            if package_name in result:
+                if req.extras:
+                    result[package_name]["extras"] = result[package_name]["extras"].union(extras)
+                continue
+
+            # 检查是否安装
+            try:
+                installed_version = importlib.metadata.version(package_name)
+            except importlib.metadata.PackageNotFoundError:
+                installed_version = None
+                is_installed = False
+            else:
+                is_installed = True
+
+            # 检查版本是否符合范围
+            if not is_installed:
+                version_ok = False
+            else:
+                # req.specifier 为空时，表示没有版本约束
+                if str(req.specifier):
+                    version_ok = req.specifier.contains(installed_version, installed=True)
+                else:
+                    version_ok = True
+
+            # 如果启用false_only以及包符合条件则跳过
+            if false_only and is_installed and version_ok:
+                continue
+
+            result[package_name] = {
+                "package_name": package_name,
+                "extras": extras,
+                "is_installed": is_installed,
+                "installed_version": installed_version,
+                "required_version": str(req.specifier),
+                "version_matches": version_ok,
+            }
+
+    return result
 
 
 class SGR(Enum):
@@ -367,6 +433,7 @@ def cp(
     message: str,
     extra_message: Optional[str] = None,
     message_type: Union[PrintType, SGR, int, str, List[Union[SGR, int, str]], Tuple[Union[SGR, int, str]]] = PrintType.NORMAL,
+    end: str = "\n",
     gap: bool = False,
     indent: int = 0,
     print_time: bool = False,
@@ -382,6 +449,7 @@ def cp(
     :param message: 信息
     :param extra_message: 额外信息，显示在信息之前，如果message_newline为True则额外信息显示在信息的上一行
     :param message_type: 信息的字符串输出类型枚举类
+    :param end: 显示在信息之后，默认为新一行
     :param gap: 是否与上方信息间隔一行（输出前额外输出一个换行符）
     :param indent: 缩进空格数
     :param print_time: 是否打印当前时间
@@ -404,7 +472,7 @@ def cp(
         print_head=print_head,
     )
     # 打印输出
-    print(final_msg)
+    print(final_msg, end=end)
     # 暂停
     if sleep != 0:
         time.sleep(sleep)

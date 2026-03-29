@@ -2,11 +2,11 @@ import discord
 import os
 from typing import Union
 
+import errors
+import utils
+
 from zeta_bot import (
-    errors,
-    language,
     decorator,
-    utils,
     console,
     file_management,
     member,

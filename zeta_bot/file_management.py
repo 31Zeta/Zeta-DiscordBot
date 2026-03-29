@@ -1,11 +1,12 @@
 from typing import *
 import os
 
+import errors
+import utils
+
 from zeta_bot import (
-    errors,
     decorator,
     console,
-    utils,
     audio,
     bilibili,
     youtube,

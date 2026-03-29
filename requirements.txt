@@ -1,9 +1,14 @@
-py-cord>=2.7.0rc1
-bilibili-api-python
-yt-dlp
-aiohttp
-httpx
-APScheduler
+py-cord[voice, speed]>=2.8.0rc1
 PyNaCl
+aiohttp
+aiodns
+brotlipy
+msgspec
+bilibili-api-python
+curl_cffi
+brotli>=1.2.0
+yt-dlp
+httpx
+packaging
+APScheduler
 requests
-openai

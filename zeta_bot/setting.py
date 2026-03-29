@@ -3,11 +3,11 @@ import re
 import sys
 import time
 
+import errors
+import utils
+
 from zeta_bot import (
-    errors,
-    console,
-    language,
-    utils
+    language
 )
 
 # 多语言模块

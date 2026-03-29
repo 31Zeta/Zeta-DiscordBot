@@ -20,25 +20,14 @@ The display language currently available for this robot is Chinese only.
 - 可交互的播放列表
 
 ## 如何安装并部署
-**请使用Python3.9或更高版本**
+**请使用Python 3.10-3.13版本，基于Python3.11开发**
 
-请使用以下指令将本库克隆到本地：
-```
-git clone https://github.com/31Zeta/Zeta-DiscordBot.git
-```  
+请从release中下载最新版本源码解压
   
-将命令行运行位置移动至库根目录后使用以下指令来安装依赖包：  
+将命令行运行目录移动至解压后的源码根目录后使用以下指令来安装依赖包：  
 ```
  pip install -r requirements.txt
 ```
-
-或手动安装以下包：  
-- py-cord https://github.com/Pycord-Development/pycord  
-- APScheduler https://github.com/agronholm/apscheduler  
-- bilibili-api-python https://github.com/Nemo2011/bilibili-api
-- PyNaCl https://github.com/pyca/pynacl/
-- requests https://github.com/psf/requests  
-- yt-dlp https://github.com/yt-dlp/yt-dlp  
   
 Windows系统请前往ffmpeg官网 https://ffmpeg.org/download.html 获取ffmpeg.exe  
 （或使用 https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-full.7z 下载后解压bin文件夹内的ffmpeg.exe）  
@@ -74,25 +63,14 @@ A Discord Bot that is based on Pycord.
 - Interactive playlists
 
 ## How to install and deploy
-**Please use Python 3.9 or higher versions**
+**Please use Python 3.10 - 3.13, this bot is developed on Python 3.11**
   
-Please use the following commands to clone this repo to your local:
-```
-git clone https://github.com/31Zeta/Zeta-DiscordBot.git
-```
+Please download the latest version of the source code from the release page and unzip it.
 
-Change the command line directory to this repo and use the following command to install dependencies:
+Change the command line working directory to the root directory and use the following command to install dependencies:
 ```
  pip install -r requirements.txt
 ```
-
-Or install these packages manually:
-- py-cord https://github.com/Pycord-Development/pycord  
-- APScheduler https://github.com/agronholm/apscheduler  
-- bilibili-api-python https://github.com/Nemo2011/bilibili-api
-- PyNaCl https://github.com/pyca/pynacl/
-- requests https://github.com/psf/requests  
-- yt-dlp https://github.com/yt-dlp/yt-dlp  
   
 Windows: please visit https://ffmpeg.org/download.html to get ffmpeg.exe
 (or access https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-full.7z download and unzip it to get ffmpeg.exe in bin dir） 

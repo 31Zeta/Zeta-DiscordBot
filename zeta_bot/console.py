@@ -1,15 +1,15 @@
-from typing import *
 import sys
 import os
 import asyncio
 import traceback
 import logging
 
+import errors
+import utils
+
 from zeta_bot import (
-    errors,
     decorator,
-    language,
-    utils
+    language
 )
 
 # 多语言模块

@@ -4,9 +4,11 @@ import html
 from bilibili_api import video, Credential, sync
 from bilibili_api import search as bilibili_search
 
+import errors
+import utils
+
 from zeta_bot import (
     console,
-    utils,
     audio
 )
 

@@ -1,11 +1,8 @@
 from typing import *
 from discord.errors import *
 
-"""
-虽然没必要，就是写着玩
-"""
 
-class UninitializedError(Exception):
+class NotInitializedError(Exception):
     def __init__(self, name: Optional[str]):
         super().__init__()
         self.name = name
