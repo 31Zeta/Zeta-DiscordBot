@@ -1,7 +1,7 @@
 from typing import *
 import aiohttp
 import html
-from bilibili_api import video, Credential, sync
+from bilibili_api import video, Credential, sync, select_client
 from bilibili_api import search as bilibili_search
 
 import errors
@@ -13,6 +13,9 @@ from zeta_bot import (
 )
 
 # https://bili.moyu.moe/#/examples/video
+
+# 设定请求库
+select_client("curl_cffi")
 
 SESSDATA = ""
 BILI_JCT = ""
@@ -143,6 +146,10 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
     # print("\n\n" + current_time + f"\n    下载完成\n")
 
     new_audio = audio.Audio(original_title, download_type, bvid, path, duration)
+
+    if "pic" in info_dict.keys():
+        new_audio.set_cover_url(info_dict["pic"])
+
     if download_type == "bilibili_p":
         logger_prompt = (
             f"下载完成\n"

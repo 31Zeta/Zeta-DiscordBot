@@ -10,6 +10,7 @@ resume=继续播放
 list=播放列表
 skip=跳过
 skipi=序号跳过
+clear=清空播放列表
 move=移动音频
 volume=音量
 reboot=重启

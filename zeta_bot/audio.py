@@ -10,6 +10,8 @@ class Audio:
         self._path = path
         self._duration = duration
         self._duration_str = utils.convert_duration_to_str(duration)
+        self._cover_path = None
+        self._cover_url = None
 
     def __str__(self) -> str:
         return f"{self._title} [{self._duration_str}]"
@@ -35,6 +37,18 @@ class Audio:
     def get_duration_str(self) -> str:
         return self._duration_str
 
+    def get_cover_path(self) -> str:
+        return self._cover_path
+
+    def get_cover_url(self) -> str:
+        return self._cover_url
+
+    def set_cover_path(self, cover_path: str) -> None:
+        self._cover_path = cover_path
+
+    def set_cover_url(self, cover_url: str) -> None:
+        self._cover_url = cover_url
+
     def encode(self) -> dict:
         return {
             "title": self._title,
@@ -42,15 +56,22 @@ class Audio:
             "source_id": self._source_id,
             "path": self._path,
             "duration": self._duration,
-            "duration_str": self._duration_str
+            "duration_str": self._duration_str,
+            "cover_path": self._cover_path,
+            "cover_url": self._cover_url
         }
 
 
 def audio_decoder(info_dict: dict) -> Audio:
-    return Audio(
+    decoded_audio = Audio(
         info_dict["title"],
         info_dict["source"],
         info_dict["source_id"],
         info_dict["path"],
-        info_dict["duration"]
+        info_dict["duration"],
     )
+    if info_dict["cover_path"] is not None:
+        decoded_audio.set_cover_path(info_dict["cover_path"])
+    if info_dict["cover_url"] is not None:
+        decoded_audio.set_cover_url(info_dict["cover_url"])
+    return decoded_audio

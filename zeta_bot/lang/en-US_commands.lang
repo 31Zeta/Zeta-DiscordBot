@@ -11,6 +11,7 @@ list=playlist
 skip=skip-audio
 skipi=skip-audio-by-index
 move=move-audio
+clear=clear-playlist
 volume=volume
 reboot=reboot
 shutdown=shutdown
