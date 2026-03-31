@@ -43,7 +43,6 @@ def get_filesize(info_dict: dict) -> Union[int, None]:
 
 
 async def audio_download(youtube_url, info_dict, download_path, download_type="youtube_single") -> audio.Audio:
-
     if download_path.endswith("/"):
         download_path = download_path.rstrip("/")
 
@@ -69,6 +68,10 @@ async def audio_download(youtube_url, info_dict, download_path, download_type="y
         ydl.download([youtube_url])
 
     new_audio = audio.Audio(video_title, download_type, video_id, video_path, video_duration)
+
+    if "thumbnail" in info_dict.keys():
+        new_audio.set_cover_url(info_dict["thumbnail"])
+
     await console.rp(
         f"下载完成\n"
         f"文件名：{video_path_title}.{video_name_extension}\n"

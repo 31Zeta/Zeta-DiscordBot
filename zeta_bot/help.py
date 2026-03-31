@@ -2,6 +2,9 @@ from typing import *
 import discord
 from discord.ui import View
 
+from zeta_bot import icon
+
+icon_lib = icon.IconLib()
 
 async def delete_response(target) -> bool:
     try:
@@ -29,7 +32,6 @@ class HelpMenu(View):
             f"[3] 播放控制\n\n"
             f"可通过下方按钮前往对应页面",
 
-            f"## 基础操作相关指令\n"
             f"在输入指令时，直接打出原指令名称更简单，Discord菜单会自动调出对应的本地化名称\n\n"
             f">>> **/info**\n"
             f"本地化名称：**/关于**\n"
@@ -38,7 +40,6 @@ class HelpMenu(View):
             f"本地化名称：**/帮助**\n"
             f"显示帮助菜单",
 
-            f"## 音频播放相关指令\n"
             f"在输入指令时，直接打出原指令名称更简单，Discord菜单会自动调出对应的本地化名称\n\n"
             f">>> **/join <channel>**\n"
             f"本地化名称：**/加入语音频道**\n"
@@ -59,7 +60,6 @@ class HelpMenu(View):
             f"本地化名称：**/播放列表**\n"
             f"显示当前服务器的播放列表菜单",
 
-            f"## 播放控制相关指令\n\n"
             f"在输入指令时，直接打出原指令名称更简单，Discord菜单会自动调出对应的本地化名称\n\n"
             f">>> **/skip <start> <end>**\n"
             f"本地化名称：**/跳过**\n"
@@ -84,17 +84,22 @@ class HelpMenu(View):
             f"如果<volume_number>为一个0-200的数字则直接将音量设置为该数字的百分比",
         ]
 
+        self.icon_filename = "sign_in_reveal_animated_0ms_100px.gif"
+        self.embed = discord.Embed(
+            colour=discord.Colour.dark_teal(),
+            title=f"目录",
+            description=self.pages[0],
+        )
+        self.embed.set_author(name=f"帮助菜单 [版本 {self.version}]", icon_url=icon.url(self.icon_filename))
+
         self.original_msg = None
 
-    def get_embed(self, page_num: int) -> discord.Embed:
-        return discord.Embed(
-            colour=discord.Colour.dark_teal(),
-            title=f"帮助菜单目录 [版本 {self.version}]",
-            description=self.pages[page_num],
-        )
+    def set_embed(self, page_num: int, title: str = "帮助菜单"):
+        self.embed.title = title
+        self.embed.description = self.pages[page_num]
 
     async def init_respond(self, ephemeral: bool = False, silent: bool = False):
-        original_msg = await self.ctx.respond(content=None, embed=self.get_embed(0), view=self, ephemeral=ephemeral, silent=silent)
+        original_msg = await self.ctx.respond(content=None, embed=self.embed, view=self, ephemeral=ephemeral, silent=silent, files=icon_lib.files(self.icon_filename))
         await self.set_original_msg(original_msg)
 
     @discord.ui.button(label="目录", style=discord.ButtonStyle.grey,
@@ -102,31 +107,34 @@ class HelpMenu(View):
     async def button_catalog_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
-        await msg.edit_message(embed=self.get_embed(0), view=self)
+        self.set_embed(0, "目录")
+        await msg.edit_message(embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
     @discord.ui.button(label="基础操作", style=discord.ButtonStyle.grey,
                        custom_id="button_page_1", row=2)
     async def button_page_1_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
-        await msg.edit_message(embed=self.get_embed(1), view=self)
+        self.set_embed(1, "基础操作相关指令")
+        await msg.edit_message(embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
     @discord.ui.button(label="音频播放", style=discord.ButtonStyle.grey,
                        custom_id="button_page_2", row=2)
     async def button_page_2_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
-        await msg.edit_message(embed=self.get_embed(2), view=self)
+        self.set_embed(2, "音频播放相关指令")
+        await msg.edit_message(embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
     @discord.ui.button(label="播放控制", style=discord.ButtonStyle.grey,
                        custom_id="button_page_3", row=2)
     async def button_page_3_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
-        await msg.edit_message(embed=self.get_embed(3), view=self)
+        self.set_embed(3, "播放控制相关指令")
+        await msg.edit_message(embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
-    @discord.ui.button(label="关闭", style=discord.ButtonStyle.grey,
-                       custom_id="button_close", row=1)
+    @discord.ui.button(label="关闭", style=discord.ButtonStyle.grey, custom_id="button_close", row=1)
     async def button_close_callback(self, button, interaction):
         button.disabled = True
         msg = interaction.response

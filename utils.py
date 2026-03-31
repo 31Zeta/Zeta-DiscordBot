@@ -117,6 +117,23 @@ def legal_name(name_str: str) -> str:
     return name_str
 
 
+def markdown_escape(text: str) -> str:
+    """
+    转义 Discord Markdown 特殊字符，保证渲染后的可见文本与原文本一致。
+    """
+    if text is None:
+        return ""
+
+    text = str(text)
+    # 先转义反斜杠，避免后续新增转义被二次处理
+    text = text.replace("\\", "\\\\")
+
+    # Discord 常见 Markdown 控制字符
+    markdown_special_chars = r"_*`~|>#+-=()[]{}!"
+    pattern = f"([{re.escape(markdown_special_chars)}])"
+    return re.sub(pattern, r"\\\1", text)
+
+
 def check_requirements(requirements_path: str, false_only: bool = False) -> Dict[str, dict]:
     """
     检查<requirements_path>中的包是否已安装且满足版本需求
@@ -951,16 +968,16 @@ def get_bvid_from_url(url):
     return result
 
 
-def make_playlist_page(
-        info_list: list, num_per_page: int, starts_with: dict, ends_with: dict, fill_lines=False) -> list:
+def make_playlist_page(info_list: list, num_per_page: int, starts_with: dict, ends_with: dict, fill_lines=False, title_markdown_bold: bool = True, escape_markdown: bool = False) -> list:
     """
     将<info_list>中的信息分割成每<num_per_page>一页
-    <info_list>需为一个列表，每个元素是一个元组，元组包含两个元素，第一个将直接显示，第二个将在中括号内显示（如元组只包含一个元素则不显示括号）
-    <starts_with>为一个字典，保存了每行开头添加的字符串，键为行数（从0开始），值为要添加的字符串
-    键None保存添加到每一行前的字符串，如某行前不想添加字符则将对应行号键的值设为一个空字符串，如不添加任何字符串则向<starts_with>传入空字典{}
-    <ends_with>为一个字典，保存了每行结尾添加的字符串，键为行数（从0开始），值为要添加的字符串
-    键None保存添加到每一行后的字符串，如某行后不想添加字符则将对应行号键的值设为一个空字符串，如不添加任何字符串则向<starts_with>传入空字典{}
-    如果<fill_lines>为True，则将最后一页用空行填齐
+    :param info_list: 需为一个列表，每个元素是一个元组，元组包含两个元素，第一个将直接显示，第二个将在中括号内显示（如元组只包含一个元素则不显示括号）
+    :param num_per_page: 一页多少条目
+    :param starts_with: 为一个字典，保存了每行开头添加的字符串，键为行数（从0开始），值为要添加的字符串键None保存添加到每一行前的字符串，如某行前不想添加字符则将对应行号键的值设为一个空字符串，如不添加任何字符串则向<starts_with>传入空字典{}
+    :param ends_with: 为一个字典，保存了每行结尾添加的字符串，键为行数（从0开始），值为要添加的字符串键None保存添加到每一行后的字符串，如某行后不想添加字符则将对应行号键的值设为一个空字符串，如不添加任何字符串则向<starts_with>传入空字典{}
+    :param fill_lines: 如果为True，则将最后一页用空行填齐
+    :param title_markdown_bold: 为第一个元素添加Markdown粗体字符
+    :param escape_markdown: 是否要将内容进行Markdown转义，确保内容本身的符号不会被识别成特殊符号，不会影响<starts_with>, <ends_with>, <title_markdown_bold>
     """
     result = []
     counter = 0
@@ -986,12 +1003,20 @@ def make_playlist_page(
             else:
                 current_ends_with = ""
 
+            title = str(current_tuple[0])
+            if escape_markdown:
+                title = markdown_escape(title)
+            if title_markdown_bold:
+                title = f"**{title}**"
+
             if len(current_tuple) <= 1:
-                current_page += \
-                    f"{current_starts_with}[{counter + 1}] {current_tuple[0]}{current_ends_with}\n"
+                current_page += f"{current_starts_with}[{counter + 1}] {title}{current_ends_with}\n"
             else:
-                current_page += \
-                    f"{current_starts_with}[{counter + 1}] {current_tuple[0]} [{current_tuple[1]}]{current_ends_with}\n"
+                duration = str(current_tuple[1])
+                if escape_markdown:
+                    duration = markdown_escape(duration)
+                current_page += f"{current_starts_with}[{counter + 1}] {title} [{duration}]{current_ends_with}\n"
+
             counter += 1
         result.append(current_page)
 

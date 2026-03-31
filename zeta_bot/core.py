@@ -2,6 +2,7 @@ from typing import *
 
 import aiohttp
 import discord
+import discord.voice
 import sys
 import os
 import asyncio
@@ -17,7 +18,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from discord.commands import option
-from discord.ui import Button, View
+from discord.ui import View
 from bilibili_api import BILIBILI_API_VERSION
 from yt_dlp import version as yt_dlp_version
 
@@ -40,7 +41,7 @@ python_path = sys.executable
 pycord_version = discord.__version__
 bilibili_api_version = BILIBILI_API_VERSION
 yt_dlp_version = yt_dlp_version.__version__
-update_time = "2026.03.28"
+update_time = "2026.03.30"
 
 supported_search_sites = ["哔哩哔哩", "YouTube"]
 
@@ -350,7 +351,7 @@ async def auto_reboot_reminder():
 
 async def embed_send(
         ctx: discord.ApplicationContext,
-        description: Optional[str],
+        description: Optional[str] = None,
         title: Optional[str] = None,
         colour: discord.Colour = discord.Colour.dark_teal(),
         timestamp: bool = False,
@@ -391,7 +392,7 @@ async def embed_send(
 
 async def embed_respond(
         ctx: discord.ApplicationContext,
-        description: Optional[str],
+        description: Optional[str] = None,
         title: Optional[str] = None,
         colour: discord.Colour = discord.Colour.dark_teal(),
         timestamp: bool = False,
@@ -452,12 +453,22 @@ async def eos(
     if files is not None and len(files) < 1:
         files = None
 
+    # 如files为空需要清除附件，确保附件不会被传到修改后的信息中
     if isinstance(response, discord.Interaction):
-        return await response.edit_original_response(content=content, embed=embed, files=files, view=view)
+        if files is None:
+            return await response.edit_original_response(content=content, embed=embed, attachments=[], view=view)
+        else:
+            return await response.edit_original_response(content=content, embed=embed, files=files, view=view)
     elif isinstance(response, discord.InteractionMessage):
-        return await response.edit(content=content, embed=embed, files=files, view=view)
+        if files is None:
+            return await response.edit(content=content, embed=embed, attachments=[], view=view)
+        else:
+            return await response.edit(content=content, embed=embed, files=files, view=view)
     elif isinstance(response, discord.Message):
-        return await response.edit(content=content, embed=embed, files=files, view=view)
+        if files is None:
+            return await response.edit(content=content, embed=embed, attachments=[], view=view)
+        else:
+            return await response.edit(content=content, embed=embed, files=files, view=view)
     else:
         return await ctx.send(content=content, embed=embed, files=files, view=view, silent=silent)
 
@@ -465,7 +476,7 @@ async def eos(
 async def embed_eos(
         ctx: discord.ApplicationContext,
         response,
-        description: Optional[str],
+        description: Optional[str] = None,
         title: Optional[str] = None,
         colour: discord.Colour = discord.Colour.dark_teal(),
         timestamp: bool = False,
@@ -487,7 +498,7 @@ async def embed_eos(
     embed = discord.Embed(
         colour=colour,
         title=title,
-        description= description,
+        description=description,
     )
     if timestamp:
         embed.timestamp = utils.ctime_datetime()
@@ -503,12 +514,22 @@ async def embed_eos(
     if files is not None and len(files) < 1:
         files = None
 
+    # 如files为空需要清除附件，确保附件不会被传到修改后的信息中
     if isinstance(response, discord.Interaction):
-        return await response.edit_original_response(content=None, embed=embed, files=files, view=view), embed
+        if files is None:
+            return await response.edit_original_response(content=None, embed=embed, attachments=[], view=view), embed
+        else:
+            return await response.edit_original_response(content=None, embed=embed, files=files, view=view), embed
     elif isinstance(response, discord.InteractionMessage):
-        return await response.edit(content=None, embed=embed, files=files, view=view), embed
+        if files is None:
+            return await response.edit(content=None, embed=embed, attachments=[], view=view), embed
+        else:
+            return await response.edit(content=None, embed=embed, files=files, view=view), embed
     elif isinstance(response, discord.Message):
-        return await response.edit(content=None, embed=embed, files=files, view=view), embed
+        if files is None:
+            return await response.edit(content=None, embed=embed, attachments=[], view=view), embed
+        else:
+            return await response.edit(content=None, embed=embed, files=files, view=view), embed
     else:
         return await ctx.send(content=None, embed=embed, files=files, view=view, silent=silent), embed
 
@@ -560,7 +581,7 @@ async def delete_response(target) -> bool:
     return False
 
 
-def get_voice_client_status(voice_client: discord.VoiceProtocol) -> int:
+def get_voice_client_status(voice_client: discord.voice.VoiceClient) -> int:
     """
     获取voice_client的播放状态
         0 - 待机中
@@ -815,6 +836,8 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
+    icon_error_filename = "error_cross_hover_pinch_orange_animated_0ms_100px.gif"
+
     if start is None and end is None:
         await skip_callback(ctx, first_index=None, second_index=None, command_call=True)
 
@@ -827,7 +850,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
             elif "[" and "]" in start and start[1:start.find("]")].isdigit():
                 start_index = int(start[1:start.find("]")])
             else:
-                await embed_respond(ctx, "参数错误", colour=orange, silent=True)
+                await embed_respond(ctx, author_name="参数错误", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
                 await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
                 return
             await skip_callback(ctx, first_index=start_index, command_call=True)
@@ -841,7 +864,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
             elif "[" and "]" in end and end[1:end.find("]")].isdigit():
                 start_index = int(end[1:end.find("]")])
             else:
-                await embed_respond(ctx, "参数错误", colour=orange, silent=True)
+                await embed_respond(ctx, author_name="参数错误", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
                 await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
                 return
             await skip_callback(ctx, first_index=start_index, command_call=True)
@@ -855,7 +878,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
             elif "[" and "]" in end and end[1:end.find("]")].isdigit():
                 end_index = int(end[1:end.find("]")])
             else:
-                await embed_respond(ctx, "参数错误", colour=orange, silent=True)
+                await embed_respond(ctx, author_name="参数错误", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
                 await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
                 return
             await skip_callback(ctx, first_index=1, second_index=end_index, command_call=True)
@@ -865,7 +888,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
             elif "[" and "]" in start and start[1:start.find("]")].isdigit():
                 start_index = int(start[1:start.find("]")])
             else:
-                await embed_respond(ctx, "参数错误", colour=orange, silent=True)
+                await embed_respond(ctx, author_name="参数错误", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
                 await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
                 return
             await skip_callback(ctx, first_index=start_index, second_index=len(current_playlist), command_call=True)
@@ -875,7 +898,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
             elif "[" and "]" in start and start[1:start.find("]")].isdigit():
                 start_index = int(start[1:start.find("]")])
             else:
-                await embed_respond(ctx, "参数错误", colour=orange, silent=True)
+                await embed_respond(ctx, author_name="参数错误", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
                 await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
                 return
             if end.isdigit():
@@ -883,7 +906,7 @@ async def skip(ctx: discord.ApplicationContext, start=None, end=None):
             elif "[" and "]" in end and end[1:end.find("]")].isdigit():
                 end_index = int(end[1:end.find("]")])
             else:
-                await embed_respond(ctx, "参数错误", colour=orange, silent=True)
+                await embed_respond(ctx, author_name="参数错误", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
                 await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
                 return
             await skip_callback(ctx, first_index=start_index, second_index=end_index, command_call=True)
@@ -955,14 +978,15 @@ async def info_callback(ctx: discord.ApplicationContext) -> None:
     :param ctx: 指令原句
     :return:
     """
+    icon_filename = "sticky_notes_in_reveal_animated_0ms_100px.gif"
     embed = discord.Embed(
         colour=discord.Colour.dark_teal(),
-        title=f"**Zeta-Discord机器人 [版本 v{version}]**",
         description=f"   基于 Pycord v{pycord_version} 运行\n"
                     f"   版本更新日期：{update_time}\n"
                     f"   作者：31Zeta"
     )
-    await ctx.respond(embed=embed, silent=True)
+    embed.set_author(name=f"Zeta-Discord机器人 [版本 v{version}]", icon_url=icon.url(icon_filename))
+    await ctx.respond(embed=embed, silent=True, files=icon_lib.files(icon_filename))
 
 
 async def help_callback(ctx: discord.ApplicationContext) -> None:
@@ -990,7 +1014,7 @@ async def broadcast_callback(ctx: discord.ApplicationContext, message) -> None:
     for current_guild in bot.guilds:
         await current_guild.text_channels[0].send(message)
 
-    await embed_respond("已发送", silent=True)
+    await embed_respond(ctx, "已发送", silent=True)
 
 
 async def join_callback(ctx: discord.ApplicationContext, channel: discord.VoiceChannel = None, command_call: bool = False) -> bool:
@@ -1007,12 +1031,15 @@ async def join_callback(ctx: discord.ApplicationContext, channel: discord.VoiceC
     await guild_lib.check(ctx, audio_lib_main)
     current_guild = guild_lib.get_guild(ctx)
 
+    icon_filename = "add_chat_in_reveal_animated_0ms_100px.gif"
+    icon_error_filename = "error_cross_hover_pinch_orange_animated_0ms_100px.gif.gif"
+
     # 未输入参数的情况
     if channel is None:
         # 指令发送者未加入频道的情况
         if not ctx.user.voice:
             await console.rp(f"频道加入失败，用户 {ctx.user} 发送指令时未加入任何语音频道", ctx.guild)
-            await embed_respond(ctx, "您未加入任何语音频道", colour=orange, silent=True)
+            await embed_respond(ctx, author_name="您未加入任何语音频道", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
             return False
 
         # 目标频道设定为指令发送者所在的频道
@@ -1025,14 +1052,14 @@ async def join_callback(ctx: discord.ApplicationContext, channel: discord.VoiceC
     if voice_client is None:
         await channel.connect()
         if command_call:
-            await embed_respond(f"已加入语音频道：->  ***{channel.name}***")
+            await embed_respond(ctx, author_name=f"已加入语音频道：->  {channel.name}", author_icon_url=icon.url(icon_filename), files=icon_lib.files(icon_filename))
 
     # 机器人已经在一个频道的情况
     else:
         previous_channel = voice_client.channel
         await voice_client.move_to(channel)
         if command_call:
-            await embed_respond(f"已转移语音频道：***{previous_channel}***  ->  ***{channel.name}***")
+            await embed_respond(ctx, author_name=f"已转移语音频道：{previous_channel}  ->  {channel.name}", author_icon_url=icon.url(icon_filename), files=icon_lib.files(icon_filename))
 
     await console.rp(f"加入语音频道：{channel.name}", ctx.guild)
     await current_guild.refresh_list_view()
@@ -1051,6 +1078,9 @@ async def leave_callback(ctx: discord.ApplicationContext) -> None:
     voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
+
+    icon_filename = "logout_hover_pinch_animated_0ms_100px.gif"
+
     if voice_client is not None:
         # 防止因退出频道自动删除正在播放的音频
         if len(current_playlist) > 0:
@@ -1062,10 +1092,10 @@ async def leave_callback(ctx: discord.ApplicationContext) -> None:
 
         await console.rp(f"离开语音频道：{last_channel}", ctx.guild)
 
-        await embed_respond(f"离开语音频道：<- ***{last_channel}***")
+        await embed_respond(ctx, author_name=f"离开语音频道：<-  {last_channel}", author_icon_url=icon.url(icon_filename), files=icon_lib.files(icon_filename))
 
     else:
-        await embed_respond(ctx, f"{bot_name} 没有连接到任何语音频道", colour=orange, silent=True)
+        await embed_respond(ctx, f"{bot_name} 没有连接到任何语音频道", silent=True)
 
     await current_guild.refresh_list_view()
 
@@ -1077,13 +1107,16 @@ async def search_audio_callback(ctx: discord.ApplicationContext, query, site=Non
 
     search_result: Dict[str, list] = {key: None for key in supported_search_sites}
 
+    icon_loading_filename = "hourglass_hover_rotation_animated_1000ms_infinite_30px.gif"
+    icon_error_filename = "error_cross_hover_pinch_orange_animated_0ms_100px.gif"
+
     if response is None:
-        loading_msg, embed = await embed_respond(ctx, f"正在搜索：{query}", silent=True)
+        loading_msg, embed = await embed_respond(ctx, author_name=f"正在搜索：{query}", author_icon_url=icon.url(icon_loading_filename), files=icon_lib.files(icon_loading_filename), silent=True)
     else:
-        loading_msg, embed = await embed_eos(ctx, response, f"正在搜索：{query}", silent=True)
+        loading_msg, embed = await embed_eos(ctx, response, author_name=f"正在搜索：{query}", author_icon_url=icon.url(icon_loading_filename), files=icon_lib.files(icon_loading_filename), silent=True)
 
     if site is not None and site not in supported_search_sites:
-        await embed_eos(ctx, "不支持该平台搜索", colour=orange, silent=True)
+        await embed_eos(ctx, response, author_name="不支持该平台搜索", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
         return
     if site == "哔哩哔哩" or site is None:
         search_result["哔哩哔哩"] = await bilibili.search(query, query_num=query_num)
@@ -1096,19 +1129,21 @@ async def search_audio_callback(ctx: discord.ApplicationContext, query, site=Non
     counter = 1
     for key in search_result:
         if search_result[key] is not None:
-            title_str += f"### {key}\n"
-            address_str += f"### {key}\n"
+            title_str += f"{key}\n"
+            address_str += f"{key}\n"
             for item in search_result[key]:
-                title_str += f"> **[{counter}]** {item['title']} [{utils.convert_duration_to_str(item['duration'])}]\n"
-                address_str += (f"> **[{counter}]** {item['title']} [{utils.convert_duration_to_str(item['duration'])}]"
-                                f"  -  {item['id']}\n")
+                title_str += f"> [{counter}] **{utils.markdown_escape(item['title'])}** [{utils.convert_duration_to_str(item['duration'])}]\n"
+                address_str += (
+                    f"> [{counter}] **{utils.markdown_escape(item['title'])}** [{utils.convert_duration_to_str(item['duration'])}]\n"
+                    f"> {item['id']}\n"
+                )
                 resource_list.append(item)
                 counter += 1
 
-    title_str += "\n**请选择要播放的音频序号：**"
-    address_str += "\n**请选择要播放的音频序号：**"
-    view = SearchedAudioSelectionView(ctx, query, title_str, address_str, resource_list)
-    await eos(ctx, loading_msg, title_str, view=view, silent=True)
+    title_str += "\n**请选择要播放的音频序号**"
+    address_str += "\n**请选择要播放的音频序号**"
+    menu = SearchedAudioSelectionMenu(ctx, query, title_str, address_str, resource_list)
+    await menu.init_eos(loading_msg, silent=True)
     await current_guild.refresh_list_view()
 
 
@@ -1159,6 +1194,9 @@ async def play_callback(ctx: discord.ApplicationContext, link, response: Union[d
     if source is not None:
         link = utils.get_url_from_str(link, source)
 
+    icon_loading_filename = "hourglass_hover_rotation_animated_1000ms_infinite_30px.gif"
+    icon_error_filename = "error_cross_hover_pinch_orange_animated_0ms_100px.gif"
+
     # Link属于Bilibili
     if source == "bilibili_bvid" or source == "bilibili_url" or source == "bilibili_short_url":
         # 如果是Bilibili短链则获取重定向链接
@@ -1166,16 +1204,16 @@ async def play_callback(ctx: discord.ApplicationContext, link, response: Union[d
             try:
                 link = utils.get_redirect_url(link)
             except requests.exceptions.InvalidSchema:
-                await embed_eos(ctx, response, "链接异常", colour=orange, silent=True)
+                await embed_eos(ctx, response, author_name="链接异常", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
                 await console.rp(f"链接重定向失败", ctx.guild, message_type=utils.PrintType.ERROR, print_head=True)
                 return
 
             await console.rp(f"获取的重定向链接为 {link}", ctx.guild)
 
         if response is None:
-            loading_msg, embed = await embed_respond(ctx, "正在加载哔哩哔哩音频信息", silent=True)
+            loading_msg, embed = await embed_respond(ctx, author_name="正在加载哔哩哔哩音频信息", author_icon_url=icon.url(icon_loading_filename), files=icon_lib.files(icon_loading_filename), silent=True)
         else:
-            loading_msg, embed = await embed_eos(ctx, response, "正在加载哔哩哔哩音频信息", silent=True)
+            loading_msg, embed = await embed_eos(ctx, response, author_name="正在加载哔哩哔哩音频信息", author_icon_url=icon.url(icon_loading_filename), files=icon_lib.files(icon_loading_filename), silent=True)
         await play_bilibili(ctx, source, link, response=loading_msg)
 
     # Link属于YouTube
@@ -1185,16 +1223,16 @@ async def play_callback(ctx: discord.ApplicationContext, link, response: Union[d
             try:
                 link = utils.get_redirect_url(link)
             except requests.exceptions.InvalidSchema:
-                await embed_eos(ctx, response, "链接异常", colour=orange, silent=True)
+                await embed_eos(ctx, response, author_name="链接异常", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
                 await console.rp(f"链接重定向失败", ctx.guild, message_type=utils.PrintType.ERROR, print_head=True)
                 return
 
             await console.rp(f"获取的重定向链接为 {link}", ctx.guild)
 
         if response is None:
-            loading_msg, embed = await embed_respond(ctx, "正在加载Youtube音频信息", silent=True)
+            loading_msg, embed = await embed_respond(ctx, author_name="正在加载Youtube音频信息", author_icon_url=icon.url(icon_loading_filename), files=icon_lib.files(icon_loading_filename), silent=True)
         else:
-            loading_msg, embed = await embed_eos(ctx, response, "正在加载Youtube音频信息", silent=True)
+            loading_msg, embed = await embed_eos(ctx, response, author_name="正在加载Youtube音频信息", author_icon_url=icon.url(icon_loading_filename), files=icon_lib.files(icon_loading_filename), silent=True)
         await play_youtube(ctx, link, response=loading_msg)
 
     # Link属于网易云音乐
@@ -1204,16 +1242,16 @@ async def play_callback(ctx: discord.ApplicationContext, link, response: Union[d
             try:
                 link = utils.get_redirect_url(link)
             except requests.exceptions.InvalidSchema:
-                await embed_eos(ctx, response, "链接异常", colour=orange, silent=True)
+                await embed_eos(ctx, response, author_name="链接异常", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
                 await console.rp(f"链接重定向失败", ctx.guild, message_type=utils.PrintType.ERROR, print_head=True)
                 return
 
             await console.rp(f"获取的重定向链接为 {link}", ctx.guild)
 
         if response is None:
-            loading_msg, embed = await embed_respond(ctx, "正在加载网易云音频信息", silent=True)
+            loading_msg, embed = await embed_respond(ctx, author_name="正在加载网易云音频信息", author_icon_url=icon.url(icon_loading_filename), files=icon_lib.files(icon_loading_filename), silent=True)
         else:
-            loading_msg, embed = await embed_eos(ctx, response, "正在加载网易云音频信息", silent=True)
+            loading_msg, embed = await embed_eos(ctx, response, author_name="正在加载网易云音频信息", author_icon_url=icon.url(icon_loading_filename), files=icon_lib.files(icon_loading_filename), silent=True)
         await play_netease(ctx, link, response=loading_msg)
 
     else:
@@ -1253,11 +1291,11 @@ async def play_audio(ctx: discord.ApplicationContext, target_audio: audio.Audio,
     voice_client.source.volume = current_guild.get_voice_volume() / 100.0
 
     await console.rp(f"开始播放：{target_audio.get_path()} 时长：{target_audio.get_duration_str()}", ctx.guild)
-    playing_icon_filename = "vinyl_loop_playing_animated_100px.gif"
+    playing_icon_filename = "vinyl_loop_playing_animated_infinite_100px.gif"
     if function_call:
-        message, embed = await embed_respond(ctx, f"**{target_audio.get_title()}**", author_name=f"正在播放    [{target_audio.get_duration_str()}]", author_icon_url=f"attachment://{playing_icon_filename}", thumbnail=target_audio.get_cover_url(), files=[icon_lib.get_file(playing_icon_filename)], silent=True)
+        message, embed = await embed_respond(ctx, description=f"**{target_audio.get_title()}**", author_name=f"正在播放\u2003[{target_audio.get_duration_str()}]", author_icon_url=icon.url(playing_icon_filename), thumbnail=target_audio.get_cover_url(), files=icon_lib.files(playing_icon_filename), silent=True)
     else:
-        message, embed = await embed_eos(ctx, response, f"**{target_audio.get_title()}**", author_name=f"正在播放    [{target_audio.get_duration_str()}]", author_icon_url=f"attachment://{playing_icon_filename}", thumbnail=target_audio.get_cover_url(), files=[icon_lib.get_file(playing_icon_filename)], silent=True)
+        message, embed = await embed_eos(ctx, response, description=f"**{target_audio.get_title()}**", author_name=f"正在播放\u2003[{target_audio.get_duration_str()}]", author_icon_url=icon.url(playing_icon_filename), thumbnail=target_audio.get_cover_url(), files=icon_lib.files(playing_icon_filename), silent=True)
 
     await current_guild.refresh_playing_message(message, embed)
     await current_guild.refresh_list_view()
@@ -1288,8 +1326,8 @@ async def play_next(ctx: discord.ApplicationContext) -> None:
 
     else:
         await console.rp("播放队列已结束", ctx.guild)
-        finished_icon_filename = "record_button_static_100px.png"
-        await embed_send(ctx, description=None, author_name="播放队列已结束", author_icon_url=f"attachment://{finished_icon_filename}", files=[icon_lib.get_file(finished_icon_filename)])
+        finished_icon_filename = "record_button_in_reveal_animated_0ms_100px.gif"
+        await embed_send(ctx, author_name="播放队列已结束", author_icon_url=icon.url(finished_icon_filename), files=icon_lib.files(finished_icon_filename))
         await current_guild.refresh_playing_message(None, None)
 
     await current_guild.refresh_list_view()
@@ -1304,11 +1342,13 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link, response:
     :param link: 链接
     :param response: 用于编辑的加载信息
     """
+    icon_error_filename = "error_cross_hover_pinch_orange_animated_0ms_100px.gif"
+
     # 如果是URl则转换成BV号
     if source == "bilibili_url" or source == "bilibili_short_url":
         bvid = utils.get_bvid_from_url(link)
         if bvid is None:
-            await embed_eos(ctx, response, "无效的Bilibili链接", colour=orange, silent=True)
+            await embed_eos(ctx, response, author_name="无效的Bilibili链接", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
             await console.rp(f"{link} 为无效的链接", ctx.guild, message_type=utils.PrintType.ERROR, print_head=True)
             return
     else:
@@ -1321,10 +1361,8 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link, response:
         warning_description = f"[{bvid}] 信息获取失败：{info_result['message']}"
         if info_result["retryable"]:
             warning_description += "，请稍后再试"
-        await embed_eos(ctx, response, warning_description, colour=orange, silent=True)
+        await embed_eos(ctx, response, author_name=warning_description, colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename),  silent=True)
         return
-
-    utils.json_save("./test_output.json", info_dict)
 
     # 单一视频 bilibili_single
     if info_dict["videos"] == 1 and "ugc_season" not in info_dict:
@@ -1344,7 +1382,7 @@ async def play_bilibili(ctx: discord.ApplicationContext, source, link, response:
             p_time_str = utils.convert_duration_to_str(item["duration"])
             p_info_list.append((p_title, p_time_str))
 
-        menu_list = utils.make_playlist_page(p_info_list, 10, {None: "> "}, {})
+        menu_list = utils.make_playlist_page(p_info_list, 10, {None: "> "}, {}, escape_markdown=True)
         menu = EpisodeSelectMenu(ctx, "bilibili_p", info_dict, menu_list, "哔哩哔哩分P", list_title=info_dict["title"])
         await menu.init_eos(response=response, silent=True)
         return
@@ -1428,8 +1466,8 @@ async def add_bilibili_audio(ctx: discord.ApplicationContext, info_dict, audio_t
 
             # 如果播放列表不为空
             elif audio_type == "bilibili_single":
-                list_icon_filename = "todo_list_static_100px.png"
-                await embed_eos(ctx, response, f"**{new_audio.get_title()}**", author_name=f"已加入播放列表    [{new_audio.get_duration_str()}]", author_icon_url=f"attachment://{list_icon_filename}", thumbnail=new_audio.get_cover_url(), files=[icon_lib.get_file(list_icon_filename)], silent=True)
+                list_icon_filename = "todo_list_in_reveal_animated_0ms_100px.gif"
+                await embed_eos(ctx, response, f"**{new_audio.get_title()}**", author_name=f"已加入播放列表\u2003[{new_audio.get_duration_str()}]", author_icon_url=icon.url(list_icon_filename), thumbnail=new_audio.get_cover_url(), files=icon_lib.files(list_icon_filename), silent=True)
 
             current_playlist.append_audio(new_audio)
             await console.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表", ctx.guild)
@@ -1534,7 +1572,7 @@ async def play_youtube(ctx: discord.ApplicationContext, link, response=None) -> 
                 ep_time_str = utils.convert_duration_to_str(item["duration"])
                 ep_info_list.append((ep_title, ep_time_str))
             playlist_title = info_dict['title']
-            menu_list = utils.make_playlist_page(ep_info_list, 10, {None: "> "}, {})
+            menu_list = utils.make_playlist_page(ep_info_list, 10, {None: "> "}, {}, escape_markdown=True)
             menu = EpisodeSelectMenu(ctx, "youtube_playlist", info_dict, menu_list, "YouTube播放列表", playlist_title)
             await menu.init_eos(response=response, silent=True)
 
@@ -1586,7 +1624,7 @@ async def add_youtube_audio(ctx: discord.ApplicationContext, link, info_dict, li
     current_playlist = current_guild.get_playlist()
 
     # 开始下载
-    new_audio = await audio_lib_main.download_youtube(link, info_dict, link_type)
+    new_audio = await audio_lib_main.download_ytdlp(link, info_dict, link_type)
 
     if new_audio is not None:
         if current_playlist.is_empty() and not voice_client.is_playing():
@@ -1597,7 +1635,8 @@ async def add_youtube_audio(ctx: discord.ApplicationContext, link, info_dict, li
         if not list_add_call:
             # 如果列表为空则会有正在播放提示，否则加入列表提示
             if not current_playlist.is_empty():
-                await embed_eos(ctx, response, f"已加入播放列表：**{new_audio.get_title()} [{new_audio.get_duration_str()}]**", silent=True)
+                icon_list_filename = "todo_list_in_reveal_animated_0ms_100px.gif"
+                await embed_eos(ctx, response, description=f"**{utils.markdown_escape(new_audio.get_title())}**", author_name=f"已加入播放列表\u2003[{new_audio.get_duration_str()}]", author_icon_url=icon.url(icon_list_filename), thumbnail=new_audio.get_cover_url(), files=icon_lib.files(icon_list_filename), silent=True)
 
         # 添加至服务器播放列表
         current_playlist.append_audio(new_audio)
@@ -1644,7 +1683,7 @@ async def play_netease(ctx: discord.ApplicationContext, link, response=None) -> 
                 # ep_info_list内的所有元组只包含ep_title一个元素，不要去掉()内的逗号
                 ep_info_list.append((ep_title,))
             playlist_title = info_dict['title']
-            menu_list = utils.make_playlist_page(ep_info_list, 10, {None: "> "}, {})
+            menu_list = utils.make_playlist_page(ep_info_list, 10, {None: "> "}, {}, escape_markdown=True)
             menu = EpisodeSelectMenu(ctx, "netease_playlist", info_dict, menu_list, "网易云播放列表", playlist_title)
             await menu.init_eos(response=response, silent=True)
 
@@ -1696,7 +1735,7 @@ async def add_netease_audio(ctx: discord.ApplicationContext, link, info_dict, li
     current_playlist = current_guild.get_playlist()
 
     # 开始下载
-    new_audio = await audio_lib_main.download_netease(link, info_dict, link_type)
+    new_audio = await audio_lib_main.download_ytdlp(link, info_dict, link_type)
 
     if new_audio is not None:
         if current_playlist.is_empty() and not voice_client.is_playing():
@@ -1731,12 +1770,13 @@ async def pause_callback(ctx: discord.ApplicationContext, command_call: bool = F
 
     voice_client = ctx.guild.voice_client
 
+    pause_icon_filename = "pause_in_reveal_animated_0ms_100px.gif"
     if voice_client is not None and voice_client.is_playing():
         # if ctx.user.voice and voice_client.channel == ctx.user.voice.channel:
         voice_client.pause()
         await console.rp("暂停播放", ctx.guild)
         if command_call:
-            await embed_respond(ctx, "暂停播放")
+            await embed_respond(ctx, author_name="暂停播放", author_icon_url=icon.url(pause_icon_filename), files=icon_lib.files(pause_icon_filename))
         # else:
         #     logger.rp(f"收到pause指令时指令发出者 {ctx.author} 不在机器人所在的频道", ctx.guild)
         #     await ctx.respond(f"您不在{setting.value('bot_name')}所在的频道")
@@ -1766,6 +1806,8 @@ async def resume_callback(ctx: discord.ApplicationContext, command_call: bool = 
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
+    resume_icon_filename = "play_button_in_reveal_animated_0ms_100px.gif"
+
     # 播放列表为空的情况
     # if current_playlist.is_empty():
     #     logger.rp("收到resume指令时服务器主播放列表内没有任何音频", ctx.guild)
@@ -1787,7 +1829,7 @@ async def resume_callback(ctx: discord.ApplicationContext, command_call: bool = 
             voice_client.resume()
             await console.rp("恢复播放", ctx.guild)
             if command_call:
-                await embed_respond(ctx, "恢复播放")
+                await embed_respond(ctx, author_name="恢复播放", author_icon_url=icon.url(resume_icon_filename), files=icon_lib.files(resume_icon_filename))
         else:
             await console.rp(f"收到pause指令时指令发出者 {ctx.author} 不在机器人所在的频道", ctx.guild)
             if command_call:
@@ -1807,7 +1849,7 @@ async def resume_callback(ctx: discord.ApplicationContext, command_call: bool = 
 
         await console.rp("恢复中断的播放列表", ctx.guild)
         if command_call:
-            await embed_respond(ctx, f"恢复上次中断的播放列表")
+            await embed_respond(ctx, author_name=f"恢复上次中断的播放列表", author_icon_url=icon.url(resume_icon_filename), files=icon_lib.files(resume_icon_filename))
 
     else:
         if command_call:
@@ -1847,7 +1889,7 @@ async def list_callback(ctx: discord.ApplicationContext):
         await previous_menu.on_override()
 
 
-async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_index: Union[int, None] = None, command_call: bool = False):
+async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_index: Union[int, None] = None, command_call: bool = False, refresh_view: bool = True):
     """
     使机器人跳过指定的歌曲，并删除对应歌曲的文件
     *注意*：此方法输入的index从1开始，不是0
@@ -1864,6 +1906,9 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
 
+    icon_skip_filename = "play_forward_hover_pinch_animated_0ms_100px.gif"
+    icon_error_filename = "error_cross_hover_pinch_orange_animated_0ms_100px.gif"
+    
     if not current_playlist.is_empty():
         # 不输入参数的情况
         if first_index is None and second_index is None:
@@ -1882,16 +1927,17 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
                 current_playlist.remove_audio(0)
 
             await console.rp(f"第1个音频 {title} 已被用户 {ctx.user} 移出播放列表", ctx.guild)
+
             if command_call:
-                await embed_respond(ctx, f"已跳过当前音频：**{title} [{duration_str}]**")
+                await embed_respond(ctx, description=f"**{utils.markdown_escape(title)}**", author_name=f"已跳过当前音频\u2003[{duration_str}]", author_icon_url=icon.url(icon_skip_filename), files=icon_lib.files(icon_skip_filename))
             else:
-                await embed_send(ctx, f"已跳过当前音频：**{title} [{duration_str}]**")
+                await embed_send(ctx, description=f"**{utils.markdown_escape(title)}**", author_name=f"已跳过当前音频\u2003[{duration_str}]", author_icon_url=icon.url(icon_skip_filename), files=icon_lib.files(icon_skip_filename))
 
         # 输入1个参数的情况
         elif second_index is None:
 
             if first_index == "*":
-                await clear(ctx)
+                await clear_callback(ctx)
 
             elif int(first_index) == 1:
                 current_audio = current_playlist.get_audio(0)
@@ -1906,16 +1952,16 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
 
                 await console.rp(f"第1个音频 {title} 已被用户 {ctx.user} 移出播放列表", ctx.guild)
                 if command_call:
-                    await embed_respond(ctx, f"已跳过当前音频：**{title} [{duration_str}]**")
+                    await embed_respond(ctx, description=f"**{utils.markdown_escape(title)}**", author_name=f"已跳过当前音频\u2003[{duration_str}]", author_icon_url=icon.url(icon_skip_filename), files=icon_lib.files(icon_skip_filename))
                 else:
-                    await embed_send(ctx, f"已跳过当前音频：**{title} [{duration_str}]**")
+                    await embed_send(ctx, description=f"**{utils.markdown_escape(title)}**", author_name=f"已跳过当前音频\u2003[{duration_str}]", author_icon_url=icon.url(icon_skip_filename), files=icon_lib.files(icon_skip_filename))
 
             elif int(first_index) > len(current_playlist):
                 await console.rp(f"用户 {ctx.author} 输入的序号不在范围内", ctx.guild)
                 if command_call:
-                    await embed_respond(ctx, f"选择的序号不在范围内", colour=orange, silent=True)
+                    await embed_respond(ctx, author_name=f"选择的序号不在范围内", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
                 else:
-                    await embed_send(ctx, f"选择的序号不在范围内", colour=orange, silent=True)
+                    await embed_send(ctx, author_name=f"选择的序号不在范围内", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
 
             else:
                 first_index = int(first_index)
@@ -1926,9 +1972,9 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
 
                 await console.rp(f"第{first_index}个音频 {title} 已被用户 {ctx.user} 移出播放列表", ctx.guild)
                 if command_call:
-                    await embed_respond(ctx, f"第{first_index}个音频 **{title} [{duration_str}]** 已被移出播放列表")
+                    await embed_respond(ctx, description=f"**{utils.markdown_escape(title)}**", author_name=f"第 {first_index} 个音频已被移出播放列表\u2003[{duration_str}]", author_icon_url=icon.url(icon_skip_filename), files=icon_lib.files(icon_skip_filename))
                 else:
-                    await embed_send(ctx, f"第{first_index}个音频 **{title} [{duration_str}]** 已被移出播放列表")
+                    await embed_send(ctx, description=f"**{utils.markdown_escape(title)}**", author_name=f"第 {first_index} 个音频已被移出播放列表\u2003[{duration_str}]", author_icon_url=icon.url(icon_skip_filename), files=icon_lib.files(icon_skip_filename))
 
         # 输入2个参数的情况
         elif int(first_index) < int(second_index):
@@ -1950,16 +1996,16 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
                     ctx.guild
                 )
                 if command_call:
-                    await embed_respond(ctx, f"第{first_index}到第{second_index}个音频已被移出播放列表")
+                    await embed_respond(ctx, author_name=f"第 {first_index} 到第 {second_index} 个音频已被移出播放列表", author_url=icon.url(icon_skip_filename), files=icon_lib.files(icon_skip_filename))
                 else:
-                    await embed_send(ctx, f"第{first_index}到第{second_index}个音频已被移出播放列表")
+                    await embed_send(ctx, author_name=f"第 {first_index} 到第 {second_index} 个音频已被移出播放列表", author_url=icon.url(icon_skip_filename), files=icon_lib.files(icon_skip_filename))
 
             elif int(first_index) > len(current_playlist) or int(second_index) > len(current_playlist):
                 await console.rp(f"用户 {ctx.author} 输入的序号不在范围内", ctx.guild)
                 if command_call:
-                    await embed_respond(ctx, f"选择的序号不在范围内", silent=True)
+                    await embed_respond(ctx, author_name=f"选择的序号不在范围内", author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
                 else:
-                    await embed_send(ctx, f"选择的序号不在范围内", silent=True)
+                    await embed_send(ctx, author_name=f"选择的序号不在范围内", author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
 
             # 不需要跳过正在播放的歌
             else:
@@ -1968,24 +2014,25 @@ async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_i
 
                 await console.rp(f"第{first_index}到第{second_index}个音频被用户 {ctx.author} 移出播放列表", ctx.guild)
                 if command_call:
-                    await embed_respond(ctx, f"第{first_index}到第{second_index}个音频已被移出播放列表")
+                    await embed_respond(ctx, author_name=f"第{first_index}到第{second_index}个音频已被移出播放列表", author_icon_url=icon.url(icon_skip_filename), files=icon_lib.files(icon_skip_filename))
                 else:
-                    await embed_send(ctx, f"第{first_index}到第{second_index}个音频已被移出播放列表")
+                    await embed_send(ctx, author_name=f"第{first_index}到第{second_index}个音频已被移出播放列表", author_icon_url=icon.url(icon_skip_filename), files=icon_lib.files(icon_skip_filename))
 
         else:
             if command_call:
-                await embed_respond(ctx, "参数错误", colour=orange, silent=True)
+                await embed_respond(ctx, author_name="参数错误", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
             else:
-                await embed_send(ctx, "参数错误", colour=orange, silent=True)
+                await embed_send(ctx, author_name="参数错误", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
             await console.rp(f"用户 {ctx.author} 的skip指令参数错误", ctx.guild)
 
     else:
         if command_call:
-            await embed_respond(ctx, "当前播放列表已为空", colour=orange, silent=True)
+            await embed_respond(ctx, "当前播放列表已为空", silent=True)
         else:
-            await embed_send(ctx, "当前播放列表已为空", colour=orange, silent=True)
+            await embed_send(ctx, "当前播放列表已为空", silent=True)
 
-    await current_guild.refresh_list_view()
+    if refresh_view:
+        await current_guild.refresh_list_view()
 
 
 async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Union[int, None] = None):
@@ -1994,6 +2041,8 @@ async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Un
     voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
     current_playlist = current_guild.get_playlist()
+
+    icon_filename = "left_right_in_reveal_animated_0ms_100px.gif"
 
     if from_number is None or to_number is None:
         await embed_respond(ctx, "请输入想要移动的歌曲序号以及想要移动到的位置", silent=True)
@@ -2013,7 +2062,7 @@ async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Un
         voice_client.stop()
 
         await console.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
-        await embed_respond(ctx, f"**{title}** 已被移至播放列表第 **{to_number}** 位")
+        await embed_respond(ctx, description=f"{utils.markdown_escape(title)}", author_name=f"移动至播放列表第 {to_number} 位", author_icon_url=icon.url(icon_filename), files=icon_lib.files(icon_filename))
 
     # 将音频移到当前位置
     elif to_number == 1:
@@ -2026,7 +2075,7 @@ async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Un
         voice_client.stop()
 
         await console.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
-        await embed_respond(ctx, f"**{title}** 已被移至播放列表第 **{to_number}** 位")
+        await embed_respond(ctx, description=f"{utils.markdown_escape(title)}", author_name=f"移动至播放列表第 {to_number} 位", author_icon_url=icon.url(icon_filename), files=icon_lib.files(icon_filename))
 
     else:
         target_song = current_playlist.get_audio(from_number - 1)
@@ -2039,7 +2088,7 @@ async def move_callback(ctx, from_number: Union[int, None] = None, to_number: Un
             current_playlist.remove_audio(from_number)
 
         await console.rp(f"音频 {title} 已被用户 {ctx.author} 移至播放列表第 {to_number} 位", ctx.guild)
-        await embed_respond(ctx, f"**{title}** 已被移至播放列表第 **{to_number}** 位")
+        await embed_respond(ctx, description=f"{utils.markdown_escape(title)}", author_name=f"移动至播放列表第 {to_number} 位", author_icon_url=icon.url(icon_filename), files=icon_lib.files(icon_filename))
 
     await current_guild.refresh_list_view()
 
@@ -2051,9 +2100,6 @@ async def clear_callback(ctx):
     :param ctx: 指令原句
     :return:
     """
-    # if not await command_check(ctx):
-    #     return
-
     await guild_lib.check(ctx, audio_lib_main)
 
     voice_client = ctx.guild.voice_client
@@ -2070,7 +2116,8 @@ async def clear_callback(ctx):
         current_playlist.remove_all()
 
     await console.rp(f"用户 {ctx.author} 已清空所在服务器的播放列表", ctx.guild)
-    await embed_respond(ctx, "播放列表已清空")
+    clear_icon_filename = "bin_hover_empty_animated_0ms_100px.gif"
+    await embed_respond(ctx, author_name="播放列表已清空", author_icon_url=icon.url(clear_icon_filename), files=icon_lib.files(clear_icon_filename))
 
 
 async def volume_callback(ctx: discord.ApplicationContext, volume_num=None) -> None:
@@ -2078,8 +2125,11 @@ async def volume_callback(ctx: discord.ApplicationContext, volume_num=None) -> N
     await guild_lib.check(ctx, audio_lib_main)
     current_volume = guild_lib.get_guild(ctx).get_voice_volume()
 
+    icon_filename = "speaker_hover_pinch_animated_0ms_100px.gif"
+    icon_mute_filename = "speaker_hover_mute_animated_0ms_100px.gif"
+
     if volume_num is None:
-        await embed_respond(ctx, f"当前音量为 **{current_volume}%**", silent=True)
+        await embed_respond(ctx, author_name=f"当前音量为：{current_volume}%", author_icon_url=icon.url(icon_filename), files=icon_lib.files(icon_filename), silent=True)
 
     elif volume_num == "up" or volume_num == "u" or volume_num == "+" or volume_num == "＋":
         if current_volume + 20.0 >= 200:
@@ -2087,12 +2137,12 @@ async def volume_callback(ctx: discord.ApplicationContext, volume_num=None) -> N
         else:
             current_volume += 20.0
 
-        if voice_client.is_playing():
+        if voice_client is not None and voice_client.is_playing():
             voice_client.source.volume = current_volume / 100.0
         guild_lib.get_guild(ctx).set_voice_volume(current_volume)
 
         await console.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
-        await embed_respond(ctx, f"将音量提升至 **{current_volume}%**")
+        await embed_respond(ctx, author_name=f"将音量提升至：{current_volume}%", author_icon_url=icon.url(icon_filename), files=icon_lib.files(icon_filename))
 
     elif volume_num == "down" or volume_num == "d" or volume_num == "-":
         if current_volume - 20.0 <= 0.0:
@@ -2100,12 +2150,16 @@ async def volume_callback(ctx: discord.ApplicationContext, volume_num=None) -> N
         else:
             current_volume -= 20.0
 
-        if voice_client.is_playing():
+        if voice_client is not None and voice_client.is_playing():
             voice_client.source.volume = current_volume / 100.0
         guild_lib.get_guild(ctx).set_voice_volume(current_volume)
 
         await console.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
-        await embed_respond(ctx, f"将音量降低至 **{current_volume}%**")
+
+        if current_volume == 0.0:
+            await embed_respond(ctx, author_name=f"将音量降低至：{current_volume}%", author_icon_url=icon.url(icon_mute_filename), files=icon_lib.files(icon_mute_filename))
+        else:
+            await embed_respond(ctx, author_name=f"将音量降低至：{current_volume}%", author_icon_url=icon.url(icon_filename), files=icon_lib.files(icon_filename))
 
     else:
         try:
@@ -2120,12 +2174,16 @@ async def volume_callback(ctx: discord.ApplicationContext, volume_num=None) -> N
         else:
             current_volume = volume_num
 
-            if voice_client.is_playing():
+            if voice_client is not None and voice_client.is_playing():
                 voice_client.source.volume = current_volume / 100.0
             guild_lib.get_guild(ctx).set_voice_volume(current_volume)
 
             await console.rp(f"用户 {ctx.author} 已将音量设置为 {current_volume}%", ctx.guild)
-            await embed_respond(ctx, f"将音量设置为 **{current_volume}%**")
+
+            if current_volume == 0.0:
+                await embed_respond(ctx, author_name=f"将音量设置为：{current_volume}%", author_icon_url=icon.url(icon_mute_filename), files=icon_lib.files(icon_mute_filename))
+            else:
+                await embed_respond(ctx, author_name=f"将音量设置为：{current_volume}%", author_icon_url=icon.url(icon_filename), files=icon_lib.files(icon_filename))
 
 
 async def reboot_callback(ctx):
@@ -2134,7 +2192,8 @@ async def reboot_callback(ctx):
     """
     await guild_lib.save_all()
 
-    await embed_respond(ctx, "正在重启", colour=red)
+    icon_filename = "spin_in_reveal_0ms_100px.gif"
+    await embed_respond(ctx, author_name="正在重启", colour=red, author_icon_url=icon.url(icon_filename), files=icon_lib.files(icon_filename))
 
     os.execl(python_path, python_path, * sys.argv)
 
@@ -2145,7 +2204,8 @@ async def shutdown_callback(ctx):
     """
     await guild_lib.save_all()
 
-    await embed_respond(ctx, "正在关闭", colour=red)
+    icon_filename = "logout_hover_pinch_red_animated_0ms_100px.gif"
+    await embed_respond(ctx, author_name="正在关闭", colour=red, author_icon_url=icon.url(icon_filename), files=icon_lib.files(icon_filename))
     await bot.close()
 
 
@@ -2161,7 +2221,6 @@ class PlaylistMenu(View):
         self.ctx: discord.ApplicationContext = ctx
         self.guild = guild_lib.get_guild(self.ctx)
         self.playlist = self.guild.get_playlist()
-        self.embed = None
 
         self.page_num = 0
         self.occur_time = utils.ctime_str()
@@ -2178,17 +2237,36 @@ class PlaylistMenu(View):
         self.overrode = False
         self.time_outed = False
 
+        self.icon_filename = "questionnaire_in_reveal_animated_0ms_50px.gif"
+        self.embed = discord.Embed(
+            colour=discord.Color.dark_teal(),
+            title=f"{self.playlist.get_name()}"
+        )
+        self.embed.set_author(name="播放列表", icon_url=icon.url(self.icon_filename))
+
         self.original_msg = None
 
         self.refresh_pages()
 
     async def init_respond(self, ephemeral: bool = False, silent: bool = False):
-        original_msg = await self.ctx.respond(content=None, embed=self.embed, view=self, ephemeral=ephemeral, silent=silent)
+        files = icon_lib.files(self.icon_filename)
+        original_msg = await self.ctx.respond(content=None, embed=self.embed, view=self, ephemeral=ephemeral, silent=silent, files=files)
+        await self.set_original_msg(original_msg)
+
+    async def init_eos(self, response, silent: bool = False):
+        files = icon_lib.files(self.icon_filename)
+        original_msg = await eos(self.ctx, response, content=None, silent=silent, embed=self.embed, view=self, files=files)
         await self.set_original_msg(original_msg)
 
     async def refresh_menu(self):
         self.refresh_pages()
-        await eos(self.ctx, response=self.original_msg, content=None, embed=self.embed, view=self)
+        files = icon_lib.files(self.icon_filename)
+        await eos(self.ctx, response=self.original_msg, content=None, embed=self.embed, view=self, files=files)
+
+    async def _refresh_menu(self, msg: discord.InteractionResponse):
+        self.refresh_pages()
+        files = icon_lib.files(self.icon_filename)
+        await msg.edit_message(content=None, embed=self.embed, view=self, files=files)
 
     def refresh_pages(self):
         # 生成播放列表主体文本
@@ -2202,7 +2280,7 @@ class PlaylistMenu(View):
         # 先启用所有可变状态的按钮，稍后根据状态禁用
         variable_states_buttons = {"button_next_audio", "button_previous_page", "button_next_page"}
         for button in self.children:
-            if button.custom_id in variable_states_buttons:
+            if isinstance(button, discord.ui.Button) and button.custom_id in variable_states_buttons:
                 button.disabled = False
 
         # 如果self.playlist_pages长度为0，则插入一个当前播放列表为空，此时长度为1
@@ -2210,7 +2288,7 @@ class PlaylistMenu(View):
             self.playlist_pages.append("> **当前播放列表为空**\n")
             # 如果播放列表为空则禁用下一首按钮
             for button in self.children:
-                if button.custom_id == "button_next_audio":
+                if isinstance(button, discord.ui.Button) and button.custom_id == "button_next_audio":
                     button.disabled = True
                     break
 
@@ -2232,7 +2310,7 @@ class PlaylistMenu(View):
         else:
             self.play_pause_button_label = "▶"
         for button in self.children:
-            if button.custom_id == "button_play_pause":
+            if isinstance(button, discord.ui.Button) and button.custom_id == "button_play_pause":
                 button.label = self.play_pause_button_label
                 break
 
@@ -2253,14 +2331,14 @@ class PlaylistMenu(View):
         else:
             self.play_mode_str = "播放模式"
         for button in self.children:
-            if button.custom_id == "button_play_mode":
+            if isinstance(button, discord.ui.Button) and button.custom_id == "button_play_mode":
                 button.label = self.play_mode_str
                 # TODO 制作播放模式切换
                 button.disabled = True
                 break
 
         for button in self.children:
-            if button.custom_id == "button_previous_audio":
+            if isinstance(button, discord.ui.Button) and button.custom_id == "button_previous_audio":
                 # TODO 完成历史播放列表
                 button.disabled = True
                 break
@@ -2268,14 +2346,14 @@ class PlaylistMenu(View):
         # 如果在第1页则禁用上一页按钮
         if self.page_num == 0:
             for button in self.children:
-                if button.custom_id == "button_previous_page":
+                if isinstance(button, discord.ui.Button) and button.custom_id == "button_previous_page":
                     button.disabled = True
                     break
 
         # 如果在最后1页则禁用下一页按钮
         if self.page_num == len(self.playlist_pages) - 1:
             for button in self.children:
-                if button.custom_id == "button_next_page":
+                if isinstance(button, discord.ui.Button) and button.custom_id == "button_next_page":
                     button.disabled = True
                     break
 
@@ -2286,13 +2364,12 @@ class PlaylistMenu(View):
         embed_voice_client_status_str = f"状态：{self.voice_client_status_str}"
 
         # 设置嵌套元素
-        self.embed = discord.Embed(
-            colour=discord.Color.dark_teal(),
-            title=f"{self.playlist.get_name()}",
-            description=f"{embed_playlist_length_str:^10}  |  {embed_playlist_duration_str:^10}  |  {embed_voice_client_status_str:^10}\n\n"
-                        f"{self.playlist_pages[self.page_num]}",
-            timestamp=utils.ctime_datetime(),
+        # 使用\u2003全角空格加宽间距
+        self.embed.description = (
+            f"{embed_playlist_length_str}\u2003\u2003{embed_playlist_duration_str}\u2003\u2003{embed_voice_client_status_str}\n\n"
+            f"{self.playlist_pages[self.page_num]}"
         )
+        self.embed.timestamp = utils.ctime_datetime()
         self.embed.set_footer(text=f"第[{self.page_num + 1}]页，共[{len(self.playlist_pages)}]页")
 
     @discord.ui.button(label="▍◀", style=discord.ButtonStyle.grey, custom_id="button_previous_audio", row=1)
@@ -2300,9 +2377,7 @@ class PlaylistMenu(View):
         button.disabled = False
         msg = interaction.response
 
-        self.refresh_pages()
-
-        await msg.edit_message(content=self.get_page_content(self.page_num), view=self)
+        await self._refresh_menu(msg)
 
     @discord.ui.button(label="▶▌▌", style=discord.ButtonStyle.grey, custom_id="button_play_pause", row=1)
     async def button_play_pause_callback(self, button, interaction):
@@ -2318,18 +2393,17 @@ class PlaylistMenu(View):
         else:
             await resume_callback(self.ctx, command_call=False)
 
-        self.refresh_pages()
-        await msg.edit_message(content=None, embed=self.embed, view=self)
+        await self._refresh_menu(msg)
 
     @discord.ui.button(label="▶ ▍", style=discord.ButtonStyle.grey, custom_id="button_next_audio", row=1)
     async def button_next_audio_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
 
-        await skip_callback(self.ctx)
+        # 禁用skip_callback的view刷新，防止重复刷新
+        await skip_callback(self.ctx, refresh_view=False)
 
-        self.refresh_pages()
-        await msg.edit_message(content=None, embed=self.embed, view=self)
+        await self._refresh_menu(msg)
 
     @discord.ui.button(label="播放模式", style=discord.ButtonStyle.grey, custom_id="button_play_mode", row=1)
     async def button_play_mode_callback(self, button, interaction):
@@ -2341,8 +2415,7 @@ class PlaylistMenu(View):
             temp_code = 0
         self.guild.set_play_mode(temp_code)
 
-        self.refresh_pages()
-        await msg.edit_message(content=None, embed=self.embed, view=self)
+        await self._refresh_menu(msg)
 
     @discord.ui.button(label="上一页", style=discord.ButtonStyle.grey, custom_id="button_previous_page", row=2)
     async def button_previous_page_callback(self, button, interaction):
@@ -2355,8 +2428,7 @@ class PlaylistMenu(View):
         else:
             self.page_num -= 1
 
-        self.refresh_pages()
-        await msg.edit_message(content=None, embed=self.embed, view=self)
+        await self._refresh_menu(msg)
 
     @discord.ui.button(label="下一页", style=discord.ButtonStyle.grey, custom_id="button_next_page", row=2)
     async def button_next_page_callback(self, button, interaction):
@@ -2369,15 +2441,13 @@ class PlaylistMenu(View):
         else:
             self.page_num += 1
 
-        self.refresh_pages()
-        await msg.edit_message(content=None, embed=self.embed, view=self)
+        await self._refresh_menu(msg)
 
     @discord.ui.button(label="刷新", style=discord.ButtonStyle.grey, custom_id="button_refresh", row=2)
     async def button_refresh_callback(self, button, interaction):
         button.disabled = False
         msg = interaction.response
-        self.refresh_pages()
-        await msg.edit_message(content=None, embed=self.embed, view=self)
+        await self._refresh_menu(msg)
 
     @discord.ui.button(label="关闭", style=discord.ButtonStyle.grey, custom_id="button_close", row=2)
     async def button_close_callback(self, button, interaction):
@@ -2389,8 +2459,7 @@ class PlaylistMenu(View):
         guild_active_views = current_guild.get_active_views()
         guild_active_views["playlist_menu_view"] = None
 
-        self.clear_items()
-        await delete_response(self.original_msg)
+        await self._refresh_menu(msg)
 
     async def set_original_msg(self, response: Union[discord.Message, discord.Interaction, discord.InteractionMessage, None]):
         """
@@ -2484,6 +2553,11 @@ class EpisodeSelectMenu(View):
             self.cover_url = info_dict["pic"]
         elif self.source == "bilibili_collection" and "pic" in info_dict:
             self.cover_url = info_dict["pic"]
+        elif self.source == "youtube_playlist" and "thumbnails" in info_dict and len(info_dict["thumbnails"]) > 0:
+            for thumbnail in reversed(info_dict["thumbnails"]):
+                if "url" in thumbnail:
+                    self.cover_url = thumbnail["url"]
+                    break
 
         self.refresh_pages()
 
@@ -2504,7 +2578,7 @@ class EpisodeSelectMenu(View):
             # 先启用所有可变状态的按钮，稍后根据状态禁用
             variable_states_buttons = {"button_previous_page", "button_next_page"}
             for button in self.children:
-                if button.custom_id in variable_states_buttons:
+                if isinstance(button, discord.ui.Button) and button.custom_id in variable_states_buttons:
                     button.disabled = False
 
             # 如果当前页码小于范围则跳转至第一页
@@ -2517,14 +2591,14 @@ class EpisodeSelectMenu(View):
             # 如果在第1页则禁用上一页按钮
             if self.page_num == 0:
                 for button in self.children:
-                    if button.custom_id == "button_previous_page":
+                    if isinstance(button, discord.ui.Button) and button.custom_id == "button_previous_page":
                         button.disabled = True
                         break
 
             # 如果在最后1页则禁用下一页按钮
             if self.page_num == len(self.menu_list) - 1:
                 for button in self.children:
-                    if button.custom_id == "button_next_page":
+                    if isinstance(button, discord.ui.Button) and button.custom_id == "button_next_page":
                         button.disabled = True
                         break
 
@@ -3206,24 +3280,31 @@ class CheckCollectionMenu(View):
 
         if self.source == "bilibili_collection":
             collection_title = self.info_dict["ugc_season"]["title"]
-            message = f"**{self.info_dict['title']}** 包含在合集 **{collection_title}** 中, 是否要查看此合集？\n"
+            message = f"**{utils.markdown_escape(self.info_dict['title'])}** 包含在合集 **{utils.markdown_escape(collection_title)}** 中, 是否要查看此合集？\n"
+            title = "发现合集"
         elif self.source == "youtube_playlist":
             playlist_title = self.info_dict['title']
-            message = f"**{info_dict['title']}** 包含在播放列表 **{playlist_title}** 中, 是否要查看此播放列表？\n"
+            message = f"**{utils.markdown_escape(info_dict['title'])}** 包含在播放列表 **{utils.markdown_escape(playlist_title)}** 中, 是否要查看此播放列表？\n"
+            title = "发现播放列表"
         else:
             message = f"合集信息错误"
+            title = f"合集信息错误"
 
+        self.icon_filename = "question_hover_wiggle_animated_1500ms_infinite_100px.gif"
         self.embed = discord.Embed(
             colour=discord.Colour.dark_green(),
             description=message,
         )
+        self.embed.set_author(name=title, icon_url=icon.url(self.icon_filename))
 
     async def init_respond(self, ephemeral: bool = False, silent: bool = False):
-        original_msg = await self.ctx.respond(content=None, embed=self.embed, view=self, ephemeral=ephemeral, silent=silent)
+        files = icon_lib.files(self.icon_filename)
+        original_msg = await self.ctx.respond(content=None, embed=self.embed, view=self, ephemeral=ephemeral, silent=silent, files=files)
         await self.set_original_msg(original_msg)
 
     async def init_eos(self, response, silent: bool = False):
-        original_msg = await eos(self.ctx, response, content=None, silent=silent, embed=self.embed, view=self)
+        files = icon_lib.files(self.icon_filename)
+        original_msg = await eos(self.ctx, response, content=None, silent=silent, embed=self.embed, view=self, files=files)
         await self.set_original_msg(original_msg)
 
     @discord.ui.button(label="确定", style=discord.ButtonStyle.grey, custom_id="button_confirm")
@@ -3242,7 +3323,7 @@ class CheckCollectionMenu(View):
                 ep_info_list.append((ep_title, ep_time_str))
 
             collection_title = self.info_dict["ugc_season"]["title"]
-            menu_list = utils.make_playlist_page(ep_info_list, 10, {None: "> "}, {})
+            menu_list = utils.make_playlist_page(ep_info_list, 10, {None: "> "}, {}, escape_markdown=True)
             menu = EpisodeSelectMenu(self.ctx, "bilibili_collection", self.info_dict, menu_list, "哔哩哔哩合集", collection_title)
             await menu.init_eos(response=msg, silent=True)
 
@@ -3253,7 +3334,7 @@ class CheckCollectionMenu(View):
                 ep_time_str = utils.convert_duration_to_str(item["duration"])
                 ep_info_list.append((ep_title, ep_time_str))
             playlist_title = self.info_dict['title']
-            menu_list = utils.make_playlist_page(ep_info_list, 10, {None: "> "}, {})
+            menu_list = utils.make_playlist_page(ep_info_list, 10, {None: "> "}, {}, escape_markdown=True)
             menu = EpisodeSelectMenu(self.ctx, "youtube_playlist", self.info_dict, menu_list, "YouTube播放列表", playlist_title)
             await menu.init_eos(response=msg, silent=True)
 
@@ -3279,7 +3360,7 @@ class CheckCollectionMenu(View):
         await console.rp(f"{self.occur_time}生成的合集查看选择栏已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
 
 
-class SearchedAudioSelectionView(View):
+class SearchedAudioSelectionMenu(View):
     def __init__(self, ctx, query: str, title_str: str, address_str: str, resource_list: List[dict], response: Union[discord.Interaction, discord.InteractionMessage, None] = None, timeout=60):
         """
         选择是否播放或者显示搜索到的音频的地址的View
@@ -3299,23 +3380,26 @@ class SearchedAudioSelectionView(View):
 
         for i in range(10, len(self.resource_list), -1):
             for item in self.children:
-                if item.custom_id == f"button_{i}":
+                if isinstance(item, discord.ui.Button) and item.custom_id == f"button_{i}":
                     item.disabled = True
                     break
 
+        self.icon_filename = "zoom_in_reveal_animated_0ms_100px.gif"
         self.embed = discord.Embed(
             colour=discord.Colour.dark_teal(),
-            title=f"搜索：{self.query}",
-            description=title_str,
+            description=utils.markdown_escape(title_str),
             timestamp=utils.ctime_datetime()
         )
+        self.embed.set_author(name=f"搜索：{self.query}", icon_url=icon.url(self.icon_filename))
 
     async def init_respond(self, ephemeral: bool = False, silent: bool = False):
-        original_msg = await self.ctx.respond(content=None, embed=self.embed, view=self, ephemeral=ephemeral, silent=silent)
+        files = icon_lib.files(self.icon_filename)
+        original_msg = await self.ctx.respond(content=None, embed=self.embed, view=self, ephemeral=ephemeral, silent=silent, files=files)
         await self.set_original_msg(original_msg)
 
     async def init_eos(self, response, silent: bool = False):
-        original_msg = await eos(self.ctx, response, content=None, silent=silent, embed=self.embed, view=self)
+        files = icon_lib.files(self.icon_filename)
+        original_msg = await eos(self.ctx, response, content=None, silent=silent, embed=self.embed, view=self, files=files)
         await self.set_original_msg(original_msg)
 
     async def play(self, index: int, msg):
@@ -3323,9 +3407,12 @@ class SearchedAudioSelectionView(View):
         link = selected_item["id"]
         self.finish = True
         self.clear_items()
-        await msg.edit_message(content=f"已选择：**{selected_item['title']} [{selected_item['duration_str']}]**", view=self)
-        loading_msg = await self.ctx.send("正在准备播放", silent=True)
-        await play_callback(self.ctx, link, response=loading_msg)
+
+        # self.embed.description = f"已选择：**{selected_item['title']} [{selected_item['duration_str']}]**"
+        # await msg.edit_message(content=None, embed=self.embed, view=self)
+        # loading_msg = await self.ctx.send("正在准备播放", silent=True)
+
+        await play_callback(self.ctx, link, response=self.original_msg)
 
     @discord.ui.button(label="1", style=discord.ButtonStyle.grey, custom_id="button_1", row=1)
     async def button_1_callback(self, button, interaction):
@@ -3387,20 +3474,21 @@ class SearchedAudioSelectionView(View):
         msg = interaction.response
         await self.play(9, msg)
 
-    @discord.ui.button(label="显示网址", style=discord.ButtonStyle.blurple, custom_id="button_switch", row=3)
+    @discord.ui.button(label="显示网址", style=discord.ButtonStyle.green, custom_id="button_switch", row=3)
     async def button_switch_callback(self, button, interaction):
         msg = interaction.response
 
+        files = icon_lib.files(self.icon_filename)
         if self.show_address:
             self.show_address = False
             button.label = "显示网址"
             self.embed.description = self.title_str
-            await msg.edit_message(content=None, embed=self.embed, view=self)
+            await msg.edit_message(content=None, embed=self.embed, view=self, files=files)
         else:
             self.show_address = True
             button.label = "隐藏网址"
             self.embed.description = self.address_str
-            await msg.edit_message(content=None, embed=self.embed, view=self)
+            await msg.edit_message(content=None, embed=self.embed, view=self, files=files)
 
     @discord.ui.button(label="关闭", style=discord.ButtonStyle.red, custom_id="button_cancel", row=3)
     async def button_cancel_callback(self, button, interaction):
@@ -3419,9 +3507,7 @@ class SearchedAudioSelectionView(View):
 
     async def on_timeout(self):
         self.clear_items()
-        if self.finish:
-            await self.original_msg.edit(view=self)
-        else:
+        if not self.finish:
             await delete_response(self.original_msg)
         await console.rp(f"{self.occur_time}生成的搜索选择菜单已超时(超时时间为{self.timeout}秒)", self.ctx.guild)
 
@@ -3442,7 +3528,7 @@ class AskForSearchingMenu(View):
 
         self.embed = discord.Embed(
             colour=discord.Colour.dark_teal(),
-            description=f"**{query}** 获取失败，是否要重新进行搜索？",
+            description=f"**{utils.markdown_escape(query)}** 获取失败，是否要重新进行搜索？",
             timestamp=utils.ctime_datetime()
         )
 

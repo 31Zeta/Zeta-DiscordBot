@@ -20,7 +20,7 @@ The display language currently available for this robot is Chinese only.
 - 可交互的播放列表
 
 ## 如何安装并部署
-**请使用Python 3.10-3.13版本，基于Python3.11开发**
+**请使用Python 3.10-3.13版本**
 
 请从release中下载最新版本源码解压
   
@@ -28,6 +28,10 @@ The display language currently available for this robot is Chinese only.
 ```
  pip install -r requirements.txt
 ```
+
+如果需要使用机器人的YouTube相关功能推荐为`yt-dlp-ejs`启用JavaScript运行环境。
+`yt-dlp-ejs`已经包含在了`requirements.txt`的`yt-dlp[default]`中，会在安装依赖包时自动安装。环境的选择与安装可以参考此页面中的Step 1：
+https://github.com/yt-dlp/yt-dlp/wiki/EJS#step-2-install-ejs-challenge-solver-scripts
   
 Windows系统请前往ffmpeg官网 https://ffmpeg.org/download.html 获取ffmpeg.exe  
 （或使用 https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-full.7z 下载后解压bin文件夹内的ffmpeg.exe）  
@@ -63,7 +67,7 @@ A Discord Bot that is based on Pycord.
 - Interactive playlists
 
 ## How to install and deploy
-**Please use Python 3.10 - 3.13, this bot is developed on Python 3.11**
+**Please use Python 3.10 - 3.13**
   
 Please download the latest version of the source code from the release page and unzip it.
 
@@ -71,6 +75,10 @@ Change the command line working directory to the root directory and use the foll
 ```
  pip install -r requirements.txt
 ```
+
+If you need to use the bot's YouTube-related features, you should enabling the JavaScript runtime for `yt-dlp-ejs`.
+`yt-dlp-ejs` is already included in `yt-dlp[default]` in the `requirements.txt` and will be installed automatically when you install the dependencies. For information on selecting and setting up the environment, refer to Step 1 on this page:
+https://github.com/yt-dlp/yt-dlp/wiki/EJS#step-2-install-ejs-challenge-solver-scripts
   
 Windows: please visit https://ffmpeg.org/download.html to get ffmpeg.exe
 (or access https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-full.7z download and unzip it to get ffmpeg.exe in bin dir） 

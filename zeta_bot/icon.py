@@ -6,8 +6,7 @@ import discord
 import utils
 
 from zeta_bot import (
-    decorator,
-    language
+    decorator
 )
 
 @decorator.Singleton
@@ -21,8 +20,18 @@ class IconLib:
             if os.path.isfile(file_path) and (filename.endswith(".png") or filename.endswith(".gif")):
                 self.icons[filename] = file_path
 
-    def get_file(self, filename: str) -> Optional[discord.File]:
-        if filename in self.icons:
-            return discord.File(self.icons[filename], filename=filename)
+    def files(self, filename: Union[str, List[str]]) -> List[discord.File]:
+        if isinstance(filename, list):
+            result = []
+            for name in filename:
+                if name in self.icons:
+                    result.append(discord.File(self.icons[name], filename=name))
+            return result
         else:
-            return None
+            if filename in self.icons:
+                return [discord.File(self.icons[filename], filename=filename)]
+            else:
+                return []
+
+def url(filename: str) -> str:
+    return f"attachment://{filename}"

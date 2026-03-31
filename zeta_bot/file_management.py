@@ -239,11 +239,13 @@ class AudioFileLibrary:
             self._used_storage_size += filesize
             converted_used_size = utils.convert_byte(self._used_storage_size)
             converted_capacity = utils.convert_byte(self._storage_capacity)
-            await console.rp(f"添加文件：{new_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
-                            f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
-                            f"{converted_capacity[0]} {converted_capacity[1]}"
-                            f" -> {self.get_used_storage_percentage(2)}%",
-                            f"[{self._name}]")
+            await console.rp(
+                f"添加文件：{new_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
+                f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
+                f"{converted_capacity[0]} {converted_capacity[1]}"
+                f" -> {self.get_used_storage_percentage(2)}%",
+                f"[{self._name}]"
+            )
 
         await self.save()
 
@@ -269,11 +271,13 @@ class AudioFileLibrary:
             self._used_storage_size -= filesize
             converted_used_size = utils.convert_byte(self._used_storage_size)
             converted_capacity = utils.convert_byte(self._storage_capacity)
-            await console.rp(f"删除文件：{target_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
-                            f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
-                            f"{converted_capacity[0]} {converted_capacity[1]}"
-                            f" -> {self.get_used_storage_percentage(2)}%",
-                            f"[{self._name}]")
+            await console.rp(
+                f"删除文件：{target_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
+                f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
+                f"{converted_capacity[0]} {converted_capacity[1]}"
+                f" -> {self.get_used_storage_percentage(2)}%",
+                f"[{self._name}]"
+            )
 
         await self.save()
 
@@ -319,35 +323,8 @@ class AudioFileLibrary:
                 result = await self._delete_least_used_file(depth + 1)
                 return result  # 递归返回
 
-    # TODO 下载代码合并分类
-
     @decorator.check_initialized
-    async def download_bilibili(self, info_dict, download_type: str, num_option: int = 0) -> Union[audio.Audio, None]:
-        bvid = info_dict["bvid"]
-        if download_type == "bilibili_p":
-            bvid += f"_p{num_option + 1}"
-        # 如果文件已经存在
-        if bvid in self._dl_list:
-            exists_audio = self._dl_list.key_get(bvid)
-            filesize = os.path.getsize(exists_audio.get_path())
-            converted_file_size = utils.convert_byte(filesize)
-            converted_used_size = utils.convert_byte(self._used_storage_size)
-            converted_capacity = utils.convert_byte(self._storage_capacity)
-            await console.rp(f"文件已在库中：{exists_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
-                            f"路径：{exists_audio.get_path()}\n"
-                            f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
-                            f"{converted_capacity[0]} {converted_capacity[1]}"
-                            f" -> {self.get_used_storage_percentage(2)}% ",
-                            f"[{self._name}]")
-            # 将再次使用的音频挪至最新
-            await self._append_audio(exists_audio, repeat_file=True)
-            return exists_audio
-
-        new_file_size = await bilibili.get_filesize(info_dict, num_option)
-        if new_file_size is None:
-            await console.rp(f"无法获得目标文件大小", f"[{self._name}]", message_type=utils.PrintType.ERROR)
-            return None
-
+    async def _download_space_check(self, new_file_size: int) -> None:
         # 如果下载此音频库会满，尝试删除最不常使用的文件
         if self.storage_will_full(new_file_size):
             await console.rp(f"{self._name}超出容量限制，从最久不使用的文件开始尝试删除", f"[{self._name}]")
@@ -357,11 +334,84 @@ class AudioFileLibrary:
                     converted_file_size = utils.convert_byte(new_file_size)
                     available_size = self.get_available_storage_size()
                     converted_available_size = utils.convert_byte(available_size)
-                    await console.rp(f"下载失败，超出音频库容量上限且无法清理出足够空间，"
-                                    f"目标文件大小：{converted_file_size[0]}{converted_file_size[1]}，"
-                                    f"音频库可用容量：{converted_available_size[0]}{converted_available_size[1]}",
-                                    f"[{self._name}]", message_type=utils.PrintType.ERROR)
+                    await console.rp(
+                        f"下载失败，超出音频库容量上限且无法清理出足够空间，"
+                        f"目标文件大小：{converted_file_size[0]}{converted_file_size[1]}，"
+                        f"音频库可用容量：{converted_available_size[0]}{converted_available_size[1]}",
+                        f"[{self._name}]",
+                        message_type=utils.PrintType.ERROR
+                    )
                     raise errors.StorageFull(self._name)
+
+    @decorator.check_initialized
+    async def _download_file_exist_check(self, target_file_id: str, target_file_size: int) -> Optional[audio.Audio]:
+        """
+        检查id为<target_file_id>的文件在库中是否已经存在，如果存在则检测文件大小和<target_file_size>是否一致，如果存在且大小一致则复用文件
+        """
+        # 如果文件不在库中
+        if target_file_id not in self._dl_list:
+            return None
+
+        exists_audio = self._dl_list.key_get(target_file_id)
+        exists_path = exists_audio.get_path()
+
+        try:
+            local_size = os.path.getsize(exists_path)
+        except FileNotFoundError:
+            self._dl_list.key_remove(target_file_id)
+            await self.save()
+            return None
+
+        # 如果本地存在的文件更小，可能是下载被中断或损坏，删除后重新下载
+        if local_size < target_file_size:
+            converted_local_size = utils.convert_byte(local_size)
+            converted_target_size = utils.convert_byte(target_file_size)
+            await console.rp(
+                f"本地文件疑似损坏：{exists_audio.get_title()}\n"
+                f"路径：{exists_path}\n"
+                f"本地文件大小：{converted_local_size[0]} {converted_local_size[1]}\n"
+                f"目标文件大小：{converted_target_size[0]} {converted_target_size[1]}",
+                f"[{self._name}]"
+            )
+
+            await self._remove_audio(target_file_id)
+            return None
+
+        # 文件可复用
+        else:
+            exists_audio = self._dl_list.key_get(target_file_id)
+            filesize = os.path.getsize(exists_audio.get_path())
+            converted_file_size = utils.convert_byte(filesize)
+            converted_used_size = utils.convert_byte(self._used_storage_size)
+            converted_capacity = utils.convert_byte(self._storage_capacity)
+            await console.rp(
+                f"文件已在库中：{exists_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
+                f"路径：{exists_audio.get_path()}\n"
+                f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
+                f"{converted_capacity[0]} {converted_capacity[1]}"
+                f" -> {self.get_used_storage_percentage(2)}% ",
+                f"[{self._name}]"
+            )
+            # 将再次使用的音频挪至最新
+            await self._append_audio(exists_audio, repeat_file=True)
+            return exists_audio
+
+    @decorator.check_initialized
+    async def download_bilibili(self, info_dict, download_type: str, num_option: int = 0) -> Union[audio.Audio, None]:
+        bvid = info_dict["bvid"]
+        if download_type == "bilibili_p":
+            bvid += f"_p{num_option + 1}"
+
+        target_file_size = await bilibili.get_filesize(info_dict, num_option)
+        if target_file_size is None:
+            await console.rp(f"无法获得目标文件大小", f"[{self._name}]", message_type=utils.PrintType.ERROR)
+            return None
+
+        exists_audio = await self._download_file_exist_check(bvid, target_file_size)
+        if exists_audio is not None:
+            return exists_audio
+
+        await self._download_space_check(target_file_size)
 
         # 下载
         new_audio = await bilibili.audio_download(info_dict, self._root, download_type, num_option)
@@ -373,90 +423,18 @@ class AudioFileLibrary:
             return None
 
     @decorator.check_initialized
-    async def download_youtube(self, url, info_dict, download_type) -> Union[audio.Audio, None]:
+    async def download_ytdlp(self, url, info_dict, download_type) -> Union[audio.Audio, None]:
         video_id = info_dict["id"]
-        # 如果文件已经存在
-        if video_id in self._dl_list:
-            exists_audio = self._dl_list.key_get(video_id)
-            filesize = os.path.getsize(exists_audio.get_path())
-            converted_file_size = utils.convert_byte(filesize)
-            converted_used_size = utils.convert_byte(self._used_storage_size)
-            converted_capacity = utils.convert_byte(self._storage_capacity)
-            await console.rp(
-                f"文件已在库中：{exists_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
-                f"路径：{exists_audio.get_path()}\n"
-                f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
-                f"{converted_capacity[0]} {converted_capacity[1]}"
-                f" -> {self.get_used_storage_percentage(2)}%",
-                f"[{self._name}]"
-            )
-            # 将再次使用的音频挪至最新
-            await self._append_audio(exists_audio, repeat_file=True)
+
+        target_file_size = youtube.get_filesize(info_dict)
+
+        exists_audio = await self._download_file_exist_check(video_id, target_file_size)
+        if exists_audio is not None:
             return exists_audio
 
-        new_file_size = youtube.get_filesize(info_dict)
-
-        # 如果下载此音频库会满，尝试删除最不常使用的文件
-        if self.storage_will_full(new_file_size):
-            await console.rp(f"{self._name}超出容量限制，从最久不使用的文件开始尝试删除", f"[{self._name}]")
-            while self.storage_will_full(new_file_size):
-                # 现在是一直删文件直到可以下载或者删不了为止，可以改成先计算能删多少文件，空间够了再删，但是潜在问题太多先不改了
-                if not await self._delete_least_used_file():
-                    converted_file_size = utils.convert_byte(new_file_size)
-                    available_size = self.get_available_storage_size()
-                    converted_available_size = utils.convert_byte(available_size)
-                    await console.rp(f"下载失败，超出音频库容量上限且无法清理出足够空间，"
-                                    f"目标文件大小：{converted_file_size[0]}{converted_file_size[1]}，"
-                                    f"音频库可用容量：{converted_available_size[0]}{converted_available_size[1]}",
-                                    f"[{self._name}]", message_type=utils.PrintType.ERROR)
-                    raise errors.StorageFull(self._name)
+        await self._download_space_check(target_file_size)
 
         new_audio = await youtube.audio_download(url, info_dict, self._root, download_type)
-
-        if new_audio is not None:
-            await self._append_audio(new_audio, repeat_file=False)
-            return new_audio
-        else:
-            return None
-
-    @decorator.check_initialized
-    async def download_netease(self, url, info_dict, download_type) -> Union[audio.Audio, None]:
-        video_id = info_dict["id"]
-        # 如果文件已经存在
-        if video_id in self._dl_list:
-            exists_audio = self._dl_list.key_get(video_id)
-            filesize = os.path.getsize(exists_audio.get_path())
-            converted_file_size = utils.convert_byte(filesize)
-            converted_used_size = utils.convert_byte(self._used_storage_size)
-            converted_capacity = utils.convert_byte(self._storage_capacity)
-            await console.rp(f"文件已在库中：{exists_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
-                            f"路径：{exists_audio.get_path()}\n"
-                            f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
-                            f"{converted_capacity[0]} {converted_capacity[1]}"
-                            f" -> {self.get_used_storage_percentage(2)}%",
-                            f"[{self._name}]")
-            # 将再次使用的音频挪至最新
-            await self._append_audio(exists_audio, repeat_file=True)
-            return exists_audio
-
-        new_file_size = netease.get_filesize(info_dict)
-
-        # 如果下载此音频库会满，尝试删除最不常使用的文件
-        if self.storage_will_full(new_file_size):
-            await console.rp(f"{self._name}超出容量限制，从最久不使用的文件开始尝试删除", f"[{self._name}]")
-            while self.storage_will_full(new_file_size):
-                # 现在是一直删文件直到可以下载或者删不了为止，可以改成先计算能删多少文件，空间够了再删，但是潜在问题太多先不改了
-                if not await self._delete_least_used_file():
-                    converted_file_size = utils.convert_byte(new_file_size)
-                    available_size = self.get_available_storage_size()
-                    converted_available_size = utils.convert_byte(available_size)
-                    await console.rp(f"下载失败，超出音频库容量上限且无法清理出足够空间，"
-                                    f"目标文件大小：{converted_file_size[0]}{converted_file_size[1]}，"
-                                    f"音频库可用容量：{converted_available_size[0]}{converted_available_size[1]}",
-                                    f"[{self._name}]", message_type=utils.PrintType.ERROR)
-                    raise errors.StorageFull(self._name)
-
-        new_audio = await netease.audio_download(url, info_dict, self._root, download_type)
 
         if new_audio is not None:
             await self._append_audio(new_audio, repeat_file=False)

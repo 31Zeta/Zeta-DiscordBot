@@ -7,7 +7,7 @@ msgspec
 bilibili-api-python
 curl_cffi
 brotli>=1.2.0
-yt-dlp
+yt-dlp[default]
 httpx
 packaging
 APScheduler
