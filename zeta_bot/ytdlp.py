@@ -12,10 +12,9 @@ from zeta_bot import (
 
 console = console.Console()
 
-level = "YouTube模块"
+level = "YT-DLP模块"
 
 async def get_info(ytb_url):
-
     ydl_opts = {
         'format': 'bestaudio/best',
         'extract_flat': True,
@@ -72,10 +71,17 @@ async def audio_download(youtube_url, info_dict, download_path, download_type="y
     if "thumbnail" in info_dict.keys():
         new_audio.set_cover_url(info_dict["thumbnail"])
 
+    if download_type.startswith("youtube"):
+        source_str = "YouTube"
+    elif download_type.startswith("netease"):
+        source_str = "NetEase"
+    else:
+        source_str = "未知来源"
+
     await console.rp(
         f"下载完成\n"
         f"文件名：{video_path_title}.{video_name_extension}\n"
-        f"来源：[YouTube] {video_id}\n"
+        f"来源：[{source_str}] {video_id}\n"
         f"路径：{download_path}\n"
         f"大小：{size[0]} {size[1]}\n"
         f"时长：{utils.convert_duration_to_str(video_duration)}",
@@ -85,7 +91,7 @@ async def audio_download(youtube_url, info_dict, download_path, download_type="y
     return new_audio
 
 
-async def search(query, query_num=5) -> list:
+async def youtube_search(query, query_num=5) -> list:
 
     query = query.strip()
 

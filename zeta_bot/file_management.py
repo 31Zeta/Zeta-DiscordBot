@@ -9,8 +9,7 @@ from zeta_bot import (
     console,
     audio,
     bilibili,
-    youtube,
-    netease,
+    ytdlp,
 )
 
 console = console.Console()
@@ -240,7 +239,7 @@ class AudioFileLibrary:
             converted_used_size = utils.convert_byte(self._used_storage_size)
             converted_capacity = utils.convert_byte(self._storage_capacity)
             await console.rp(
-                f"添加文件：{new_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
+                f"添加文件：{new_audio.get_title()} [{converted_file_size[0]} {converted_file_size[1]}]\n"
                 f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
                 f"{converted_capacity[0]} {converted_capacity[1]}"
                 f" -> {self.get_used_storage_percentage(2)}%",
@@ -272,7 +271,7 @@ class AudioFileLibrary:
             converted_used_size = utils.convert_byte(self._used_storage_size)
             converted_capacity = utils.convert_byte(self._storage_capacity)
             await console.rp(
-                f"删除文件：{target_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
+                f"删除文件：{target_audio.get_title()} [{converted_file_size[0]} {converted_file_size[1]}]\n"
                 f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
                 f"{converted_capacity[0]} {converted_capacity[1]}"
                 f" -> {self.get_used_storage_percentage(2)}%",
@@ -282,7 +281,7 @@ class AudioFileLibrary:
         await self.save()
 
     @decorator.check_initialized
-    async def _delete_least_used_file(self, depth: int = 0) -> bool:
+    async def _delete_least_used_file(self, depth: int = 0):
         """
         从最久不使用的文件开始尝试删除
         由于本方法含有递归调用并且本方法可能会被循环调用，所以将提示语
@@ -336,7 +335,7 @@ class AudioFileLibrary:
                     converted_available_size = utils.convert_byte(available_size)
                     await console.rp(
                         f"下载失败，超出音频库容量上限且无法清理出足够空间，"
-                        f"目标文件大小：{converted_file_size[0]}{converted_file_size[1]}，"
+                        f"目标文件大小：{converted_file_size[0]} {converted_file_size[1]}，"
                         f"音频库可用容量：{converted_available_size[0]}{converted_available_size[1]}",
                         f"[{self._name}]",
                         message_type=utils.PrintType.ERROR
@@ -371,7 +370,8 @@ class AudioFileLibrary:
                 f"路径：{exists_path}\n"
                 f"本地文件大小：{converted_local_size[0]} {converted_local_size[1]}\n"
                 f"目标文件大小：{converted_target_size[0]} {converted_target_size[1]}",
-                f"[{self._name}]"
+                f"[{self._name}]",
+                message_type=utils.PrintType.WARNING,
             )
 
             await self._remove_audio(target_file_id)
@@ -385,7 +385,7 @@ class AudioFileLibrary:
             converted_used_size = utils.convert_byte(self._used_storage_size)
             converted_capacity = utils.convert_byte(self._storage_capacity)
             await console.rp(
-                f"文件已在库中：{exists_audio.get_title()} [{converted_file_size[0]}{converted_file_size[1]}]\n"
+                f"文件已在库中：{exists_audio.get_title()} [{converted_file_size[0]} {converted_file_size[1]}]\n"
                 f"路径：{exists_audio.get_path()}\n"
                 f"已用容量：{converted_used_size[0]} {converted_used_size[1]} / "
                 f"{converted_capacity[0]} {converted_capacity[1]}"
@@ -426,7 +426,7 @@ class AudioFileLibrary:
     async def download_ytdlp(self, url, info_dict, download_type) -> Union[audio.Audio, None]:
         video_id = info_dict["id"]
 
-        target_file_size = youtube.get_filesize(info_dict)
+        target_file_size = ytdlp.get_filesize(info_dict)
 
         exists_audio = await self._download_file_exist_check(video_id, target_file_size)
         if exists_audio is not None:
@@ -434,7 +434,7 @@ class AudioFileLibrary:
 
         await self._download_space_check(target_file_size)
 
-        new_audio = await youtube.audio_download(url, info_dict, self._root, download_type)
+        new_audio = await ytdlp.audio_download(url, info_dict, self._root, download_type)
 
         if new_audio is not None:
             await self._append_audio(new_audio, repeat_file=False)
