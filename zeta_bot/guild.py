@@ -34,7 +34,7 @@ class Guild:
         self._playing_embed: Optional[discord.Embed] = None
 
         if not os.path.exists(self._root):
-            utils.create_folder(self._root)
+            os.makedirs(self._root, exist_ok=True)
 
         try:
             self.load()
@@ -143,7 +143,7 @@ class Guild:
 class GuildLibrary:
     def __init__(self):
         self._root = "./data/guilds"
-        utils.create_folder(self._root)
+        os.makedirs(self._root, exist_ok=True)
         self._guild_dict = {}
         self._hashtag_file_path = f"{self._root}/#Guilds.json"
 

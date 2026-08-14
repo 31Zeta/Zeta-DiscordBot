@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 from typing import *
+import yt_dlp
 from yt_dlp import YoutubeDL
 
 import errors
@@ -14,34 +15,65 @@ console = console.Console()
 
 level = "YT-DLP模块"
 
-async def get_info(ytb_url):
+async def get_info(url, cookie_file_path=None):
     ydl_opts = {
         'format': 'bestaudio/best',
         'extract_flat': True,
         "quiet": True,
     }
+    if cookie_file_path is not None:
+        ydl_opts["cookiefile"] = str(cookie_file_path)
 
-    await console.rp(f"开始提取信息：{ytb_url}", f"[{level}]")
+    await console.rp(f"开始提取信息：{url}", f"[{level}]")
 
-    with YoutubeDL(ydl_opts) as ydl:
-        info_dict = ydl.extract_info(ytb_url, download=False)
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False)
 
-    video_id = info_dict["id"]
-    video_title = info_dict["title"]
+        video_id = info_dict["id"]
+        video_title = info_dict["title"]
 
-    await console.rp(f"信息提取完毕：{video_title} [{video_id}]", f"[{level}]")
+        await console.rp(f"信息提取完毕：{video_title} [{video_id}]", f"[{level}]")
 
-    return info_dict
-
-
-def get_filesize(info_dict: dict) -> Union[int, None]:
-    if "filesize" in info_dict:
-        return info_dict["filesize"]
+    except yt_dlp.utils.DownloadError as e:
+        await console.rp(
+            "触发异常yt_dlp.utils.DownloadError，YT-DLP信息获取失败，该视频/音频可能已失效或存在区域版权限制",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "YT-DLP下载失败，该视频/音频可能已失效或存在区域版权限制", "retryable": False}
+    except yt_dlp.utils.ExtractorError as e:
+        await console.rp(
+            "触发异常yt_dlp.utils.ExtractorError，音频不可用",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "音频信息获取失败", "retryable": False}
+    except yt_dlp.utils.UnavailableVideoError as e:
+        await console.rp(
+            "触发异常yt_dlp.utils.UnavailableVideoError，音频不可用",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "音频信息获取失败", "retryable": False}
     else:
-        return None
+        if info_dict is None:
+            return {"result": info_dict, "success": False, "exception": None, "message": "异常未捕获，参照错误日志", "retryable": False}
+        else:
+            return {"result": info_dict, "success": True, "exception": None, "message": "获取成功", "retryable": False}
 
 
-async def audio_download(youtube_url, info_dict, download_path, download_type="youtube_single") -> audio.Audio:
+def get_filesize(info_dict: dict) -> dict:
+    if "filesize" in info_dict:
+        return {"result": info_dict["filesize"], "success": True, "exception": None, "message": "获取成功", "retryable": False}
+    else:
+        return {"result": None, "success": False, "exception": None, "message": "文件大小为空", "retryable": False}
+
+
+async def audio_download(youtube_url, info_dict, download_path, download_type="youtube_single", cookie_file_path=None) -> dict:
     if download_path.endswith("/"):
         download_path = download_path.rstrip("/")
 
@@ -61,34 +93,66 @@ async def audio_download(youtube_url, info_dict, download_path, download_type="y
         "quiet": True,
     }
 
+    if cookie_file_path is not None:
+        ydl_opts["cookiefile"] = str(cookie_file_path)
+
     await console.rp(f"开始下载：{video_path_title}.{video_name_extension}", f"[{level}]")
 
-    with YoutubeDL(ydl_opts) as ydl:
-        ydl.download([youtube_url])
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.download([youtube_url])
 
-    new_audio = audio.Audio(video_title, download_type, video_id, video_path, video_duration)
+        new_audio = audio.Audio(video_title, download_type, video_id, video_path, video_duration)
 
-    if "thumbnail" in info_dict.keys():
-        new_audio.set_cover_url(info_dict["thumbnail"])
+        if "thumbnail" in info_dict.keys():
+            new_audio.set_cover_url(info_dict["thumbnail"])
 
-    if download_type.startswith("youtube"):
-        source_str = "YouTube"
-    elif download_type.startswith("netease"):
-        source_str = "NetEase"
+        if download_type.startswith("youtube"):
+            source_str = "YouTube"
+        elif download_type.startswith("netease"):
+            source_str = "NetEase"
+        else:
+            source_str = "未知来源"
+
+        await console.rp(
+            f"下载完成\n"
+            f"文件名：{video_path_title}.{video_name_extension}\n"
+            f"来源：[{source_str}] {video_id}\n"
+            f"路径：{download_path}\n"
+            f"大小：{size[0]} {size[1]}\n"
+            f"时长：{utils.convert_duration_to_str(video_duration)}",
+            f"[{level}]"
+        )
+
+    except yt_dlp.utils.DownloadError as e:
+        await console.rp(
+            "触发异常yt_dlp.utils.DownloadError，YT-DLP下载失败，该视频/音频可能已失效或存在区域版权限制",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "YT-DLP下载失败，该视频/音频可能已失效或存在区域版权限制", "retryable": False}
+    except yt_dlp.utils.ExtractorError as e:
+        await console.rp(
+            "触发异常yt_dlp.utils.ExtractorError，视频/音频不可用",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "视频/音频获取失败", "retryable": False}
+    except yt_dlp.utils.UnavailableVideoError as e:
+        await console.rp(
+            "触发异常yt_dlp.utils.UnavailableVideoError，视频/音频不可用",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "视频/音频获取失败", "retryable": False}
     else:
-        source_str = "未知来源"
-
-    await console.rp(
-        f"下载完成\n"
-        f"文件名：{video_path_title}.{video_name_extension}\n"
-        f"来源：[{source_str}] {video_id}\n"
-        f"路径：{download_path}\n"
-        f"大小：{size[0]} {size[1]}\n"
-        f"时长：{utils.convert_duration_to_str(video_duration)}",
-        f"[{level}]"
-    )
-
-    return new_audio
+        if new_audio is None:
+            return {"result": new_audio, "exception": None, "message": "异常未捕获，参照错误日志", "retryable": False}
+        else:
+            return {"result": new_audio, "exception": None, "message": "获取成功", "retryable": False}
 
 
 async def youtube_search(query, query_num=5) -> list:

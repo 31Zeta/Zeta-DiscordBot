@@ -1,3 +1,4 @@
+from os.path import exists
 from typing import *
 import sys
 import os
@@ -7,6 +8,7 @@ from enum import Enum
 import json
 import re
 import requests
+from pathlib import Path
 import getpass
 import shutil
 import platform
@@ -30,14 +32,6 @@ def ctime_datetime() -> datetime.datetime:
     :return: 当前时间的datetime
     """
     return datetime.datetime.now()
-
-
-def create_folder(path: str) -> None:
-    """
-    检测在指定目录是否存在文件夹，如果不存在则创建
-    """
-    if not os.path.exists(path):
-        os.mkdir(path)
 
 
 def json_save(json_path: str, saving_item) -> None:
@@ -70,51 +64,21 @@ def json_load(json_path: str) -> Union[dict, list]:
         raise errors.JSONFileError(json_path)
 
 
-def path_slash_formatting(string: str) -> str:
-    """
-    将字符串内的所有反斜杠统一替换为正斜杠
-    """
-    result = ""
-    for char in string:
-        if char == "\\":
-            result += "/"
-        else:
-            result += char
-
-    return result
-
-
-def path_end_formatting(string: str) -> str:
-    """
-    如果字符串内最后一个字符为正斜杠或反斜杠则将之删除
-    """
-    if string.endswith("/"):
-        string = string.rstrip("/")
-    elif string.endswith("\\"):
-        string = string.rstrip("\\")
-
-    return string
-
-
 def legal_name(name_str: str) -> str:
     """
-    将字符串转换为合法的文件名
+    将字符串转换为同时兼容 Windows 和 Linux 的普通文件名
 
     :param name_str: 原文件名
     :return: 转换后文件名
     """
+    name_str = str(name_str or "").strip()
+    name_str = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f]', "_", name_str)
+    name_str = re.sub(r"\s+", " ", name_str).rstrip(". ")
 
-    name_str = name_str.replace("\\", "_")
-    name_str = name_str.replace("/", "_")
-    name_str = name_str.replace(":", "_")
-    name_str = name_str.replace("*", "_")
-    name_str = name_str.replace("?", "_")
-    name_str = name_str.replace("\"", "_")
-    name_str = name_str.replace("<", "_")
-    name_str = name_str.replace(">", "_")
-    name_str = name_str.replace("|", "_")
+    if name_str == "":
+        name_str = "_"
 
-    return name_str
+    return name_str.rstrip(". ") or "_"
 
 
 def markdown_escape(text: str) -> str:

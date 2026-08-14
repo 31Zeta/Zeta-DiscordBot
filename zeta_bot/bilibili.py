@@ -1,6 +1,8 @@
 from typing import *
 import aiohttp
 import html
+import httpx
+import bilibili_api
 from bilibili_api import video, Credential, sync, select_client
 from bilibili_api import search as bilibili_search
 
@@ -38,45 +40,142 @@ async def get_info(bvid) -> dict:
     """
     await console.rp(f"开始提取信息：{bvid}", f"[{level}]")
 
-    # 实例化 Credential 类
-    credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
-    # 实例化 Video 类
-    v = video.Video(bvid=bvid, credential=credential)
-    # 获取视频信息
-    info_dict = await v.get_info()
+    try:
+        # 实例化 Credential 类
+        credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
+        # 实例化 Video 类
+        v = video.Video(bvid=bvid, credential=credential)
+        # 获取视频信息
+        info_dict = await v.get_info()
 
-    video_id = info_dict["bvid"]
-    video_title = info_dict["title"]
-    await console.rp(f"信息提取完毕：{video_title} [{video_id}]", f"[{level}]")
+        video_id = info_dict["bvid"]
+        video_title = info_dict["title"]
+        await console.rp(f"信息提取完毕：{video_title} [{video_id}]", f"[{level}]")
 
-    return info_dict
+    except bilibili_api.ResponseCodeException as e:
+        await console.rp(
+            f"触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，{bvid}可能已失效或存在区域版权限制",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "无响应，资源可能已失效或存在区域版权限制", "retryable": False}
+    except bilibili_api.ArgsException as e:
+        await console.rp(
+            f"触发异常bilibili_api.ArgsException，{bvid}信息获取失败，参数异常，可能为bvid错误",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "参数错误，请检查链接中的BV号是否正确完整", "retryable": False}
+    except aiohttp.ClientResponseError as e:
+        await console.rp(
+            f"触发异常aiohttp.ClientResponseError，{bvid}信息获取失败，可能为请求繁忙",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "请求繁忙", "retryable": True}
+    except httpx.ConnectTimeout as e:
+        await console.rp(
+            f"触发异常httpx.ConnectTimeout，{bvid}信息获取失败，网络主机连接超时",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "网络主机连接超时", "retryable": True}
+    except httpx.RemoteProtocolError as e:
+        await console.rp(
+            f"触发异常httpx.RemoteProtocolError，{bvid}信息获取失败，服务器协议错误",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "服务器协议错误", "retryable": True}
+    else:
+        if info_dict is None:
+            return {"result": info_dict, "success": False, "exception": None, "message": "异常未捕获，参照错误日志", "retryable": False}
+        else:
+            return {"result": info_dict, "success": True, "exception": None, "message": "获取成功", "retryable": False}
 
 
-async def get_filesize(info_dict: dict, num_p=0) -> Union[int, None]:
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer": "https://www.bilibili.com/"
-    }
-
+async def get_filesize(info_dict: dict, num_p=0) -> dict:
     bvid = info_dict["bvid"]
-    # 实例化 Credential 类
-    credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
-    # 实例化 Video 类
-    v = video.Video(bvid=bvid, credential=credential)
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://www.bilibili.com/"
+        }
 
-    # 获取视频下载链接
-    url = await v.get_download_url(num_p)
+        # 实例化 Credential 类
+        credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
+        # 实例化 Video 类
+        v = video.Video(bvid=bvid, credential=credential)
 
-    # 音频轨链接
-    audio_url = url["dash"]["audio"][0]['baseUrl']
+        # 获取视频下载链接
+        url = await v.get_download_url(num_p)
 
-    async with aiohttp.ClientSession() as sess:
-        # 下载音频流
-        async with sess.get(audio_url, headers=headers) as resp:
-            length = resp.headers.get('content-length')
-            return int(length)
+        # 音频轨链接
+        audio_url = url["dash"]["audio"][0]['baseUrl']
 
-    return None
+        async with aiohttp.ClientSession() as sess:
+            # 下载音频流
+            async with sess.get(audio_url, headers=headers) as resp:
+                length = resp.headers.get('content-length')
+
+    except bilibili_api.ResponseCodeException as e:
+        await console.rp(
+            f"触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，{bvid}可能已失效或存在区域版权限制",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "无响应，资源可能已失效或存在区域版权限制", "retryable": False}
+    except bilibili_api.ArgsException as e:
+        await console.rp(
+            f"触发异常bilibili_api.ArgsException，{bvid}获取失败，参数异常，可能为bvid错误",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "参数错误，请检查链接中的BV号是否正确完整", "retryable": False}
+    except aiohttp.ClientResponseError as e:
+        await console.rp(
+            f"触发异常aiohttp.ClientResponseError，{bvid}获取失败，可能为请求繁忙",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "请求繁忙", "retryable": True}
+    except httpx.ConnectTimeout as e:
+        await console.rp(
+            f"触发异常httpx.ConnectTimeout，{bvid}获取失败，网络主机连接超时",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "网络主机连接超时", "retryable": True}
+    except httpx.RemoteProtocolError as e:
+        await console.rp(
+            f"触发异常httpx.RemoteProtocolError，{bvid}获取失败，服务器协议错误",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "服务器协议错误", "retryable": True}
+    else:
+        try:
+            length = int(length)
+        except ValueError:
+            await console.rp(
+                f"{bvid}文件大小获取失败，获取到的结果不为数字",
+                f"[{level}]",
+                message_type=utils.PrintType.ERROR,
+                print_head=True
+            )
+            return {"result": None, "success": False, "exception": None, "message": "获取到的文件大小不为数字", "retryable": False}
+        else:
+            return {"result": length, "success": True, "exception": None, "message": "获取成功", "retryable": False}
 
 
 # TODO 检查下载报错代码，是否和异步并发有关
@@ -84,21 +183,11 @@ async def get_filesize(info_dict: dict, num_p=0) -> Union[int, None]:
 #   Not enough data to satisfy content length header.
 # aiohttp.client_exceptions.ClientPayloadError: Response payload is not completed: <ContentLengthError: 400, message='Not enough data to satisfy content length header.'>
 
-async def audio_download(info_dict: dict, download_path: str, download_type="bilibili_single", num_p=0) -> audio.Audio:
+async def audio_download(info_dict: dict, download_path: str, download_type: Literal["bilibili_single", "bilibili_p", "bilibili_collection"] = "bilibili_single", num_p=0) -> dict:
     """
     使用bilibili_api，下载来自哔哩哔哩的音频
-    需要处理以下异常：
-        - bilibili_api.ResponseCodeException 接口无响应（视频不存在）
-        - bilibili_api.ArgsException 参数错误（bvid错误）
-        - httpx.ConnectTimeout 连接超时（可重试）
-        - httpx.RemoteProtocolError 服务器违反了协议（可重试）
     """
     bvid = info_dict["bvid"]
-    # 实例化 Credential 类
-    credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
-    # 实例化 Video 类
-    v = video.Video(bvid=bvid, credential=credential)
-
     if download_type == "bilibili_p":
         title = info_dict["pages"][num_p]["part"]
     # 普通下载
@@ -111,67 +200,118 @@ async def audio_download(info_dict: dict, download_path: str, download_type="bil
 
     path = f"{download_path}/{title}.mp3"
 
-    # 获取视频下载链接
-    url = await v.get_download_url(num_p)
+    try:
+        # 实例化 Credential 类
+        credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
+        # 实例化 Video 类
+        v = video.Video(bvid=bvid, credential=credential)
 
-    # 音频轨链接
-    audio_url = url["dash"]["audio"][0]['baseUrl']
+        # 获取视频下载链接
+        url = await v.get_download_url(num_p)
 
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer": "https://www.bilibili.com/"
-    }
+        # 音频轨链接
+        audio_url = url["dash"]["audio"][0]['baseUrl']
 
-    # print(current_time + f"\n    开始下载: {title}.mp3\n下载进度:")
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://www.bilibili.com/"
+        }
 
-    async with aiohttp.ClientSession() as sess:
-        # 下载音频流
-        async with sess.get(audio_url, headers=headers) as resp:
-            length = resp.headers.get('content-length')
-            size = utils.convert_byte(int(length))
-            await console.rp(f"开始下载：{title}.mp3 大小：{size[0]} {size[1]}", f"[{level}]")
-            with open(path, 'wb') as f:
-                process = 0
-                while True:
-                    chunk = await resp.content.read(1024)
-                    if not chunk:
-                        break
+        # print(current_time + f"\n    开始下载: {title}.mp3\n下载进度:")
 
-                    process += len(chunk)
-                    f.write(chunk)
-                    # TODO 待定 可以添加聊天界面进度显示
-                    # 旧版进度显示
-                    # print(f'\r    {process} / {length}', end="")
+        async with aiohttp.ClientSession() as sess:
+            # 下载音频流
+            async with sess.get(audio_url, headers=headers) as resp:
+                length = resp.headers.get('content-length')
+                size = utils.convert_byte(int(length))
+                await console.rp(f"开始下载：{title}.mp3 大小：{size[0]} {size[1]}", f"[{level}]")
+                with open(path, 'wb') as f:
+                    process = 0
+                    while True:
+                        chunk = await resp.content.read(1024)
+                        if not chunk:
+                            break
 
-    # print("\n\n" + current_time + f"\n    下载完成\n")
+                        process += len(chunk)
+                        f.write(chunk)
+                        # TODO 待定 可以添加聊天界面进度显示
+                        # 旧版进度显示
+                        # print(f'\r    {process} / {length}', end="")
 
-    new_audio = audio.Audio(original_title, download_type, bvid, path, duration)
+        # print("\n\n" + current_time + f"\n    下载完成\n")
 
-    if "pic" in info_dict.keys():
-        new_audio.set_cover_url(info_dict["pic"])
+        new_audio = audio.Audio(original_title, download_type, bvid, path, duration)
 
-    if download_type == "bilibili_p":
-        logger_prompt = (
-            f"下载完成\n"
-            f"文件名：{title}.mp3\n"
-            f"来源：[哔哩哔哩] {bvid}\n"
-            f"分P号：{num_p + 1}\n"
-            f"路径：{download_path}\n"
-            f"大小：{size[0]} {size[1]}\n"
-            f"时长：{utils.convert_duration_to_str(duration)}"
+        if "pic" in info_dict.keys():
+            new_audio.set_cover_url(info_dict["pic"])
+
+        if download_type == "bilibili_p":
+            logger_prompt = (
+                f"下载完成\n"
+                f"文件名：{title}.mp3\n"
+                f"来源：[哔哩哔哩] {bvid}\n"
+                f"分P号：{num_p + 1}\n"
+                f"路径：{download_path}\n"
+                f"大小：{size[0]} {size[1]}\n"
+                f"时长：{utils.convert_duration_to_str(duration)}"
+            )
+        else:
+            logger_prompt = (
+                f"下载完成\n"
+                f"文件名：{title}.mp3\n"
+                f"来源：[哔哩哔哩] {bvid}\n"
+                f"路径：{download_path}\n"
+                f"大小：{size[0]} {size[1]}\n"
+                f"时长：{utils.convert_duration_to_str(duration)}"
+            )
+        await console.rp(logger_prompt, f"[{level}]")
+
+    except bilibili_api.ResponseCodeException as e:
+        await console.rp(
+            f"触发异常bilibili_api.ResponseCodeException，哔哩哔哩无响应，{title}可能已失效或存在区域版权限制",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
         )
+        return {"result": None, "success": False, "exception": e, "message": "无响应，资源可能已失效或存在区域版权限制", "retryable": False}
+    except bilibili_api.ArgsException as e:
+        await console.rp(
+            f"触发异常bilibili_api.ArgsException，{title}获取失败，参数异常，可能为bvid错误",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "参数错误，请检查链接中的BV号是否正确完整", "retryable": False}
+    except aiohttp.ClientResponseError as e:
+        await console.rp(
+            f"触发异常aiohttp.ClientResponseError，{title}获取失败，可能为请求繁忙",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "请求繁忙", "retryable": True}
+    except httpx.ConnectTimeout as e:
+        await console.rp(
+            f"触发异常httpx.ConnectTimeout，{title}获取失败，网络主机连接超时",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "网络主机连接超时", "retryable": True}
+    except httpx.RemoteProtocolError as e:
+        await console.rp(
+            f"触发异常httpx.RemoteProtocolError，{title}获取失败，服务器协议错误",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return {"result": None, "success": False, "exception": e, "message": "服务器协议错误", "retryable": True}
+
     else:
-        logger_prompt = (
-            f"下载完成\n"
-            f"文件名：{title}.mp3\n"
-            f"来源：[哔哩哔哩] {bvid}\n"
-            f"路径：{download_path}\n"
-            f"大小：{size[0]} {size[1]}\n"
-            f"时长：{utils.convert_duration_to_str(duration)}"
-        )
-    await console.rp(logger_prompt, f"[{level}]")
-
-    return new_audio
+        if new_audio is None:
+            return {"result": new_audio, "success": False, "exception": None, "message": "异常未捕获，参照错误日志", "retryable": False}
+        else:
+            return {"result": new_audio, "success": True, "exception": None, "message": "获取成功", "retryable": False}
 
 
 async def search(query, query_num=5) -> list:

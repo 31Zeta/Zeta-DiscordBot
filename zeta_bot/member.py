@@ -197,7 +197,7 @@ class MemberLibrary:
     """
     def __init__(self):
         self.root = "./data/members"
-        utils.create_folder(self.root)
+        os.makedirs(self.root, exist_ok=True)
 
         self.group_config_path = "./configs/group_permission_config.json"
         # 如组权限文件不存在则创建默认文件

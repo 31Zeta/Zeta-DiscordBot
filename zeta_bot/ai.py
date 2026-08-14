@@ -25,10 +25,10 @@ class ChatAI:
         self.api_key = f"Bearer {api_key_str}"
         self.model_name = model_name
         self.directory_path = directory_path
-        utils.create_folder(self.directory_path)
+        os.makedirs(self.directory_path, exist_ok=True)
         self.memory_path = f"{self.directory_path}/chat_ai_memories.json"
         self.thread_path = f"{self.directory_path}/threads"
-        utils.create_folder(self.thread_path)
+        os.makedirs(self.thread_path, exist_ok=True)
         self.ai_name = ai_name
 
         # 获取系统限定提示词

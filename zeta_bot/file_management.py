@@ -397,50 +397,67 @@ class AudioFileLibrary:
             return exists_audio
 
     @decorator.check_initialized
-    async def download_bilibili(self, info_dict, download_type: str, num_option: int = 0) -> Union[audio.Audio, None]:
+    async def download_bilibili(self, info_dict, download_type: Literal["bilibili_single", "bilibili_p", "bilibili_collection"], num_option: int = 0) -> dict:
+        if download_type == "bilibili_collection":
+            bvid = info_dict["ugc_season"]["sections"][0]["episodes"][num_option]["bvid"]
+            info_result = await bilibili.get_info(bvid)
+            info_dict = info_result["result"]
+            if info_dict is None:
+                return {"result": None, "success": False, "exception": info_result["exception"], "message": info_result['message'], "retryable": info_result["retryable"]}
+            num_option = 0  # 在上方完成对应信息提取后，重制num_option为0，因为合集中的视频是独立的，分p序号为0
+
         bvid = info_dict["bvid"]
         if download_type == "bilibili_p":
             bvid += f"_p{num_option + 1}"
 
-        target_file_size = await bilibili.get_filesize(info_dict, num_option)
-        if target_file_size is None:
-            await console.rp(f"无法获得目标文件大小", f"[{self._name}]", message_type=utils.PrintType.ERROR)
-            return None
+        target_filesize_result = await bilibili.get_filesize(info_dict, num_option)
+        target_filesize = target_filesize_result["result"]
+        if target_filesize is None:
+            return {"result": None, "success": False, "exception": target_filesize_result["exception"], "message": f"无法获取目标文件大小，{target_filesize_result['message']}", "retryable": target_filesize_result["retryable"]}
 
-        exists_audio = await self._download_file_exist_check(bvid, target_file_size)
+        exists_audio = await self._download_file_exist_check(bvid, target_filesize)
         if exists_audio is not None:
-            return exists_audio
+            return {"result": exists_audio, "success": True, "exception": None, "message": "音频已在库中，获取已存在文件成功", "retryable": False}
 
-        await self._download_space_check(target_file_size)
+        try:
+            await self._download_space_check(target_filesize)
+        except errors.StorageFull as e:
+            return {"result": None, "success": False, "exception": e, "message": "当前机器人处理音频过多", "retryable": False}
 
         # 下载
-        new_audio = await bilibili.audio_download(info_dict, self._root, download_type, num_option)
-
-        if new_audio is not None:
-            await self._append_audio(new_audio, repeat_file=False)
-            return new_audio
+        new_audio_result = await bilibili.audio_download(info_dict, self._root, download_type, num_option)
+        new_audio = new_audio_result["result"]
+        if new_audio is None:
+            return {"result": new_audio, "success": False, "exception": new_audio_result["exception"], "message": new_audio_result["message"], "retryable": new_audio_result["retryable"]}
         else:
-            return None
+            await self._append_audio(new_audio, repeat_file=False)
+            return {"result": new_audio, "success": True, "exception": None, "message": "获取成功", "retryable": False}
 
     @decorator.check_initialized
-    async def download_ytdlp(self, url, info_dict, download_type) -> Union[audio.Audio, None]:
+    async def download_ytdlp(self, url, info_dict, download_type) -> dict:
         video_id = info_dict["id"]
 
-        target_file_size = ytdlp.get_filesize(info_dict)
+        target_filesize_result = ytdlp.get_filesize(info_dict)
+        target_filesize = target_filesize_result["result"]
+        if target_filesize is None:
+            return {"result": None, "success": False, "exception": target_filesize_result["exception"], "message": f"无法获取目标文件大小，{target_filesize_result['message']}", "retryable": target_filesize_result["retryable"]}
 
-        exists_audio = await self._download_file_exist_check(video_id, target_file_size)
+        exists_audio = await self._download_file_exist_check(video_id, target_filesize)
         if exists_audio is not None:
-            return exists_audio
+            return {"result": exists_audio, "success": True, "exception": None, "message": "音频已在库中，获取已存在文件成功", "retryable": False}
 
-        await self._download_space_check(target_file_size)
+        try:
+            await self._download_space_check(target_filesize)
+        except errors.StorageFull as e:
+            return {"result": None, "success": False, "exception": e, "message": "当前机器人处理音频过多", "retryable": False}
 
-        new_audio = await ytdlp.audio_download(url, info_dict, self._root, download_type)
-
-        if new_audio is not None:
-            await self._append_audio(new_audio, repeat_file=False)
-            return new_audio
+        new_audio_result = await ytdlp.audio_download(url, info_dict, self._root, download_type)
+        new_audio = new_audio_result["result"]
+        if new_audio is None:
+            return {"result": new_audio, "success": False, "exception": new_audio_result["exception"], "message": new_audio_result["message"], "retryable": new_audio_result["retryable"]}
         else:
-            return None
+            await self._append_audio(new_audio, repeat_file=False)
+            return {"result": new_audio, "success": True, "exception": None, "message": "获取成功", "retryable": False}
 
     def encode(self) -> list:
         return self._dl_list.encode()

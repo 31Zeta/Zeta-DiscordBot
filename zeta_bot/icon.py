@@ -1,5 +1,6 @@
 from typing import *
 import os
+from pathlib import Path
 
 import discord
 
@@ -16,7 +17,7 @@ class IconLib:
 
     def load_icons(self, dir_path: str):
         for filename in os.listdir(dir_path):
-            file_path = utils.path_slash_formatting(os.path.join(dir_path, filename))
+            file_path = Path(dir_path) / filename
             if os.path.isfile(file_path) and (filename.endswith(".png") or filename.endswith(".gif")):
                 self.icons[filename] = file_path
 
