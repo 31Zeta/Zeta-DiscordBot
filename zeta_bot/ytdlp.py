@@ -5,6 +5,7 @@ from yt_dlp import YoutubeDL
 
 import errors
 import utils
+from utils import success_result, failed_result
 
 from zeta_bot import (
     console,
@@ -42,35 +43,47 @@ async def get_info(url, cookie_file_path=None):
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "YT-DLP下载失败，该视频/音频可能已失效或存在区域版权限制", "retryable": False}
+        return failed_result(exception=e, message="YT-DLP下载失败，该视频/音频可能已失效或存在区域版权限制", retryable=False)
     except yt_dlp.utils.ExtractorError as e:
         await console.rp(
-            "触发异常yt_dlp.utils.ExtractorError，音频不可用",
+            "触发异常yt_dlp.utils.ExtractorError，视频/音频提取失败",
             f"[{level}]",
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "音频信息获取失败", "retryable": False}
+        return failed_result(exception=e, message="视频/音频提取失败", retryable=False)
     except yt_dlp.utils.UnavailableVideoError as e:
         await console.rp(
-            "触发异常yt_dlp.utils.UnavailableVideoError，音频不可用",
+            "触发异常yt_dlp.utils.UnavailableVideoError，视频/音频不可用",
             f"[{level}]",
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "音频信息获取失败", "retryable": False}
+        return failed_result(exception=e, message="视频/音频不可用", retryable=False)
     else:
         if info_dict is None:
-            return {"result": info_dict, "success": False, "exception": None, "message": "异常未捕获，参照错误日志", "retryable": False}
+            await console.rp(
+                f"返回信息为空，异常未捕获，请参照错误日志",
+                f"[{level}]",
+                message_type=utils.PrintType.ERROR,
+                print_head=True
+            )
+            return failed_result(exception=None, message="结果为空，未知错误", retryable=False)
         else:
-            return {"result": info_dict, "success": True, "exception": None, "message": "获取成功", "retryable": False}
+            return success_result(result=info_dict)
 
 
-def get_filesize(info_dict: dict) -> dict:
+async def get_filesize(info_dict: dict) -> dict:
     if "filesize" in info_dict:
-        return {"result": info_dict["filesize"], "success": True, "exception": None, "message": "获取成功", "retryable": False}
+        return success_result(result=info_dict["filesize"])
     else:
-        return {"result": None, "success": False, "exception": None, "message": "文件大小为空", "retryable": False}
+        await console.rp(
+            f"文件大小获取失败",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return failed_result(exception=None, message="结果为空，未知错误", retryable=False)
 
 
 async def audio_download(youtube_url, info_dict, download_path, download_type="youtube_single", cookie_file_path=None) -> dict:
@@ -131,15 +144,15 @@ async def audio_download(youtube_url, info_dict, download_path, download_type="y
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "YT-DLP下载失败，该视频/音频可能已失效或存在区域版权限制", "retryable": False}
+        return failed_result(exception=e, message="YT-DLP下载失败，该视频/音频可能已失效或存在区域版权限制", retryable=False)
     except yt_dlp.utils.ExtractorError as e:
         await console.rp(
-            "触发异常yt_dlp.utils.ExtractorError，视频/音频不可用",
+            "触发异常yt_dlp.utils.ExtractorError，视频/音频提取失败",
             f"[{level}]",
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "视频/音频获取失败", "retryable": False}
+        return failed_result(exception=e, message="视频/音频提取失败", retryable=False)
     except yt_dlp.utils.UnavailableVideoError as e:
         await console.rp(
             "触发异常yt_dlp.utils.UnavailableVideoError，视频/音频不可用",
@@ -147,12 +160,18 @@ async def audio_download(youtube_url, info_dict, download_path, download_type="y
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "视频/音频获取失败", "retryable": False}
+        return failed_result(exception=e, message="视频/音频不可用", retryable=False)
     else:
         if new_audio is None:
-            return {"result": new_audio, "exception": None, "message": "异常未捕获，参照错误日志", "retryable": False}
+            await console.rp(
+                f"音频对象返回为空，异常未捕获，请参照错误日志",
+                f"[{level}]",
+                message_type=utils.PrintType.ERROR,
+                print_head=True
+            )
+            return failed_result(exception=None, message="结果为空，未知错误", retryable=False)
         else:
-            return {"result": new_audio, "exception": None, "message": "获取成功", "retryable": False}
+            return success_result(result=new_audio)
 
 
 async def youtube_search(query, query_num=5) -> list:

@@ -98,6 +98,32 @@ def markdown_escape(text: str) -> str:
     return re.sub(pattern, r"\\\1", text)
 
 
+def success_result(result: Any, exception: Any = None, message: str = "获取成功", retryable: bool = False) -> Dict[str, Any]:
+    """
+    构造成功情况的结果字典
+    """
+    return {
+        "result": result,
+        "success": True,
+        "exception": exception,
+        "message": message,
+        "retryable": retryable,
+    }
+
+
+def failed_result(exception: Any, message: str, retryable: bool) -> Dict[str, Any]:
+    """
+    构造失败情况的结果字典
+    """
+    return {
+        "result": None,
+        "success": False,
+        "exception": exception,
+        "message": message,
+        "retryable": retryable,
+    }
+
+
 def check_requirements(requirements_path: str, false_only: bool = False) -> Dict[str, dict]:
     """
     检查<requirements_path>中的包是否已安装且满足版本需求

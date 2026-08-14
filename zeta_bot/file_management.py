@@ -437,7 +437,7 @@ class AudioFileLibrary:
     async def download_ytdlp(self, url, info_dict, download_type) -> dict:
         video_id = info_dict["id"]
 
-        target_filesize_result = ytdlp.get_filesize(info_dict)
+        target_filesize_result = await ytdlp.get_filesize(info_dict)
         target_filesize = target_filesize_result["result"]
         if target_filesize is None:
             return {"result": None, "success": False, "exception": target_filesize_result["exception"], "message": f"无法获取目标文件大小，{target_filesize_result['message']}", "retryable": target_filesize_result["retryable"]}

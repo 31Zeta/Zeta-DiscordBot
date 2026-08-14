@@ -8,6 +8,7 @@ from bilibili_api import search as bilibili_search
 
 import errors
 import utils
+from utils import success_result, failed_result
 
 from zeta_bot import (
     console,
@@ -59,7 +60,7 @@ async def get_info(bvid) -> dict:
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "无响应，资源可能已失效或存在区域版权限制", "retryable": False}
+        return failed_result(exception=e, message="无响应，资源可能已失效或存在区域版权限制", retryable=False)
     except bilibili_api.ArgsException as e:
         await console.rp(
             f"触发异常bilibili_api.ArgsException，{bvid}信息获取失败，参数异常，可能为bvid错误",
@@ -67,7 +68,7 @@ async def get_info(bvid) -> dict:
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "参数错误，请检查链接中的BV号是否正确完整", "retryable": False}
+        return failed_result(exception=e, message="参数错误，请检查链接中的BV号是否正确完整", retryable=False)
     except aiohttp.ClientResponseError as e:
         await console.rp(
             f"触发异常aiohttp.ClientResponseError，{bvid}信息获取失败，可能为请求繁忙",
@@ -75,7 +76,7 @@ async def get_info(bvid) -> dict:
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "请求繁忙", "retryable": True}
+        return failed_result(exception=e, message="请求繁忙", retryable=True)
     except httpx.ConnectTimeout as e:
         await console.rp(
             f"触发异常httpx.ConnectTimeout，{bvid}信息获取失败，网络主机连接超时",
@@ -83,7 +84,7 @@ async def get_info(bvid) -> dict:
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "网络主机连接超时", "retryable": True}
+        return failed_result(exception=e, message="网络主机连接超时", retryable=True)
     except httpx.RemoteProtocolError as e:
         await console.rp(
             f"触发异常httpx.RemoteProtocolError，{bvid}信息获取失败，服务器协议错误",
@@ -91,12 +92,18 @@ async def get_info(bvid) -> dict:
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "服务器协议错误", "retryable": True}
+        return failed_result(exception=e, message="服务器协议错误", retryable=True)
     else:
         if info_dict is None:
-            return {"result": info_dict, "success": False, "exception": None, "message": "异常未捕获，参照错误日志", "retryable": False}
+            await console.rp(
+                f"{bvid}返回信息为空，异常未捕获，请参照错误日志",
+                f"[{level}]",
+                message_type=utils.PrintType.ERROR,
+                print_head=True
+            )
+            return failed_result(exception=None, message="结果为空，未知错误", retryable=False)
         else:
-            return {"result": info_dict, "success": True, "exception": None, "message": "获取成功", "retryable": False}
+            return success_result(result=info_dict)
 
 
 async def get_filesize(info_dict: dict, num_p=0) -> dict:
@@ -130,7 +137,7 @@ async def get_filesize(info_dict: dict, num_p=0) -> dict:
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "无响应，资源可能已失效或存在区域版权限制", "retryable": False}
+        return failed_result(exception=e, message="无响应，资源可能已失效或存在区域版权限制", retryable=False)
     except bilibili_api.ArgsException as e:
         await console.rp(
             f"触发异常bilibili_api.ArgsException，{bvid}获取失败，参数异常，可能为bvid错误",
@@ -138,7 +145,7 @@ async def get_filesize(info_dict: dict, num_p=0) -> dict:
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "参数错误，请检查链接中的BV号是否正确完整", "retryable": False}
+        return failed_result(exception=e, message="参数错误，请检查链接中的BV号是否正确完整", retryable=False)
     except aiohttp.ClientResponseError as e:
         await console.rp(
             f"触发异常aiohttp.ClientResponseError，{bvid}获取失败，可能为请求繁忙",
@@ -146,7 +153,7 @@ async def get_filesize(info_dict: dict, num_p=0) -> dict:
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "请求繁忙", "retryable": True}
+        return failed_result(exception=e, message="请求繁忙", retryable=True)
     except httpx.ConnectTimeout as e:
         await console.rp(
             f"触发异常httpx.ConnectTimeout，{bvid}获取失败，网络主机连接超时",
@@ -154,7 +161,7 @@ async def get_filesize(info_dict: dict, num_p=0) -> dict:
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "网络主机连接超时", "retryable": True}
+        return failed_result(exception=e, message="网络主机连接超时", retryable=True)
     except httpx.RemoteProtocolError as e:
         await console.rp(
             f"触发异常httpx.RemoteProtocolError，{bvid}获取失败，服务器协议错误",
@@ -162,20 +169,20 @@ async def get_filesize(info_dict: dict, num_p=0) -> dict:
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "服务器协议错误", "retryable": True}
+        return failed_result(exception=e, message="服务器协议错误", retryable=True)
     else:
         try:
             length = int(length)
-        except ValueError:
+        except ValueError as e:
             await console.rp(
                 f"{bvid}文件大小获取失败，获取到的结果不为数字",
                 f"[{level}]",
                 message_type=utils.PrintType.ERROR,
                 print_head=True
             )
-            return {"result": None, "success": False, "exception": None, "message": "获取到的文件大小不为数字", "retryable": False}
+            return failed_result(exception=e, message="结果为空，未知错误", retryable=False)
         else:
-            return {"result": length, "success": True, "exception": None, "message": "获取成功", "retryable": False}
+            return success_result(result=length)
 
 
 # TODO 检查下载报错代码，是否和异步并发有关
@@ -273,7 +280,7 @@ async def audio_download(info_dict: dict, download_path: str, download_type: Lit
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "无响应，资源可能已失效或存在区域版权限制", "retryable": False}
+        return failed_result(exception=e, message="无响应，资源可能已失效或存在区域版权限制", retryable=False)
     except bilibili_api.ArgsException as e:
         await console.rp(
             f"触发异常bilibili_api.ArgsException，{title}获取失败，参数异常，可能为bvid错误",
@@ -281,7 +288,7 @@ async def audio_download(info_dict: dict, download_path: str, download_type: Lit
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "参数错误，请检查链接中的BV号是否正确完整", "retryable": False}
+        return failed_result(exception=e, message="参数错误，请检查链接中的BV号是否正确完整", retryable=False)
     except aiohttp.ClientResponseError as e:
         await console.rp(
             f"触发异常aiohttp.ClientResponseError，{title}获取失败，可能为请求繁忙",
@@ -289,7 +296,7 @@ async def audio_download(info_dict: dict, download_path: str, download_type: Lit
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "请求繁忙", "retryable": True}
+        return failed_result(exception=e, message="请求繁忙", retryable=True)
     except httpx.ConnectTimeout as e:
         await console.rp(
             f"触发异常httpx.ConnectTimeout，{title}获取失败，网络主机连接超时",
@@ -297,7 +304,7 @@ async def audio_download(info_dict: dict, download_path: str, download_type: Lit
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "网络主机连接超时", "retryable": True}
+        return failed_result(exception=e, message="网络主机连接超时", retryable=True)
     except httpx.RemoteProtocolError as e:
         await console.rp(
             f"触发异常httpx.RemoteProtocolError，{title}获取失败，服务器协议错误",
@@ -305,13 +312,19 @@ async def audio_download(info_dict: dict, download_path: str, download_type: Lit
             message_type=utils.PrintType.ERROR,
             print_head=True
         )
-        return {"result": None, "success": False, "exception": e, "message": "服务器协议错误", "retryable": True}
+        return failed_result(exception=e, message="服务器协议错误", retryable=True)
 
     else:
         if new_audio is None:
-            return {"result": new_audio, "success": False, "exception": None, "message": "异常未捕获，参照错误日志", "retryable": False}
+            await console.rp(
+                f"{title}音频对象返回为空，异常未捕获，请参照错误日志",
+                f"[{level}]",
+                message_type=utils.PrintType.ERROR,
+                print_head=True
+            )
+            return failed_result(exception=None, message="结果为空，未知错误", retryable=False)
         else:
-            return {"result": new_audio, "success": True, "exception": None, "message": "获取成功", "retryable": False}
+            return success_result(result=new_audio)
 
 
 async def search(query, query_num=5) -> list:
