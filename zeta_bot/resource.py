@@ -189,7 +189,7 @@ class ResourceClassifier:
                 platform = MediaPlatform.decode(platform_str)
                 if platform is not MediaPlatform.UNKNOWN:
                     try:
-                        download_handler = DownloadHandler.decode(raw_handler_map[platform])
+                        download_handler = DownloadHandler.decode(raw_handler_map[platform_str])
                     except ValueError:
                         continue
                     else:

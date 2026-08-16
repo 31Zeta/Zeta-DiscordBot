@@ -3518,7 +3518,7 @@ class SearchedAudioSelectionMenu(View):
         self.finish = True
         msg = interaction.response
         self.clear_items()
-        await msg.edit_message(content=f"已关闭搜索结果选择菜单", view=self)
+        await msg.edit_message(content=f"已关闭搜索结果选择菜单", embed=None, files=[], view=self)
         await console.rp("用户已关闭搜索选择菜单", self.ctx.guild)
 
     async def set_original_msg(self, response: Union[discord.Message, discord.InteractionMessage, None]):
