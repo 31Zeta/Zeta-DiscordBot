@@ -48,17 +48,6 @@ class DownloadHandler(Enum):
     GO_MUSIC_API = "go-music-api"
     YT_DLP = "yt-dlp"
 
-    # @classmethod
-    # def of(cls, url_source: Optional[Union[LinkType, DownloadType]]) -> Optional["ResourceHandler"]:
-    #     if url_source is None:
-    #         return None
-    #     source_name = str(url_source.name)
-    #     source = source_name.partition("_")[0]
-    #     for member in cls:
-    #         if source in member.value:
-    #             return member
-    #     return None
-
     def encode(self) -> str:
         return str(self.name)
 
@@ -74,13 +63,15 @@ class DownloadType(Enum):
     """
     下载类型
     """
-    BILIBILI_SINGLE = ("哔哩哔哩标准视频", MediaPlatform.BILIBILI)
+    BILIBILI_SINGLE = ("哔哩哔哩视频", MediaPlatform.BILIBILI)
     BILIBILI_P = ("哔哩哔哩分P视频", MediaPlatform.BILIBILI)
     BILIBILI_COLLECTION = ("哔哩哔哩合集视频", MediaPlatform.BILIBILI)
     QQ_SINGLE = ("QQ音乐单曲", MediaPlatform.QQ)
     QQ_PLAYLIST = ("QQ音乐歌单", MediaPlatform.QQ)
+    QQ_ALBUM = ("QQ音乐专辑", MediaPlatform.QQ)
     NETEASE_SINGLE = ("网易云音乐单曲", MediaPlatform.NETEASE)
     NETEASE_PLAYLIST = ("网易云音乐歌单", MediaPlatform.NETEASE)
+    NETEASE_ALBUM = ("网易云音乐专辑", MediaPlatform.NETEASE)
     YOUTUBE_SINGLE = ("YouTube标准视频", MediaPlatform.YOUTUBE)
     YOUTUBE_PLAYLIST = ("YouTube播放列表", MediaPlatform.YOUTUBE)
     UNKNOWN = ("未知下载类型", MediaPlatform.UNKNOWN)

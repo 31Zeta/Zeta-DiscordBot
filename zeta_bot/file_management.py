@@ -174,9 +174,8 @@ class AudioFileLibrary:
     def get_go_music_api_url(self):
         return self._go_music_api_url
 
-    async def set_go_music_api_url(self, url: str):
-        if await go_music.is_available(url):
-            self._go_music_api_url = url
+    def set_go_music_api_url(self, url: str):
+        self._go_music_api_url = url
 
     @decorator.check_initialized
     def using(self, target: Union[str, audio.Audio]) -> bool:
@@ -429,7 +428,7 @@ class AudioFileLibrary:
         target_filesize_result = await bilibili.get_filesize(info_dict, num_option)
         target_filesize = target_filesize_result.result
         if target_filesize is None:
-            return failed_result(exception=target_filesize_result.exception, message=f"无法获取目标文件大小，{target_filesize_result.message}", retryable=target_filesize_result.retryable)
+            return failed_result(exception=target_filesize_result.exception, message=f"{target_filesize_result.message}", retryable=target_filesize_result.retryable)
 
         exists_audio = await self._download_file_exist_check(bilibili.construct_uid(bvid=bvid, download_type=download_type, num_p=num_option), target_filesize)
         if exists_audio is not None:
@@ -459,7 +458,7 @@ class AudioFileLibrary:
         target_filesize_result = await ytdlp.get_filesize(info_dict)
         target_filesize = target_filesize_result.result
         if target_filesize is None:
-            return failed_result(exception=target_filesize_result.exception, message=f"无法获取目标文件大小，{target_filesize_result.message}", retryable=target_filesize_result.retryable)
+            return failed_result(exception=target_filesize_result.exception, message=f"{target_filesize_result.message}", retryable=target_filesize_result.retryable)
 
         exists_audio = await self._download_file_exist_check(ytdlp.construct_uid(video_id=video_id, download_type=download_type), target_filesize)
         if exists_audio is not None:
@@ -486,7 +485,7 @@ class AudioFileLibrary:
         target_filesize_result = await go_music.get_filesize(api_url=self.get_go_music_api_url(), info_dict=info_dict)
         target_filesize = target_filesize_result.result
         if target_filesize is None:
-            return failed_result(exception=target_filesize_result.exception, message=f"无法获取目标文件大小，{target_filesize_result.message}", retryable=target_filesize_result.retryable)
+            return failed_result(exception=target_filesize_result.exception, message=f"{target_filesize_result.message}", retryable=target_filesize_result.retryable)
 
         exists_audio = await self._download_file_exist_check(go_music.construct_uid(source=info_dict["source"], song_id=info_dict["id"]), target_filesize)
         if exists_audio is not None:

@@ -254,7 +254,7 @@ language_setting_configs = [
 bot_setting_configs = [
     {
         "config_name": "系统设定",
-        "version": "0.10.0"
+        "version": "0.15.0"
     },
     {
         "id": "token",
@@ -393,11 +393,11 @@ bot_setting_configs = [
         "name": "go-music-api服务地址",
         "type": "str",
         "description": "go-music-api服务的地址，用于获取国内音乐平台音频，部署参考：https://github.com/guohuiyuan/go-music-api",
-        "input_description": "请输入go-music-api服务的地址（包含端口号，默认地址：127.0.0.1:8080）",
+        "input_description": "请输入go-music-api服务的地址（包含端口号，默认地址：http://127.0.0.1:8080）",
         "dependent": None,
         "regex": None,
         "options": None,
-        "value": "127.0.0.1:8080"
+        "value": "http://127.0.0.1:8080"
     },
     # {
     #     "id": "chat_ai",
