@@ -64,7 +64,7 @@ class Console:
             print(f"生成初始日志文件：{self._log_path}")
 
         logging.basicConfig(
-            filename=self._error_log_path, level=logging.WARNING
+            filename=self._error_log_path, level=logging.WARNING, encoding="UTF-8"
         )
 
     async def print(self, message: str, end: str = "\n"):

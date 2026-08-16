@@ -109,3 +109,15 @@ class URLNotSupportedError(Exception):
             return "不支持此链接"
         else:
             return self.description
+
+
+class ResourceRestrictedError(Exception):
+    def __init__(self, description: Optional[str] = None):
+        super().__init__()
+        self.description = description
+
+    def __str__(self):
+        if self.description is None:
+            return "资源受限"
+        else:
+            return self.description

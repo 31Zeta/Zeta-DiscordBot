@@ -58,6 +58,15 @@ async def handle_exception(exception: Exception) -> Result:
             print_head=True
         )
         retryable = False
+    elif isinstance(exception, errors.ResourceRestrictedError):
+        await console.rp(
+            f"获取失败，资源可能存在会员或者区域版权限制：{exception}",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        retryable = False
+        message = "资源可能存在会员或者区域版权限制"
     # 不支持链接的情况
     elif isinstance(exception, errors.URLNotSupportedError):
         await console.rp(
@@ -159,9 +168,11 @@ async def request_json(api_url: str, session: aiohttp.ClientSession, endpoint: s
         # 错误状态码的情况
         if response.status >= 400:
             error_message = str(result.get("msg", result.get("error", body)))
-
+            # 资源受限，go-music-api返回404 Failed to get URL
+            if response.status == 404:
+                raise errors.ResourceRestrictedError(f"疑似资源受限，状态码：{response.status}，{error_message}")
             # 处理不支持的链接的情况，需要将API报错信息发至上层message打印到Discord中
-            if "不支持" in error_message:
+            elif "不支持" in error_message:
                 raise errors.URLNotSupportedError(error_message)
             else:
                 raise RuntimeError(f"状态码：{response.status}，{error_message}")
@@ -431,12 +442,17 @@ async def get_filesize(api_url: str, info_dict: dict) -> Result:
                         return success_result(result=int(total_size))
 
                 # 某些情况可能不支持Range，而直接返回完整响应
-                if response.status == 200:
+                elif response.status == 200:
                     content_length = response.headers.get("Content-Length")
                     if content_length is not None:
                         return success_result(result=int(content_length))
 
-                if response.status not in (200, 206):
+                # 资源受限，go-music-api返回404 Failed to get URL
+                elif response.status == 404:
+                    body = await response.text(errors="replace")
+                    raise errors.ResourceRestrictedError(f"{info_dict['source']}_{info_dict['id']}: {info_dict['name']} 疑似资源受限，状态码：{response.status}，{body}")
+
+                else:
                     body = await response.text(errors="replace")
                     raise RuntimeError(f"状态码：{response.status}，{body}")
 
@@ -537,7 +553,11 @@ async def download_to_file(api_url: str, session: aiohttp.ClientSession, info_di
         # 请求go-music-api代理音频流
         async with session.get(stream_url, params=stream_params) as response:
             response.raise_for_status()
-            if response.status not in (200, 206):
+            # 资源受限，go-music-api返回404 Failed to get URL
+            if response.status == 404:
+                body = await response.text(errors="replace")
+                raise errors.ResourceRestrictedError(f"{info_dict['source']}_{info_dict['id']}: {info_dict['name']} 疑似资源受限，状态码：{response.status}，{body}")
+            elif response.status not in (200, 206):
                 raise RuntimeError(
                     f"音频流返回不支持的HTTP状态：{response.status}"
                 )
