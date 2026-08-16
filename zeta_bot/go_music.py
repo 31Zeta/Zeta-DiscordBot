@@ -677,7 +677,7 @@ async def audio_download(api_url: str, info_dict: Dict[str, Any], download_dir: 
         )
 
         new_audio = audio.Audio(
-            title=info_dict["name"],
+            title=f"{info_dict['artist']} - {info_dict['name']}",
             uid=f"{info_dict['source']}_{info_dict['id']}",
             source=info_dict["source"],
             source_id=info_dict['id'],
