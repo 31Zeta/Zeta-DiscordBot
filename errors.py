@@ -50,7 +50,7 @@ class JSONFileError(Exception):
         self.path = path
 
     def __str__(self):
-        return f"Json文件<{self.path}>已损坏"
+        return f"JSON文件<{self.path}>已损坏"
 
 
 class KeyAlreadyExists(KeyError):
@@ -97,3 +97,15 @@ class GetInfoDownloadError(Exception):
             return f"触发异常：{self.original_error}，尝试对{self.info['title']}的信息获取或下载失败"
         else:
             return f"触发异常：{self.original_error}"
+
+
+class URLNotSupportedError(Exception):
+    def __init__(self, description: Optional[str] = None):
+        super().__init__()
+        self.description = description
+
+    def __str__(self):
+        if self.description is None:
+            return "不支持此链接"
+        else:
+            return self.description

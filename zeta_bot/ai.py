@@ -8,10 +8,10 @@ import errors
 import utils
 
 from zeta_bot import (
-    console
+    output_console
 )
 
-console = console.Console()
+console = output_console.Console()
 level = "Chat AI"
 
 DEFAULT_AI_DIRECTORY_PATH = "./data/ai"

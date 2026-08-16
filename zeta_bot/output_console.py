@@ -1,3 +1,4 @@
+from typing import *
 import sys
 import os
 import asyncio
@@ -273,7 +274,7 @@ class Console:
         with open(path, "a", encoding="UTF-8") as log:
             log.write(f"{time} {content}\n")
 
-    async def on_error(self, exception) -> None:
+    async def on_error(self, exception: Exception) -> None:
         """
         发生程序错误时调用
         """

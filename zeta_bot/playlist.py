@@ -4,8 +4,7 @@ import errors
 import utils
 
 from zeta_bot import (
-    audio,
-    console,
+    audio
 )
 
 # TODO 完成自建歌单

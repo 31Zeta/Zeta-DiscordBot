@@ -22,7 +22,7 @@ The display language currently available for this robot is Chinese only.
 ## 如何安装并部署
 **请使用Python 3.10-3.13版本**
 
-请从release中下载最新版本源码解压
+请从 **release(https://github.com/31Zeta/Zeta-DiscordBot/releases)** 中下载最新版本源码解压
   
 将命令行运行目录移动至解压后的源码根目录后使用以下指令来安装依赖包：  
 ```

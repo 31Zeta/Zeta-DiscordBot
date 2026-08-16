@@ -2,18 +2,21 @@ from typing import *
 import aiohttp
 import html
 import httpx
+from enum import Enum
+
 import bilibili_api
 from bilibili_api import video, Credential, sync, select_client
 from bilibili_api import search as bilibili_search
 
 import errors
 import utils
-from utils import success_result, failed_result
+from utils import Result, success_result, failed_result
 
 from zeta_bot import (
-    console,
+    output_console,
     audio
 )
+from zeta_bot.resource import MediaPlatform, LinkType, DownloadHandler, DownloadType, ResourceClassifier
 
 # https://bili.moyu.moe/#/examples/video
 
@@ -27,12 +30,16 @@ BUVID3 = ""
 # FFMPEG 路径，查看：http://ffmpeg.org/
 FFMPEG_PATH = "./zeta_bot/bin/ffmpeg"
 
-# 控制台设置
-console = console.Console()
+# 设置控制台
+console = output_console.Console()
+
+# 加载资源分类器
+resource_classifier = ResourceClassifier()
 
 level = "哔哩哔哩模块"
+SOURCE = "bilibili"
 
-async def get_info(bvid) -> dict:
+async def get_info(bvid) -> Result:
     """
     返回视频信息
 
@@ -51,7 +58,7 @@ async def get_info(bvid) -> dict:
 
         video_id = info_dict["bvid"]
         video_title = info_dict["title"]
-        await console.rp(f"信息提取完毕：{video_title} [{video_id}]", f"[{level}]")
+        await console.rp(f"信息提取完毕：[{video_id}] {video_title}", f"[{level}]")
 
     except bilibili_api.ResponseCodeException as e:
         await console.rp(
@@ -106,7 +113,7 @@ async def get_info(bvid) -> dict:
             return success_result(result=info_dict)
 
 
-async def get_filesize(info_dict: dict, num_p=0) -> dict:
+async def get_filesize(info_dict: dict, num_p=0) -> Result:
     bvid = info_dict["bvid"]
     try:
         headers = {
@@ -185,27 +192,38 @@ async def get_filesize(info_dict: dict, num_p=0) -> dict:
             return success_result(result=length)
 
 
+def construct_uid(bvid: str, download_type: DownloadType, num_p: int) -> str:
+    if resource_classifier.handler(download_type) is not DownloadHandler.BILIBILI_API_PYTHON:
+        raise ValueError(f"错误下载类型：{download_type.name}")
+    uid = f"{SOURCE}_{bvid}"
+    if download_type is DownloadType.BILIBILI_P:
+        uid += f"_p{str(num_p + 1)}"
+    return uid
+
+
 # TODO 检查下载报错代码，是否和异步并发有关
 # aiohttp.http_exceptions.ContentLengthError: 400, message:
 #   Not enough data to satisfy content length header.
 # aiohttp.client_exceptions.ClientPayloadError: Response payload is not completed: <ContentLengthError: 400, message='Not enough data to satisfy content length header.'>
 
-async def audio_download(info_dict: dict, download_path: str, download_type: Literal["bilibili_single", "bilibili_p", "bilibili_collection"] = "bilibili_single", num_p=0) -> dict:
+async def audio_download(info_dict: dict, download_dir: str, download_type: DownloadType = DownloadType.BILIBILI_SINGLE, num_p=0) -> Result:
     """
     使用bilibili_api，下载来自哔哩哔哩的音频
     """
+    if resource_classifier.handler(download_type) is not DownloadHandler.BILIBILI_API_PYTHON:
+        raise ValueError(f"错误下载类型：{download_type.name}")
+
     bvid = info_dict["bvid"]
-    if download_type == "bilibili_p":
+    if download_type is DownloadType.BILIBILI_P:
         title = info_dict["pages"][num_p]["part"]
     # 普通下载
     else:
         title = info_dict["title"]
 
-    original_title = title
-    title = utils.legal_name(title)
     duration = int(info_dict["pages"][num_p]["duration"])
-
-    path = f"{download_path}/{title}.mp3"
+    uid = construct_uid(bvid=bvid, download_type=download_type, num_p=num_p)
+    file_title = utils.legal_name(f"{uid} - {title}")
+    download_path = f"{download_dir}/{file_title}.mp3"
 
     try:
         # 实例化 Credential 类
@@ -224,15 +242,15 @@ async def audio_download(info_dict: dict, download_path: str, download_type: Lit
             "Referer": "https://www.bilibili.com/"
         }
 
-        # print(current_time + f"\n    开始下载: {title}.mp3\n下载进度:")
+        # print(current_time + f"\n    开始下载: {file_title}.mp3\n下载进度:")
 
         async with aiohttp.ClientSession() as sess:
             # 下载音频流
             async with sess.get(audio_url, headers=headers) as resp:
                 length = resp.headers.get('content-length')
                 size = utils.convert_byte(int(length))
-                await console.rp(f"开始下载：{title}.mp3 大小：{size[0]} {size[1]}", f"[{level}]")
-                with open(path, 'wb') as f:
+                await console.rp(f"开始下载：{file_title}.mp3 大小：{size[0]} {size[1]}", f"[{level}]")
+                with open(download_path, 'wb') as f:
                     process = 0
                     while True:
                         chunk = await resp.content.read(1024)
@@ -247,27 +265,35 @@ async def audio_download(info_dict: dict, download_path: str, download_type: Lit
 
         # print("\n\n" + current_time + f"\n    下载完成\n")
 
-        new_audio = audio.Audio(original_title, download_type, bvid, path, duration)
+        new_audio = audio.Audio(
+            title=title,
+            uid=uid,
+            source=SOURCE,
+            source_id=bvid,
+            download_type=download_type,
+            path=download_path,
+            duration=duration
+        )
 
         if "pic" in info_dict.keys():
             new_audio.set_cover_url(info_dict["pic"])
 
-        if download_type == "bilibili_p":
+        if download_type is DownloadType.BILIBILI_P:
             logger_prompt = (
                 f"下载完成\n"
-                f"文件名：{title}.mp3\n"
+                f"文件名：{file_title}.mp3\n"
                 f"来源：[哔哩哔哩] {bvid}\n"
                 f"分P号：{num_p + 1}\n"
-                f"路径：{download_path}\n"
+                f"路径：{download_dir}\n"
                 f"大小：{size[0]} {size[1]}\n"
                 f"时长：{utils.convert_duration_to_str(duration)}"
             )
         else:
             logger_prompt = (
                 f"下载完成\n"
-                f"文件名：{title}.mp3\n"
+                f"文件名：{file_title}.mp3\n"
                 f"来源：[哔哩哔哩] {bvid}\n"
-                f"路径：{download_path}\n"
+                f"路径：{download_dir}\n"
                 f"大小：{size[0]} {size[1]}\n"
                 f"时长：{utils.convert_duration_to_str(duration)}"
             )

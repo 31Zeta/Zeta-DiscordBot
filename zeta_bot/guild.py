@@ -7,7 +7,7 @@ import utils
 
 from zeta_bot import (
     decorator,
-    console,
+    output_console,
     file_management,
     member,
     audio,
@@ -15,7 +15,7 @@ from zeta_bot import (
     icon
 )
 
-console = console.Console()
+console = output_console.Console()
 icon_lib = icon.IconLib()
 
 class Guild:

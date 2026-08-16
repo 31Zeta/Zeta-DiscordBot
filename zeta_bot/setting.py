@@ -359,7 +359,7 @@ bot_setting_configs = [
         "id": "ar_announcement",
         "name": "自动重启通知",
         "type": "bool",
-        "description": "在机器人准备重启时向所有机器人仍处于该服务器任意语音频道的服务器的第一个文字频道发送准备自动重启的通知（好长的句子）",
+        "description": "在机器人准备重启时，向所有机器人仍活跃的语音频道的服务器的第一个文字频道发送准备自动重启的通知",
         "input_description": "请设置是否开启自动重启通知功能（输入y为开启，输入n为关闭）",
         "dependent": "auto_reboot",
         "regex": None,
@@ -387,6 +387,17 @@ bot_setting_configs = [
         "regex": "([01]\d|2[0123]|\d):([012345]\d|\d):([012345]\d|\d)",
         "options": None,
         "value": "23:55:00"
+    },
+    {
+        "id": "go_music_api_url",
+        "name": "go-music-api服务地址",
+        "type": "str",
+        "description": "go-music-api服务的地址，用于获取国内音乐平台音频，部署参考：https://github.com/guohuiyuan/go-music-api",
+        "input_description": "请输入go-music-api服务的地址（包含端口号，默认地址：127.0.0.1:8080）",
+        "dependent": None,
+        "regex": None,
+        "options": None,
+        "value": "127.0.0.1:8080"
     },
     # {
     #     "id": "chat_ai",

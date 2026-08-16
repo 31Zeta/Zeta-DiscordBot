@@ -1,5 +1,5 @@
-from os.path import exists
 from typing import *
+from os.path import exists
 import sys
 import os
 import time
@@ -51,7 +51,7 @@ def json_save(json_path: str, saving_item) -> None:
         )
 
 
-def json_load(json_path: str) -> Union[dict, list]:
+def json_load(json_path: str):
     """
     读取<json_path>的json文件
     **警告**：json格式的键值必须为字符串，否则会被转换为字符串
@@ -98,30 +98,38 @@ def markdown_escape(text: str) -> str:
     return re.sub(pattern, r"\\\1", text)
 
 
-def success_result(result: Any, exception: Any = None, message: str = "获取成功", retryable: bool = False) -> Dict[str, Any]:
-    """
-    构造成功情况的结果字典
-    """
-    return {
-        "result": result,
-        "success": True,
-        "exception": exception,
-        "message": message,
-        "retryable": retryable,
-    }
+class Result:
+    def __init__(self, success: bool = False, result: Any = None, extra: Optional[dict] = None, exception: Optional[Exception] = None, message: Optional[str] = None, retryable: bool = False):
+        self.success: bool = success
+        self.result: Any = result
+        self.extra = extra
+        self.exception: Optional[Exception] = exception
+        if message is None:
+            message = ""
+        self.message: str = message
+        self.retryable: bool = retryable
+
+    def __bool__(self) -> bool:
+        return self.success
+
+    def get_extra(self) -> dict:
+        if self.extra is None:
+            self.extra = dict()
+        return self.extra
 
 
-def failed_result(exception: Any, message: str, retryable: bool) -> Dict[str, Any]:
+def success_result(result: Any, exception: Optional[Exception] = None, message: str = "获取成功", retryable: bool = False) -> Result:
     """
-    构造失败情况的结果字典
+    构造成功情况的结果
     """
-    return {
-        "result": None,
-        "success": False,
-        "exception": exception,
-        "message": message,
-        "retryable": retryable,
-    }
+    return Result(success=True, result=result, extra=None, exception=exception, message=message, retryable=retryable)
+
+
+def failed_result(exception: Any, message: Optional[str], retryable: bool) -> Result:
+    """
+    构造失败情况的结果
+    """
+    return Result(success=False, result=None, extra=None, exception=exception, message=message, retryable=retryable)
 
 
 def check_requirements(requirements_path: str, false_only: bool = False) -> Dict[str, dict]:
@@ -844,33 +852,6 @@ def convert_byte(byte: int) -> Tuple[float, str]:
         return round(kib, 2), "KiB"
     else:
         return byte, "字节"
-
-
-def check_url_source(url) -> Union[str, None]:
-
-    if re.search("bilibili\.com", url) is not None:
-        return "bilibili_url"
-
-    elif re.search("b23\.tv", url) is not None:
-        return "bilibili_short_url"
-
-    elif re.search("BV(\d|[a-zA-Z]){10}", url) is not None:
-        return "bilibili_bvid"
-
-    elif re.search("youtube\.com", url) is not None:
-        return "youtube_url"
-
-    elif re.search("youtu\.be", url) is not None:
-        return "youtube_short_url"
-
-    elif re.search("music.163\.com", url) is not None:
-        return "netease_url"
-
-    elif re.search("163cn\.tv", url) is not None:
-        return "netease_short_url"
-
-    else:
-        return None
 
 
 def get_url_from_str(input_str, url_type) -> Union[str, None]:

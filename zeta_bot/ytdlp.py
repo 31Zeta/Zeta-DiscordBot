@@ -1,22 +1,34 @@
 from __future__ import unicode_literals
 from typing import *
+from enum import Enum
+
 import yt_dlp
 from yt_dlp import YoutubeDL
 
 import errors
 import utils
-from utils import success_result, failed_result
+from utils import Result, success_result, failed_result
 
 from zeta_bot import (
-    console,
+    output_console,
     audio
 )
+from zeta_bot.resource import MediaPlatform, LinkType, DownloadHandler, DownloadType, ResourceClassifier
 
-console = console.Console()
+# 设置控制台
+console = output_console.Console()
+
+# 加载资源分类器
+resource_classifier = ResourceClassifier()
 
 level = "YT-DLP模块"
+SOURCE_MAP = {
+    "youtube": "YouTube",
+    "netease": "网易云音乐",
+    "unknown": "未知来源",
+}
 
-async def get_info(url, cookie_file_path=None):
+async def get_info(url, cookie_file_path=None) -> Result:
     ydl_opts = {
         'format': 'bestaudio/best',
         'extract_flat': True,
@@ -34,7 +46,7 @@ async def get_info(url, cookie_file_path=None):
         video_id = info_dict["id"]
         video_title = info_dict["title"]
 
-        await console.rp(f"信息提取完毕：{video_title} [{video_id}]", f"[{level}]")
+        await console.rp(f"信息提取完毕：[{video_id}] {video_title}", f"[{level}]")
 
     except yt_dlp.utils.DownloadError as e:
         await console.rp(
@@ -73,7 +85,7 @@ async def get_info(url, cookie_file_path=None):
             return success_result(result=info_dict)
 
 
-async def get_filesize(info_dict: dict) -> dict:
+async def get_filesize(info_dict: dict) -> Result:
     if "filesize" in info_dict:
         return success_result(result=info_dict["filesize"])
     else:
@@ -86,22 +98,40 @@ async def get_filesize(info_dict: dict) -> dict:
         return failed_result(exception=None, message="结果为空，未知错误", retryable=False)
 
 
-async def audio_download(youtube_url, info_dict, download_path, download_type="youtube_single", cookie_file_path=None) -> dict:
-    if download_path.endswith("/"):
-        download_path = download_path.rstrip("/")
+def construct_uid(video_id: str, download_type: DownloadType) -> str:
+    if resource_classifier.handler(download_type) is not DownloadHandler.YT_DLP:
+        raise ValueError(f"错误下载类型：{download_type.name}")
+
+    if download_type.name.startswith("YOUTUBE"):
+        source = "youtube"
+    elif download_type.name.startswith("NETEASE"):
+        source = "netease"
+    else:
+        source = "unknown"
+    uid = f"{source}_{video_id}"
+    return uid
+
+
+async def audio_download(youtube_url, info_dict: dict, download_dir: str, download_type: DownloadType = DownloadType.YOUTUBE_SINGLE, cookie_file_path=None) -> Result:
+    if resource_classifier.handler(download_type) is not DownloadHandler.YT_DLP:
+        raise ValueError(f"错误下载类型：{download_type.name}")
+
+    if download_dir.endswith("/"):
+        download_dir = download_dir.rstrip("/")
 
     video_id = info_dict["id"]
     video_title = info_dict["title"]
-    video_path_title = utils.legal_name(video_title)
-    video_name_extension = info_dict["ext"]
+    file_extension = info_dict["ext"]
     video_duration = info_dict["duration"]
     size = utils.convert_byte(int(info_dict["filesize"]))
 
-    video_path = f"{download_path}/{video_path_title}.{video_name_extension}"
+    uid = construct_uid(video_id=video_id, download_type=download_type)
+    file_title = utils.legal_name(f"{uid} - {video_title}")
+    download_path = f"{download_dir}/{file_title}.{file_extension}"
 
     ydl_opts = {
         "format": "bestaudio/best",
-        "outtmpl": video_path,
+        "outtmpl": download_path,
         "extract_flat": True,
         "quiet": True,
     }
@@ -109,29 +139,37 @@ async def audio_download(youtube_url, info_dict, download_path, download_type="y
     if cookie_file_path is not None:
         ydl_opts["cookiefile"] = str(cookie_file_path)
 
-    await console.rp(f"开始下载：{video_path_title}.{video_name_extension}", f"[{level}]")
+    await console.rp(f"开始下载：{file_title}.{file_extension}", f"[{level}]")
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([youtube_url])
 
-        new_audio = audio.Audio(video_title, download_type, video_id, video_path, video_duration)
+        if download_type.name.startswith("YOUTUBE"):
+            source = "youtube"
+        elif download_type.name.startswith("NETEASE"):
+            source = "netease"
+        else:
+            source = "unknown"
+
+        new_audio = audio.Audio(
+            title=video_title,
+            uid=uid,
+            source=source,
+            source_id=video_id,
+            download_type=download_type,
+            path=download_path,
+            duration=video_duration
+        )
 
         if "thumbnail" in info_dict.keys():
             new_audio.set_cover_url(info_dict["thumbnail"])
 
-        if download_type.startswith("youtube"):
-            source_str = "YouTube"
-        elif download_type.startswith("netease"):
-            source_str = "NetEase"
-        else:
-            source_str = "未知来源"
-
         await console.rp(
             f"下载完成\n"
-            f"文件名：{video_path_title}.{video_name_extension}\n"
-            f"来源：[{source_str}] {video_id}\n"
-            f"路径：{download_path}\n"
+            f"文件名：{file_title}.{file_extension}\n"
+            f"来源：[{SOURCE_MAP[source]}] {video_id}\n"
+            f"路径：{download_dir}\n"
             f"大小：{size[0]} {size[1]}\n"
             f"时长：{utils.convert_duration_to_str(video_duration)}",
             f"[{level}]"
