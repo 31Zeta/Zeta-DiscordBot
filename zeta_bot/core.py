@@ -1476,8 +1476,13 @@ async def play_go_music(ctx: discord.ApplicationContext, link_type: LinkType, ur
     icon_loading_filename = "hourglass_hover_rotation_animated_1000ms_infinite_30px.gif"
     icon_error_filename = "error_cross_hover_pinch_orange_animated_0ms_100px.gif"
 
+    # 如处理哔哩哔哩内容，则提取为BV号
+    if link_type.platform is MediaPlatform.BILIBILI:
+        url = utils.get_bvid_from_url(url)
+
     # 提取信息
-    info_result = await result_check(await go_music.get_info(go_music_url, url))
+    sources = go_music.PLATFORM_SOURCE_MAP[link_type.platform]
+    info_result = await result_check(await go_music.get_info(go_music_url, url, sources=sources))
     info_dict = info_result.result
     if info_dict is None:
         warning_description = f"信息获取失败：{info_result.message}"
@@ -1564,12 +1569,18 @@ async def play_go_music(ctx: discord.ApplicationContext, link_type: LinkType, ur
             playlist_info_dict = info_result.extra["playlist_info_dict"]
             playlist_title = playlist_info_dict["playlists"][0]["name"]
             cover_url = playlist_info_dict["playlists"][0]["cover"]
-            download_type = DownloadType[f"{link_type.platform.name}_PLAYLIST"]
+            if link_type.platform is MediaPlatform.BILIBILI:
+                download_type = DownloadType[f"BILIBILI_COLLECTION"]
+            else:
+                download_type = DownloadType[f"{link_type.platform.name}_PLAYLIST"]
         elif info_result.extra["album_info_dict"] is not None:
             album_info_dict = info_result.extra["album_info_dict"]
             playlist_title = album_info_dict["albums"][0]["name"]
             cover_url = album_info_dict["playlists"][0]["cover"]
-            download_type = DownloadType[f"{link_type.platform.name}_ALBUM"]
+            if link_type.platform is MediaPlatform.BILIBILI:
+                download_type = DownloadType[f"BILIBILI_COLLECTION"]
+            else:
+                download_type = DownloadType[f"{link_type.platform.name}_ALBUM"]
         else:
             playlist_title = "播放列表"
             download_type = DownloadType[f"{link_type.platform.name}_SINGLE"]

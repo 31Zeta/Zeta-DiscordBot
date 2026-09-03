@@ -42,6 +42,19 @@ SOURCE_MAP = {
     "jamendo": "Jamendo",
     "joox": "JOOX"
 }
+PLATFORM_SOURCE_MAP: Dict[MediaPlatform, str] = {
+    MediaPlatform.BILIBILI: "bilibili",
+    MediaPlatform.QQ: "qq",
+    MediaPlatform.NETEASE: "netease",
+    MediaPlatform.KUGOU: "kugou",
+    MediaPlatform.KUWO: "kuwo",
+    MediaPlatform.MIGU: "migu",
+    MediaPlatform.QIANQIAN: "qianqian",
+    MediaPlatform.SODA: "soda",
+    MediaPlatform.FIVESING: "fivesing",
+    MediaPlatform.JAMENDO: "jamendo",
+    MediaPlatform.JOOX: "joox"
+}
 
 
 def api_url_format(api_url: str) -> str:
@@ -58,6 +71,15 @@ async def handle_exception(exception: Exception) -> Result:
             print_head=True
         )
         retryable = False
+    elif isinstance(exception, errors.NoSearchResultsError):
+        await console.rp(
+            f"获取失败，音乐链接解析结果缺少songs列表",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        retryable = False
+        message = "搜索结果为空"
     elif isinstance(exception, errors.ResourceRestrictedError):
         await console.rp(
             f"获取失败，资源可能存在会员或者区域版权限制：{exception}",
@@ -251,12 +273,13 @@ async def is_available(api_url: str, silent: bool = True) -> bool:
         return True
 
 
-async def get_info_album(api_url: str, music_url: str, suppress_errors: bool = False) -> Optional[Result]:
+async def get_info_album(api_url: str, music_url: str, sources: Optional[str] = None, suppress_errors: bool = False) -> Optional[Result]:
     """
     通过音乐链接获取专辑信息
 
     :param api_url: go-music-api 服务根地址
     :param music_url: 音乐平台的单曲分享链接
+    :param sources: 目标平台
     :param suppress_errors: 出现错误时是否阻止异常抛出
     :return: 包含歌曲信息或异常的统一结果字典
     """
@@ -266,14 +289,18 @@ async def get_info_album(api_url: str, music_url: str, suppress_errors: bool = F
         # 请求链接解析接口
         timeout = aiohttp.ClientTimeout(total=20, connect=5)
         async with aiohttp.ClientSession(timeout=timeout) as session:
+            params = {
+                "q": music_url,
+                "type": "album",
+            }
+            if sources is not None:
+                params["sources"] = sources
+
             result = await request_json(
                 api_url_format(api_url),
                 session,
                 "/api/v1/music/search",
-                {
-                    "q": music_url,
-                    "type": "album",
-                },
+                params
             )
 
         info_dict = result.get("data")
@@ -303,12 +330,13 @@ async def get_info_album(api_url: str, music_url: str, suppress_errors: bool = F
     return result
 
 
-async def get_info_playlist(api_url: str, music_url: str, suppress_errors: bool = False) -> Optional[Result]:
+async def get_info_playlist(api_url: str, music_url: str, sources: Optional[str] = None, suppress_errors: bool = False) -> Optional[Result]:
     """
     通过音乐链接获取歌单信息
 
     :param api_url: go-music-api 服务根地址
     :param music_url: 音乐平台的单曲分享链接
+    :param sources: 目标平台
     :param suppress_errors: 出现错误时是否阻止异常抛出
     :return: 包含歌曲信息或异常的统一结果字典
     """
@@ -318,14 +346,18 @@ async def get_info_playlist(api_url: str, music_url: str, suppress_errors: bool 
         # 请求链接解析接口
         timeout = aiohttp.ClientTimeout(total=20, connect=5)
         async with aiohttp.ClientSession(timeout=timeout) as session:
+            params = {
+                "q": music_url,
+                "type": "playlist",
+            }
+            if sources is not None:
+                params["sources"] = sources
+
             result = await request_json(
                 api_url_format(api_url),
                 session,
                 "/api/v1/music/search",
-                {
-                    "q": music_url,
-                    "type": "playlist",
-                },
+                params
             )
 
         info_dict = result.get("data")
@@ -355,12 +387,13 @@ async def get_info_playlist(api_url: str, music_url: str, suppress_errors: bool 
     return result
 
 
-async def get_info(api_url: str, music_url: str) -> Result:
+async def get_info(api_url: str, music_url: str, sources: Optional[str] = None) -> Result:
     """
     通过音乐链接获取歌曲信息
 
     :param api_url: go-music-api 服务根地址
     :param music_url: 音乐平台的单曲分享链接
+    :param sources: 目标平台
     :return: 包含歌曲信息或异常的统一结果字典
     """
     try:
@@ -371,14 +404,18 @@ async def get_info(api_url: str, music_url: str) -> Result:
         # 请求链接解析接口
         timeout = aiohttp.ClientTimeout(total=20, connect=5)
         async with aiohttp.ClientSession(timeout=timeout) as session:
+            params = {
+                "q": music_url,
+                "type": "song",
+            }
+            if sources is not None:
+                params["sources"] = sources
+
             result = await request_json(
                 api_url_format(api_url),
                 session,
                 "/api/v1/music/search",
-                {
-                    "q": music_url,
-                    "type": "song",
-                },
+                params
             )
 
         info_dict = result.get("data")
@@ -387,7 +424,7 @@ async def get_info(api_url: str, music_url: str) -> Result:
 
         songs = info_dict.get("songs")
         if not isinstance(songs, list):
-            raise RuntimeError("音乐链接解析结果缺少songs列表")
+            raise errors.NoSearchResultsError(music_url)
 
         extra_info: Dict[str, Any] = {
             "type": "song",
@@ -402,14 +439,14 @@ async def get_info(api_url: str, music_url: str) -> Result:
             target_id = info_dict["songs"][0]['id']
         # 目标可能为歌单，尝试以歌单方式解析
         else:
-            playlist_info_dict_result = await get_info_playlist(api_url, music_url, suppress_errors=True)
+            playlist_info_dict_result = await get_info_playlist(api_url, music_url, sources=sources, suppress_errors=True)
             if playlist_info_dict_result is not None and playlist_info_dict_result.result is not None:
                 playlist_info_dict = playlist_info_dict_result.result
                 extra_info["type"] = "playlist"
                 extra_info["playlist_info_dict"] = playlist_info_dict
                 target_id = playlist_info_dict["playlists"][0]['id']
             else:
-                album_info_dict_result = await get_info_album(api_url, music_url, suppress_errors=True)
+                album_info_dict_result = await get_info_album(api_url, music_url, sources=sources, suppress_errors=True)
                 if album_info_dict_result is not None and album_info_dict_result.result is not None:
                     album_info_dict = album_info_dict_result.result
                     extra_info["type"] = "album"

@@ -111,6 +111,18 @@ class URLNotSupportedError(Exception):
             return self.description
 
 
+class NoSearchResultsError(Exception):
+    def __init__(self, query: Optional[str] = None):
+        super().__init__()
+        self.query = query
+
+    def __str__(self):
+        if self.query is None:
+            return "搜索结果为空"
+        else:
+            return f"搜索：{self.query} 结果为空"
+
+
 class ResourceRestrictedError(Exception):
     def __init__(self, description: Optional[str] = None):
         super().__init__()
