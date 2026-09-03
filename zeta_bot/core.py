@@ -192,7 +192,8 @@ async def on_application_command_error(ctx, exception):
     await console.on_application_command_error(ctx, exception)
 
     # 向用户回复发生错误
-    await embed_respond(ctx, "发生错误", colour=red, silent=True)
+    icon_error_filename = "error_cross_hover_pinch_orange_animated_0ms_100px.gif"
+    await embed_respond(ctx, author_name="发生错误", author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), colour=red, silent=True)
 
 
 async def command_check(ctx: discord.ApplicationContext) -> bool:

@@ -76,6 +76,14 @@ async def get_info(bvid) -> Result:
             print_head=True
         )
         return failed_result(exception=e, message="参数错误，请检查链接中的BV号是否正确完整", retryable=False)
+    except bilibili_api.NetworkException as e:
+        await console.rp(
+            f"触发异常bilibili_api.NetworkException，网络异常",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return failed_result(exception=e, message="哔哩哔哩连接异常", retryable=False)
     except aiohttp.ClientResponseError as e:
         await console.rp(
             f"触发异常aiohttp.ClientResponseError，{bvid}信息获取失败，可能为请求繁忙",
@@ -153,6 +161,14 @@ async def get_filesize(info_dict: dict, num_p=0) -> Result:
             print_head=True
         )
         return failed_result(exception=e, message="参数错误，请检查链接中的BV号是否正确完整", retryable=False)
+    except bilibili_api.NetworkException as e:
+        await console.rp(
+            f"触发异常bilibili_api.NetworkException，网络异常",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return failed_result(exception=e, message="哔哩哔哩连接异常", retryable=False)
     except aiohttp.ClientResponseError as e:
         await console.rp(
             f"触发异常aiohttp.ClientResponseError，{bvid}获取失败，可能为请求繁忙",
@@ -315,6 +331,14 @@ async def audio_download(info_dict: dict, download_dir: str, download_type: Down
             print_head=True
         )
         return failed_result(exception=e, message="参数错误，请检查链接中的BV号是否正确完整", retryable=False)
+    except bilibili_api.NetworkException as e:
+        await console.rp(
+            f"触发异常bilibili_api.NetworkException，网络异常",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return failed_result(exception=e, message="哔哩哔哩连接异常", retryable=False)
     except aiohttp.ClientResponseError as e:
         await console.rp(
             f"触发异常aiohttp.ClientResponseError，{title}获取失败，可能为请求繁忙",
