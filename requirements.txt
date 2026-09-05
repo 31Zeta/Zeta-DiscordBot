@@ -12,3 +12,4 @@ httpx
 packaging
 APScheduler
 requests
+qrcode[pil]

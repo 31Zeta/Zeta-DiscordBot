@@ -671,7 +671,7 @@ def ci_select(
             item = item.lower()
         options_formated.add(item)
     while True:
-        input_line = ci(prompt, prompt_type=prompt_type, gap=gap, indent=indent, print_head=print_head, prompt_end=prompt_end)
+        input_line = str(ci(prompt, prompt_type=prompt_type, gap=gap, indent=indent, print_head=print_head, prompt_end=prompt_end))
         if ignore_case:
             input_line = input_line.lower()
         if input_line not in options_formated:

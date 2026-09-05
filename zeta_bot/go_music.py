@@ -1,11 +1,15 @@
 from typing import *
 import aiohttp
 import asyncio
+import base64
 import json
 import os
 import re
+from io import BytesIO
 from pathlib import Path
 from enum import Enum
+import qrcode
+from PIL import Image
 
 import errors
 import utils
@@ -55,6 +59,20 @@ PLATFORM_SOURCE_MAP: Dict[MediaPlatform, str] = {
     MediaPlatform.JAMENDO: "jamendo",
     MediaPlatform.JOOX: "joox"
 }
+
+
+# 初始化各平台Cookie文件，已有文件不覆盖
+try:
+    cookie_directory = Path(__file__).resolve().parent.parent / "data" / "cookies"
+    cookie_directory.mkdir(parents=True, exist_ok=True)
+    for cookie_source in GO_MUSIC_SUPPORTED_PLATFORM:
+        try:
+            with (cookie_directory / f"{cookie_source}.json").open("x", encoding="utf-8") as cookie_file:
+                cookie_file.write("{}")
+        except OSError:
+            continue
+except OSError:
+    pass
 
 
 def api_url_format(api_url: str) -> str:
@@ -167,7 +185,139 @@ async def handle_exception(exception: Exception) -> Result:
     return failed_result(exception=exception, message=message, retryable=retryable)
 
 
-async def request_json(api_url: str, session: aiohttp.ClientSession, endpoint: str, params: Optional[dict] = None) -> dict:
+def extract_cookie(cookie_data: Any, source: str) -> str:
+    """
+    将扫码登录或浏览器插件导出的JSON内容转换为Cookie请求头字符串。
+
+    支持平台映射、Cookie字符串、name/value数组、Cookie键值映射，
+    以及包含cookie、cookies或登录响应data的包装对象。
+    浏览器导出内容应属于指定平台；仅提取名称和值，不验证登录是否有效。
+    """
+    source = source.strip().lower()
+    if source == "qq_wx":
+        source = "qq"
+
+    def cookie_pair(name: Any, value: Any) -> str:
+        # 拒绝非法字段，异常信息不包含凭据内容。
+        if not isinstance(name, str) or not re.fullmatch(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+", name):
+            raise RuntimeError("本地Cookie包含无效名称")
+        if not isinstance(value, str) or any(char in value for char in ("\r", "\n", ";", "\x00")):
+            raise RuntimeError("本地Cookie包含无效值，值必须为字符串且不能包含换行或分号")
+        return f"{name}={value}"
+
+    def extract(data: Any, depth: int = 0) -> str:
+        if depth > 8:
+            raise RuntimeError("本地Cookie的JSON嵌套层级过多")
+        if data is None:
+            return ""
+        if isinstance(data, str):
+            data = data.strip()
+            if data.lower().startswith("cookie:"):
+                data = data[7:].strip()
+            pairs = []
+            for part in data.split(";"):
+                if not part.strip():
+                    continue
+                name, separator, value = part.strip().partition("=")
+                if not separator:
+                    raise RuntimeError("本地Cookie字符串必须为name=value格式")
+                pairs.append(cookie_pair(name.strip(), value))
+            return "; ".join(pairs)
+        if isinstance(data, list):
+            pairs = []
+            for item in data:
+                if not isinstance(item, dict) or "name" not in item or "value" not in item:
+                    raise RuntimeError("浏览器Cookie数组的每项必须包含name和value")
+                # domain、path、expirationDate等字段属于浏览器元数据，不发送给API。
+                pairs.append(cookie_pair(item["name"], item["value"]))
+            return "; ".join(pairs)
+        if not isinstance(data, dict):
+            raise RuntimeError("本地Cookie必须为字符串、对象或name/value数组")
+        if not data:
+            return ""
+        if source in data:
+            return extract(data[source], depth + 1)
+        if source == "qq" and "qq_wx" in data:
+            return extract(data["qq_wx"], depth + 1)
+
+        # 平台映射内没有当前平台时，不使用其他平台的凭据。
+        if any(platform in data for platform in GO_MUSIC_SUPPORTED_PLATFORM | {"qq_wx"}):
+            return ""
+        declared_source = data.get("source", data.get("platform"))
+        if declared_source is not None:
+            if not isinstance(declared_source, str):
+                raise RuntimeError("本地Cookie的平台标识必须为字符串")
+            declared_source = declared_source.strip().lower()
+            if declared_source == "qq_wx":
+                declared_source = "qq"
+            if declared_source != source:
+                return ""
+        if "name" in data and "value" in data:
+            return cookie_pair(data["name"], data["value"])
+        for key in ("cookie", "cookies", "data"):
+            if key in data:
+                cookie = extract(data[key], depth + 1)
+                if cookie:
+                    return cookie
+        # 已识别的包装对象不再作为Cookie键值映射，避免发送登录状态等元数据。
+        if any(key in data for key in ("cookie", "cookies", "data", "source", "platform", "status", "code", "msg", "message")):
+            return ""
+        return "; ".join(cookie_pair(name, value) for name, value in data.items())
+
+    return extract(cookie_data)
+
+
+async def use_local_cookie(api_url: str, session: aiohttp.ClientSession, source: Optional[str]) -> bool:
+    """
+    请求前读取本地平台Cookie，并同步到go-music-api的全局配置。
+
+    :param api_url: go-music-api服务根地址
+    :param session: aiohttp客户端会话
+    :param source: 单个平台，None时不读取文件、不同步Cookie
+    :return: 是否成功同步了本地Cookie；文件不存在、不可读或内容无效时返回False
+
+    读取data/cookies/<平台>.json，自动提取扫码登录或浏览器插件导出的Cookie。
+    API不支持通过单次音乐请求传入平台Cookie，因此先调用配置接口热更新并持久化。
+    本地Cookie不可用时跳过同步并继续请求，不清除API已有的Cookie。
+    Cookie同步接口失败时仍向上抛出异常。
+    """
+    if source is None:
+        return False
+    if not isinstance(source, str):
+        raise TypeError("Cookie平台source必须为字符串或None")
+    source = source.strip().lower()
+    if source == "qq_wx":
+        source = "qq"
+    # 只检查已知的单个平台，避免将未知来源或路径当作本地文件名。
+    if source not in GO_MUSIC_SUPPORTED_PLATFORM:
+        return False
+
+    cookie_path = Path(__file__).resolve().parent.parent / "data" / "cookies" / f"{source}.json"
+    try:
+        cookie_text = await asyncio.to_thread(cookie_path.read_text, encoding="utf-8-sig")
+        cookie_data = json.loads(cookie_text)
+        cookie = extract_cookie(cookie_data, source)
+    except (OSError, UnicodeError, ValueError, RuntimeError, RecursionError):
+        # 空文件、损坏的JSON、编码错误及无效Cookie均按未配置处理。
+        return False
+    if not cookie:
+        return False
+
+    # 只更新当前平台，不将凭据放入URL或输出包含凭据的响应正文。
+    request_url = f"{api_url_format(api_url)}/api/v1/system/cookies"
+    async with session.post(request_url, json={source: cookie}, allow_redirects=False) as response:
+        if response.status != 200:
+            raise RuntimeError(f"本地Cookie同步失败，HTTP状态码：{response.status}")
+        try:
+            result = json.loads(await response.text())
+        except (ValueError, UnicodeError):
+            raise RuntimeError("Cookie同步接口未返回有效JSON") from None
+        if not isinstance(result, dict) or result.get("status") != "ok":
+            raise RuntimeError("Cookie同步接口未确认更新成功")
+    return True
+
+
+async def request_json(api_url: str, session: aiohttp.ClientSession, endpoint: str, params: Optional[dict] = None, source: Optional[str] = None) -> dict:
     """
     请求go-music-api并解析JSON对象
 
@@ -175,10 +325,12 @@ async def request_json(api_url: str, session: aiohttp.ClientSession, endpoint: s
     :param session: aiohttp 客户端会话
     :param endpoint: API 路径
     :param params: 查询参数
+    :param source: 请求前尝试同步本地Cookie的平台，None时跳过
     :return: API 返回的 JSON 对象
     """
     request_url = f"{api_url_format(api_url)}{endpoint}"
 
+    await use_local_cookie(api_url, session, source)
     async with session.get(request_url, params=params) as response:
         body = await response.text(errors="replace")
 
@@ -273,13 +425,207 @@ async def is_available(api_url: str, silent: bool = True) -> bool:
         return True
 
 
+async def qr_login(source: str, api_url: str, raise_exception: bool = False) -> Result:
+    """
+    创建平台扫码登录二维码，异步等待确认并保存Cookie。
+
+    :param source: 扫码平台，支持netease、qq、qq_wx、kugou和bilibili
+    :param api_url: go-music-api服务根地址
+    :param raise_exception: 是否不调用handle_exception直接raise
+    :return: 统一Result，成功结果包含source、cookie_source、qr_path、cookie_path和api_cookie_saved
+
+    二维码保存在项目根目录<source>_qr_<时间>.png，生成后输出路径供用户扫码。
+    登录结束后无论成功、失败或取消，都会删除本次二维码；返回的qr_path仅记录原路径。
+    最多等待300秒，平台返回更早的过期时间时以平台时间为准。
+    Cookie以平台键值对保存到data/cookies/<平台>.json，目录不存在时自动创建。
+    qq_wx使用qq作为Cookie平台名；同平台再次登录会覆盖原文件。
+    API成功轮询时会更新其自身Cookie；后续指定平台的业务请求会从本地文件重新同步。
+    本地文件不会改变API自身的Cookie存储路径。
+    """
+    def save_qr_image(image_data: Optional[bytes], login_url: str, path: Path) -> None:
+        """在工作线程中生成或转换二维码，并以PNG格式完整写入。"""
+        part_path = path.with_suffix(".png.part")
+        try:
+            if image_data is not None:
+                with Image.open(BytesIO(image_data)) as image:
+                    image.save(part_path, format="PNG")
+            else:
+                image = qrcode.make(login_url)
+                image.save(part_path, format="PNG")
+            part_path.replace(path)
+        finally:
+            part_path.unlink(missing_ok=True)
+
+    def save_cookie(cookie_source: str, cookie: str, path: Path, time_stamp: str) -> None:
+        """在工作线程中创建目录，并原子替换对应平台的Cookie文件。"""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        part_path = path.with_name(f"{path.name}.{time_stamp}.part")
+        try:
+            utils.json_save(str(part_path), {cookie_source: cookie})
+            part_path.replace(path)
+        finally:
+            part_path.unlink(missing_ok=True)
+
+    qr_path: Optional[Path] = None
+    qr_image_task: Optional[asyncio.Task] = None
+    try:
+        if not isinstance(source, str):
+            raise TypeError("扫码登录平台source必须为字符串")
+        source = source.strip().lower()
+        if source not in {"netease", "qq", "qq_wx", "kugou", "bilibili"}:
+            raise ValueError("不支持此扫码登录平台，可选netease、qq、qq_wx、kugou、bilibili")
+
+        project_root = Path(__file__).resolve().parent.parent
+        timestamp = utils.ctime_str().replace(":", "_")
+        qr_path = project_root / f"{source}_qr_{timestamp}.png"
+        cookie_source = "qq" if source == "qq_wx" else source
+        cookie_path = project_root / "data" / "cookies" / f"{cookie_source}.json"
+        request_url = f"{api_url_format(api_url)}/api/v1/system/qr_login/{source}"
+        timeout = aiohttp.ClientTimeout(total=60, connect=10)
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async def request_login(method: str, params: Optional[dict] = None) -> dict:
+                """请求扫码接口，避免将包含凭据的响应正文或登录key写入异常日志。"""
+                async with session.request(method, request_url, params=params) as response:
+                    if response.status != 200:
+                        raise RuntimeError(f"扫码登录接口请求失败，HTTP状态码：{response.status}")
+                    try:
+                        result = json.loads(await response.text())
+                    except (ValueError, UnicodeError):
+                        raise RuntimeError("扫码登录接口未返回有效JSON") from None
+                    if not isinstance(result, dict) or result.get("code") != 200:
+                        raise RuntimeError("扫码登录接口返回失败状态")
+                    data = result.get("data")
+                    if not isinstance(data, dict):
+                        raise RuntimeError("扫码登录结果缺少data对象")
+                    return result
+
+            login_response = await request_login("POST")
+            login_session = login_response["data"]
+            key = login_session.get("key")
+            if not isinstance(key, str) or not key.strip():
+                raise RuntimeError("扫码登录会话缺少key")
+
+            # 同时限制本地等待时间和平台会话有效期。
+            wait_seconds = 300.0
+            expires_at = login_session.get("expires_at")
+            if expires_at:
+                wait_seconds = min(wait_seconds, float(expires_at) - utils.ctime_datetime().timestamp())
+            if wait_seconds <= 0:
+                return Result(success=False, result=login_response, exception=None, message="二维码已过期，请重新登录", retryable=False)
+            deadline = asyncio.get_running_loop().time() + wait_seconds
+
+            # 优先使用上游二维码图片，只有登录链接时才在本地生成二维码。
+            image_data = None
+            image_url = login_session.get("image_url") or ""
+            login_url = login_session.get("url") or ""
+            if not isinstance(image_url, str) or not isinstance(login_url, str):
+                raise RuntimeError("二维码图片地址或登录链接格式无效")
+            if image_url.startswith("data:image/"):
+                header, separator, encoded_image = image_url.partition(",")
+                if not separator or not header.endswith(";base64"):
+                    raise RuntimeError("二维码图片不是有效的Base64数据")
+                image_data = base64.b64decode(encoded_image, validate=True)
+            elif image_url:
+                async with session.get(image_url) as response:
+                    if response.status != 200:
+                        raise RuntimeError(f"二维码图片下载失败，HTTP状态码：{response.status}")
+                    image_data = await response.read()
+            elif not login_url.strip():
+                raise RuntimeError("扫码登录会话缺少二维码图片或登录链接")
+
+            # 避免任务取消后工作线程仍在写入，导致清理完成后重新出现图片。
+            qr_image_task = asyncio.create_task(asyncio.to_thread(save_qr_image, image_data, login_url, qr_path))
+            await asyncio.shield(qr_image_task)
+            await console.rp(f"{SOURCE_MAP[source]}扫码登录二维码已保存，请打开图片扫码并确认：{qr_path}", f"[{level}]")
+
+            # 持续轮询到登录成功、失败或过期，取消任务时正常向上传播取消异常。
+            poll_timeout = asyncio.timeout_at(deadline)
+            try:
+                async with poll_timeout:
+                    last_status = None
+                    while True:
+                        login_response = await request_login("GET", params={"key": key})
+                        login_result = login_response["data"]
+                        status = login_result.get("status")
+                        if status == "success":
+                            break
+                        if status == "expired":
+                            return Result(success=False, result=login_response, exception=None, message="二维码已过期，请重新登录", retryable=False)
+                        if status == "failed":
+                            return Result(success=False, result=login_response, exception=None, message="平台扫码登录失败，请重新登录", retryable=False)
+                        if status not in ("waiting", "scanned"):
+                            raise RuntimeError("平台返回未知扫码登录状态")
+                        if status == "scanned" and last_status != status:
+                            await console.rp(f"已扫码，请在手机上确认登录", f"[{level}]")
+                        last_status = status
+                        await asyncio.sleep(2)
+            except asyncio.TimeoutError:
+                if poll_timeout.expired():
+                    return Result(success=False, result=login_response, exception=None, message="扫码登录超时或二维码已过期，请重新登录", retryable=False)
+                raise
+
+            cookie = login_result.get("cookie") or ""
+            if not isinstance(cookie, str):
+                raise RuntimeError("登录成功，但Cookie格式无效")
+            cookie = cookie.strip()
+            if not cookie:
+                cookies = login_result.get("cookies")
+                if isinstance(cookies, dict) and all(isinstance(k, str) and isinstance(v, str) for k, v in cookies.items()):
+                    cookie = "; ".join(f"{k}={v.strip()}" for k, v in sorted(cookies.items()) if k.strip() and v.strip())
+            if not cookie:
+                raise RuntimeError("登录成功，但未获得有效Cookie")
+
+            await asyncio.to_thread(save_cookie, cookie_source, cookie, cookie_path, timestamp)
+            extra = login_result.get("extra")
+            api_cookie_saved = isinstance(extra, dict) and extra.get("cookie_saved") in ("true", True)
+            await console.rp(f"[{source}] 扫码登录成功，Cookie已保存：{cookie_path}", f"[{level}]")
+            if not api_cookie_saved:
+                await console.rp("API未确认其自身Cookie写盘成功；本地文件已保存，后续指定平台的请求会尝试重新同步", f"[{level}]", message_type=utils.PrintType.WARNING)
+
+    except aiohttp.ClientError:
+        # aiohttp异常可能包含带登录key的请求URL，交给公共处理器前替换为不含凭据的异常。
+        exception = aiohttp.ClientConnectionError("扫码登录网络请求失败，请检查API地址和网络连接")
+        if not raise_exception:
+            return await handle_exception(exception)
+        else:
+            raise exception
+    except Exception as exception:
+        if not raise_exception:
+            return await handle_exception(exception)
+        else:
+            raise exception
+    finally:
+        if qr_image_task is not None and qr_path is not None:
+            # 先等待图片写入结束，再清理当前会话的二维码。
+            try:
+                await asyncio.shield(qr_image_task)
+            except Exception:
+                pass
+            try:
+                await asyncio.to_thread(qr_path.unlink, missing_ok=True)
+            except OSError as exception:
+                await console.rp(f"二维码图片删除失败：{qr_path}，{exception}", f"[{level}]", message_type=utils.PrintType.WARNING)
+
+    return success_result(
+        result={
+            "source": source,
+            "cookie_source": cookie_source,
+            "qr_path": str(qr_path),
+            "cookie_path": str(cookie_path),
+            "api_cookie_saved": api_cookie_saved,
+        },
+        message="扫码登录成功，Cookie已保存"
+    )
+
+
 async def get_info_album(api_url: str, music_url: str, sources: Optional[str] = None, suppress_errors: bool = False) -> Optional[Result]:
     """
     通过音乐链接获取专辑信息
 
     :param api_url: go-music-api 服务根地址
     :param music_url: 音乐平台的单曲分享链接
-    :param sources: 目标平台
+    :param sources: 目标平台，非None时请求前尝试同步本地对应平台的Cookie
     :param suppress_errors: 出现错误时是否阻止异常抛出
     :return: 包含歌曲信息或异常的统一结果字典
     """
@@ -300,7 +646,8 @@ async def get_info_album(api_url: str, music_url: str, sources: Optional[str] = 
                 api_url_format(api_url),
                 session,
                 "/api/v1/music/search",
-                params
+                params,
+                source=sources,
             )
 
         info_dict = result.get("data")
@@ -336,7 +683,7 @@ async def get_info_playlist(api_url: str, music_url: str, sources: Optional[str]
 
     :param api_url: go-music-api 服务根地址
     :param music_url: 音乐平台的单曲分享链接
-    :param sources: 目标平台
+    :param sources: 目标平台，非None时请求前尝试同步本地对应平台的Cookie
     :param suppress_errors: 出现错误时是否阻止异常抛出
     :return: 包含歌曲信息或异常的统一结果字典
     """
@@ -357,7 +704,8 @@ async def get_info_playlist(api_url: str, music_url: str, sources: Optional[str]
                 api_url_format(api_url),
                 session,
                 "/api/v1/music/search",
-                params
+                params,
+                source=sources,
             )
 
         info_dict = result.get("data")
@@ -393,7 +741,7 @@ async def get_info(api_url: str, music_url: str, sources: Optional[str] = None) 
 
     :param api_url: go-music-api 服务根地址
     :param music_url: 音乐平台的单曲分享链接
-    :param sources: 目标平台
+    :param sources: 目标平台，非None时请求前尝试同步本地对应平台的Cookie
     :return: 包含歌曲信息或异常的统一结果字典
     """
     try:
@@ -415,7 +763,8 @@ async def get_info(api_url: str, music_url: str, sources: Optional[str] = None) 
                 api_url_format(api_url),
                 session,
                 "/api/v1/music/search",
-                params
+                params,
+                source=sources,
             )
 
         info_dict = result.get("data")
@@ -466,10 +815,12 @@ async def get_info(api_url: str, music_url: str, sources: Optional[str] = None) 
 
 
 async def get_filesize(api_url: str, info_dict: dict) -> Result:
+    """按info_dict中的source同步本地Cookie后探测大小，source为None时跳过同步。"""
     request_url = f"{api_url_format(api_url)}/api/v1/music/stream"
     try:
         timeout = aiohttp.ClientTimeout(total=10, connect=5)
         async with aiohttp.ClientSession(timeout=timeout) as session:
+            await use_local_cookie(api_url, session, info_dict.get("source"))
             async with session.get(request_url, params=build_music_params(info_dict), headers={"Range": "bytes=0-0"}) as response:
                 if response.status == 206:
                     content_range = response.headers.get("Content-Range", "")
@@ -572,6 +923,8 @@ async def download_to_file(api_url: str, session: aiohttp.ClientSession, info_di
     """
     从音频流接口分块下载音频并原子保存到UID对应的确定路径
 
+    请求前按info_dict中的source同步本地Cookie，source为None时跳过同步。
+
     :param api_url: go-music-api服务根地址
     :param session: aiohttp客户端会话
     :param info_dict: 标准化后的歌曲信息字典
@@ -587,6 +940,7 @@ async def download_to_file(api_url: str, session: aiohttp.ClientSession, info_di
     part_created = False
 
     try:
+        await use_local_cookie(api_url, session, info_dict.get("source"))
         # 请求go-music-api代理音频流
         async with session.get(stream_url, params=stream_params) as response:
             response.raise_for_status()
@@ -677,6 +1031,8 @@ async def download_to_file(api_url: str, session: aiohttp.ClientSession, info_di
 async def audio_download(api_url: str, info_dict: Dict[str, Any], download_dir: Union[str, Path], download_type: DownloadType) -> Result:
     """
     使用歌曲信息下载音频并创建 Audio 对象
+
+    底层下载请求会按info_dict中的source尝试同步本地Cookie，None时跳过。
 
     :param api_url: go-music-api服务根地址
     :param info_dict: get_info返回的歌曲信息字典
