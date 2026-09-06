@@ -897,9 +897,9 @@ def get_url_from_str(input_str, url_type) -> Union[str, None]:
 
 def get_legal_netease_url(input_str) -> Union[str, None]:
     if "song?id=" in input_str:
-        id_position = re.search("song\?id=\d+", input_str).span()
+        id_position = re.search(r"song\?id=\d+", input_str).span()
     elif "playlist?id=" in input_str:
-        id_position = re.search("playlist\?id=\d+", input_str).span()
+        id_position = re.search(r"playlist\?id=\d+", input_str).span()
     else:
         return None
     return "https://music.163.com/#/" + input_str[id_position[0]:id_position[1]]
@@ -927,7 +927,7 @@ def get_bvid_from_url(url):
     :param url: 目标地址
     :return:
     """
-    re_result = re.search("BV(\d|[a-zA-Z]){10}", url)
+    re_result = re.search(r"BV(\d|[a-zA-Z]){10}", url)
 
     if re_result is None:
         return None
