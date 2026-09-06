@@ -149,7 +149,7 @@ class LinkType(Enum):
 
 
 DEFAULT_DOWNLOAD_HANDLER: Dict[MediaPlatform, DownloadHandler] = {
-    MediaPlatform.BILIBILI: DownloadHandler.BILIBILI_API_PYTHON,
+    MediaPlatform.BILIBILI: DownloadHandler.GO_MUSIC_API,
     MediaPlatform.QQ: DownloadHandler.GO_MUSIC_API,
     MediaPlatform.NETEASE: DownloadHandler.GO_MUSIC_API,
     MediaPlatform.YOUTUBE: DownloadHandler.YT_DLP,

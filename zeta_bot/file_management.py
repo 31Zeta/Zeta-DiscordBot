@@ -487,7 +487,7 @@ class AudioFileLibrary:
         if target_filesize is None:
             return failed_result(exception=target_filesize_result.exception, message=f"{target_filesize_result.message}", retryable=target_filesize_result.retryable)
 
-        exists_audio = await self._download_file_exist_check(go_music.construct_uid(source=info_dict["source"], song_id=info_dict["id"]), target_filesize)
+        exists_audio = await self._download_file_exist_check(go_music.get_music_uid(info_dict), target_filesize)
         if exists_audio is not None:
             return success_result(result=exists_audio, message="音频已在库中，获取已存在文件成功")
 

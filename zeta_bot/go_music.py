@@ -356,7 +356,9 @@ async def request_json(api_url: str, session: aiohttp.ClientSession, endpoint: s
 
 def build_music_params(info_dict: Dict[str, Any]) -> Dict[str, Any]:
     """
-    构造大小探测和下载接口需要的歌曲参数（主要需要将extra重新构造为字典，否则extra是字符串）
+    构造大小探测和下载接口需要的歌曲参数，网易云默认使用极高品质。
+
+    显式指定的网易云音质优先；指定音质失败后的旧接口回退由后端负责。
 
     :param info_dict: 标准化后的歌曲信息字典
     :return: 音频流接口查询参数
@@ -377,6 +379,19 @@ def build_music_params(info_dict: Dict[str, Any]) -> Dict[str, Any]:
             extra_json = json.dumps(extra, ensure_ascii=False)
         except (TypeError, ValueError) as exception:
             raise RuntimeError("歌曲extra字段无法转换为JSON") from exception
+
+    if info_dict.get("source") == "netease":
+        # 解析为独立字典，避免修改调用方持有的歌曲信息
+        netease_extra = json.loads(extra_json)
+        if netease_extra is None:
+            netease_extra = {}
+        if not isinstance(netease_extra, dict):
+            raise RuntimeError("网易云歌曲extra字段必须是JSON对象")
+
+        # 未指定音质时默认请求极高品质，后端仍会在失败时尝试旧版下载接口
+        if not str(netease_extra.get("netease_level") or "").strip() and not str(netease_extra.get("level") or "").strip():
+            netease_extra["netease_level"] = "exhigh"
+        extra_json = json.dumps(netease_extra, ensure_ascii=False)
 
     return {
         "id": info_dict["id"],
@@ -849,8 +864,35 @@ async def get_filesize(api_url: str, info_dict: dict) -> Result:
         return await handle_exception(e)
 
 
-def construct_uid(source, song_id) -> str:
-    return f"{source}_{song_id}"
+def construct_uid(source: str, song_id: str, quality: Optional[str] = None) -> str:
+    """指定音质时添加音质后缀，否则保留平台与歌曲ID组成的UID。"""
+    uid = f"{source}_{song_id}"
+    quality = str(quality or "").strip()
+    return f"{uid}_{quality}" if quality else uid
+
+
+def get_music_uid(info_dict: Dict[str, Any]) -> str:
+    """
+    根据实际发送的音质参数构造缓存、文件名和Audio对象共用的UID。
+
+    网易云自动设置的exhigh也属于指定音质；后端回退后仍按请求音质缓存。
+    """
+    params = build_music_params(info_dict)
+    source = params["source"]
+    quality = None
+    if source in ("netease", "migu"):
+        extra = json.loads(params["extra"])
+        if isinstance(extra, dict):
+            if source == "netease":
+                quality = str(extra.get("netease_level") or "").strip().lower()
+                if not quality:
+                    quality = str(extra.get("level") or "").strip().lower()
+                # 无效音质会被后端忽略，按后端默认下载处理
+                if quality not in ("standard", "exhigh", "lossless", "hires"):
+                    quality = None
+            else:
+                quality = extra.get("format_type")
+    return construct_uid(source, params["id"], quality)
 
 
 def extension_format(value: Any) -> str:
@@ -933,7 +975,7 @@ async def download_to_file(api_url: str, session: aiohttp.ClientSession, info_di
     """
     stream_params = build_music_params(info_dict)
     stream_url = f"{api_url_format(api_url)}/api/v1/music/stream"
-    uid = construct_uid(info_dict["source"], info_dict["id"])
+    uid = get_music_uid(info_dict)
 
     # 初始化临时文件状态
     part_path: Optional[Path] = None
@@ -1071,7 +1113,7 @@ async def audio_download(api_url: str, info_dict: Dict[str, Any], download_dir: 
 
         new_audio = audio.Audio(
             title=f"{info_dict['artist']} - {info_dict['name']}",
-            uid=f"{info_dict['source']}_{info_dict['id']}",
+            uid=get_music_uid(info_dict),
             source=info_dict["source"],
             source_id=info_dict['id'],
             download_type=download_type,
