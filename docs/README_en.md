@@ -18,10 +18,10 @@ Table of contents
 - Supports searching for and playing content from Bilibili or YouTube directly within Discord channels
 - Interactive playlists
 
-![Demo_Play](docs/Demo_PLay.gif)
+![Demo_Play](Demo_Play.gif)
 
-![Demo_Playlist](docs/Demo_Playlist.gif)
-![Demo_List](docs/Demo_List.gif)
+![Demo_Playlist](Demo_Playlist.gif)
+![Demo_List](Demo_List.gif)
 
 ## Run
 **Please use Python 3.10–3.13**

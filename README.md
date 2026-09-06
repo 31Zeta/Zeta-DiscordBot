@@ -18,7 +18,7 @@
 - 直接在Discord频道内进行哔哩哔哩或YouTube搜索并播放
 - 可交互的播放列表
 
-![Demo_Play](docs/Demo_PLay.gif)
+![Demo_Play](docs/Demo_Play.gif)
 
 ![Demo_Playlist](docs/Demo_Playlist.gif)
 ![Demo_List](docs/Demo_List.gif)
