@@ -1,4 +1,7 @@
 from typing import *
+import os
+import time
+import asyncio
 import aiohttp
 import html
 import httpx
@@ -39,6 +42,71 @@ resource_classifier = ResourceClassifier()
 level = "哔哩哔哩模块"
 SOURCE = "bilibili"
 
+# 下载分块大小
+CHUNK_SIZE = 64 * 1024
+# 音频流地址缓存时间（秒），避免获取文件大小与下载时重复请求
+AUDIO_URL_CACHE_TTL = 600
+_audio_url_cache: Dict[Tuple[str, int], Tuple[float, str]] = {}
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Referer": "https://www.bilibili.com/"
+}
+
+
+def _credential() -> Optional[Credential]:
+    """
+    未设置登录信息时返回None，由bilibili-api自动生成buvid等指纹Cookie
+    """
+    if SESSDATA or BILI_JCT or BUVID3:
+        return Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
+    return None
+
+
+async def _fetch_view(v: video.Video) -> dict:
+    """
+    获取视频信息
+    旧版接口 x/web-interface/view 对未登录请求触发风控（HTTP 412），优先使用带wbi签名的 x/web-interface/wbi/view/detail
+    """
+    try:
+        detail = await v.get_detail()
+        view = detail.get("View") if isinstance(detail, dict) else None
+        if view:
+            return view
+    except bilibili_api.NetworkException:
+        pass
+    return await v.get_info()
+
+
+async def _get_audio_url(info_dict: dict, num_p: int = 0) -> str:
+    """
+    获取音频流地址
+    直接传入cid，否则bilibili-api会先调用已被风控的旧版信息接口获取cid
+    """
+    bvid = info_dict["bvid"]
+    cid = int(info_dict["pages"][num_p]["cid"])
+    key = (bvid, cid)
+
+    cached = _audio_url_cache.get(key)
+    if cached is not None and time.monotonic() - cached[0] < AUDIO_URL_CACHE_TTL:
+        return cached[1]
+
+    v = video.Video(bvid=bvid, credential=_credential())
+    url_info = await v.get_download_url(cid=cid)
+
+    if "dash" in url_info and url_info["dash"].get("audio"):
+        best_audio = max(url_info["dash"]["audio"], key=lambda item: item.get("bandwidth", 0))
+        audio_url = best_audio.get("baseUrl") or best_audio.get("base_url")
+    elif url_info.get("durl"):
+        # 部分老视频不提供DASH格式，使用音视频合流地址，FFmpeg可直接从中读取音轨
+        audio_url = url_info["durl"][0]["url"]
+    else:
+        raise bilibili_api.ResponseCodeException(-1, "未获取到音频流地址", url_info)
+
+    _audio_url_cache[key] = (time.monotonic(), audio_url)
+    return audio_url
+
+
 async def get_info(bvid) -> Result:
     """
     返回视频信息
@@ -49,12 +117,10 @@ async def get_info(bvid) -> Result:
     await console.rp(f"开始提取信息：{bvid}", f"[{level}]")
 
     try:
-        # 实例化 Credential 类
-        credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
         # 实例化 Video 类
-        v = video.Video(bvid=bvid, credential=credential)
+        v = video.Video(bvid=bvid, credential=_credential())
         # 获取视频信息
-        info_dict = await v.get_info()
+        info_dict = await _fetch_view(v)
 
         video_id = info_dict["bvid"]
         video_title = info_dict["title"]
@@ -124,25 +190,14 @@ async def get_info(bvid) -> Result:
 async def get_filesize(info_dict: dict, num_p=0) -> Result:
     bvid = info_dict["bvid"]
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Referer": "https://www.bilibili.com/"
-        }
-
-        # 实例化 Credential 类
-        credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
-        # 实例化 Video 类
-        v = video.Video(bvid=bvid, credential=credential)
-
-        # 获取视频下载链接
-        url = await v.get_download_url(num_p)
-
         # 音频轨链接
-        audio_url = url["dash"]["audio"][0]['baseUrl']
+        audio_url = await _get_audio_url(info_dict, num_p)
 
-        async with aiohttp.ClientSession() as sess:
-            # 下载音频流
-            async with sess.get(audio_url, headers=headers) as resp:
+        timeout = aiohttp.ClientTimeout(total=20, connect=10)
+        async with aiohttp.ClientSession(timeout=timeout) as sess:
+            # 只读取响应头
+            async with sess.get(audio_url, headers=HEADERS) as resp:
+                resp.raise_for_status()
                 length = resp.headers.get('content-length')
 
     except bilibili_api.ResponseCodeException as e:
@@ -193,10 +248,18 @@ async def get_filesize(info_dict: dict, num_p=0) -> Result:
             print_head=True
         )
         return failed_result(exception=e, message="服务器协议错误", retryable=True)
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        await console.rp(
+            f"触发异常{type(e).__name__}，{bvid}获取失败，网络连接异常",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return failed_result(exception=e, message="网络连接异常", retryable=True)
     else:
         try:
             length = int(length)
-        except ValueError as e:
+        except (TypeError, ValueError) as e:
             await console.rp(
                 f"{bvid}文件大小获取失败，获取到的结果不为数字",
                 f"[{level}]",
@@ -242,44 +305,22 @@ async def audio_download(info_dict: dict, download_dir: str, download_type: Down
     download_path = f"{download_dir}/{file_title}.mp3"
 
     try:
-        # 实例化 Credential 类
-        credential = Credential(sessdata=SESSDATA, bili_jct=BILI_JCT, buvid3=BUVID3)
-        # 实例化 Video 类
-        v = video.Video(bvid=bvid, credential=credential)
-
-        # 获取视频下载链接
-        url = await v.get_download_url(num_p)
-
         # 音频轨链接
-        audio_url = url["dash"]["audio"][0]['baseUrl']
+        audio_url = await _get_audio_url(info_dict, num_p)
 
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Referer": "https://www.bilibili.com/"
-        }
-
-        # print(current_time + f"\n    开始下载: {file_title}.mp3\n下载进度:")
-
-        async with aiohttp.ClientSession() as sess:
+        timeout = aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=30)
+        async with aiohttp.ClientSession(timeout=timeout) as sess:
             # 下载音频流
-            async with sess.get(audio_url, headers=headers) as resp:
+            async with sess.get(audio_url, headers=HEADERS) as resp:
+                resp.raise_for_status()
                 length = resp.headers.get('content-length')
-                size = utils.convert_byte(int(length))
+                size = utils.convert_byte(int(length)) if length is not None else ("?", "")
                 await console.rp(f"开始下载：{file_title}.mp3 大小：{size[0]} {size[1]}", f"[{level}]")
                 with open(download_path, 'wb') as f:
-                    process = 0
-                    while True:
-                        chunk = await resp.content.read(1024)
-                        if not chunk:
-                            break
-
-                        process += len(chunk)
+                    async for chunk in resp.content.iter_chunked(CHUNK_SIZE):
                         f.write(chunk)
-                        # TODO 待定 可以添加聊天界面进度显示
-                        # 旧版进度显示
-                        # print(f'\r    {process} / {length}', end="")
 
-        # print("\n\n" + current_time + f"\n    下载完成\n")
+        size = utils.convert_byte(os.path.getsize(download_path))
 
         new_audio = audio.Audio(
             title=title,
@@ -363,6 +404,20 @@ async def audio_download(info_dict: dict, download_dir: str, download_type: Down
             print_head=True
         )
         return failed_result(exception=e, message="服务器协议错误", retryable=True)
+    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+        # 删除下载不完整的文件
+        if os.path.exists(download_path):
+            try:
+                os.remove(download_path)
+            except OSError:
+                pass
+        await console.rp(
+            f"触发异常{type(e).__name__}，{title}下载失败，网络连接异常",
+            f"[{level}]",
+            message_type=utils.PrintType.ERROR,
+            print_head=True
+        )
+        return failed_result(exception=e, message="下载中断，网络连接异常", retryable=True)
 
     else:
         if new_audio is None:
@@ -388,7 +443,11 @@ async def search(query, query_num=5) -> list:
 
     await console.rp(f"开始搜索：{query}", f"[{level}]")
 
-    info_dict = await bilibili_search.search_by_type(query, search_type=bilibili_search.SearchObjectType.VIDEO)
+    try:
+        info_dict = await bilibili_search.search_by_type(query, search_type=bilibili_search.SearchObjectType.VIDEO)
+    except Exception as e:
+        await console.rp(f"搜索失败：触发异常{type(e).__name__}：{e}", f"[{level}]", message_type=utils.PrintType.ERROR, print_head=True)
+        return []
 
     result = []
     log_message = f"搜索 {query} 结果为："
@@ -396,7 +455,7 @@ async def search(query, query_num=5) -> list:
 
     id_header = "https://www.bilibili.com/video/"
 
-    for item in info_dict["result"]:
+    for item in info_dict.get("result") or []:
         if counter > query_num:
             break
 
@@ -406,12 +465,18 @@ async def search(query, query_num=5) -> list:
 
         duration = utils.convert_str_to_duration(item["duration"])
 
+        cover = item.get("pic") or ""
+        if cover.startswith("//"):
+            cover = "https:" + cover
+
         result.append(
             {
                 "title": title,
                 "id": id_header + item["bvid"],
                 "duration": duration,
                 "duration_str": utils.convert_duration_to_str(duration),
+                "thumbnail": cover,
+                "source": "bilibili",
             }
         )
 

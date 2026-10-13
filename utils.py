@@ -39,16 +39,18 @@ def json_save(json_path: str, saving_item) -> None:
     将<saving_item>以json格式保存到<json_path>
     **警告**：json格式的键值必须为字符串，否则会被转换为字符串
     """
-    with open(json_path, "w", encoding="utf-8") as file:
-        file.write(
-            json.dumps(
-                saving_item,
-                default=lambda x: x.encode(),
-                sort_keys=False,
-                indent=4,
-                ensure_ascii=False
-            )
-        )
+    content = json.dumps(
+        saving_item,
+        default=lambda x: x.encode(),
+        sort_keys=False,
+        indent=4,
+        ensure_ascii=False
+    )
+    # 先写入临时文件再替换，防止写入过程中程序中断导致文件损坏
+    temp_path = f"{json_path}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as file:
+        file.write(content)
+    os.replace(temp_path, json_path)
 
 
 def json_load(json_path: str):
@@ -918,6 +920,20 @@ def get_redirect_url(url) -> str:
 
     # 返回重定向后的网址
     return str(response.url)
+
+
+async def get_redirect_url_async(url: str, timeout: float = 10) -> str:
+    """
+    异步获取短链接重定向后的网址，不阻塞事件循环
+    """
+    import aiohttp
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+    }
+    client_timeout = aiohttp.ClientTimeout(total=timeout)
+    async with aiohttp.ClientSession(timeout=client_timeout, headers=headers) as session:
+        async with session.get(url, allow_redirects=True) as response:
+            return str(response.url)
 
 
 def get_bvid_from_url(url):

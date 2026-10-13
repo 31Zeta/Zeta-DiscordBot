@@ -28,3 +28,5 @@ configs/
 zeta_bot/__pycache__/
 CLAUDE.md
 test_output.json
+__pycache__/
+*.pyc

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zeta-Bot 控制面板</title>
+  <link rel="icon" href="static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="static/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><img id="bot-avatar" alt=""><div><span>Zeta</span>-Bot</div></div>
+  <span class="status-pill" id="conn-pill"><i class="dot" id="conn-dot"></i><span id="conn-text">…</span></span>
+  <select class="input guild-select" id="guild-select" aria-label="server"></select>
+  <nav class="nav" id="nav">
+    <button data-view="dashboard" data-i18n="nav.dashboard">监控</button>
+    <button data-view="player" data-i18n="nav.player">播放</button>
+    <button data-view="search" data-i18n="nav.search">搜索</button>
+    <button data-view="library" data-i18n="nav.library">音频库</button>
+    <button data-view="favorites" data-i18n="nav.favorites">收藏夹</button>
+    <button data-view="logs" data-i18n="nav.logs" id="nav-logs" hidden>日志</button>
+  </nav>
+  <div class="user">
+    <span id="user-name"></span>
+    <button class="link-btn" id="lang-toggle" title="Language">EN</button>
+    <a href="logout" data-i18n="logout">退出</a>
+  </div>
+</header>
+
+<main>
+  <!-- 监控 -->
+  <section id="view-dashboard" class="view">
+    <div class="view-title"><h1 data-i18n="dashboard.title">运行状态</h1><span class="faint" id="dash-updated"></span></div>
+    <div class="grid stats" id="stat-cards"></div>
+    <div class="grid two">
+      <div class="card">
+        <h2><span data-i18n="dashboard.trend">趋势（最近1小时）</span></h2>
+        <svg class="chart" id="chart-latency" viewBox="0 0 300 100" preserveAspectRatio="none"></svg>
+        <div class="legend" id="chart-legend"></div>
+      </div>
+      <div class="card" id="system-card">
+        <h2 data-i18n="dashboard.system">系统资源</h2>
+        <dl class="kv" id="system-kv"></dl>
+      </div>
+      <div class="card">
+        <h2 data-i18n="dashboard.library">音频库缓存</h2>
+        <div id="library-usage"></div>
+      </div>
+      <div class="card">
+        <h2 data-i18n="dashboard.sources">音源状态</h2>
+        <dl class="kv" id="sources-kv"></dl>
+      </div>
+      <div class="card">
+        <h2><span data-i18n="dashboard.downloads">下载任务</span><span class="faint" id="download-stats"></span></h2>
+        <div class="list" id="download-list"></div>
+      </div>
+      <div class="card">
+        <h2><span data-i18n="dashboard.commands">指令统计</span><span class="faint" id="command-total"></span></h2>
+        <div class="bars" id="command-bars"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h2 data-i18n="dashboard.guilds">服务器</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th data-i18n="col.guild">服务器</th><th data-i18n="col.voice">语音频道</th><th data-i18n="col.status">状态</th><th data-i18n="col.now">正在播放</th><th data-i18n="col.queue">队列</th><th data-i18n="col.ping">语音延迟</th></tr></thead>
+        <tbody id="guild-table"></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- 播放 -->
+  <section id="view-player" class="view" hidden>
+    <div class="view-title">
+      <h1 id="player-guild-name" data-i18n="nav.player">播放</h1>
+      <div class="row">
+        <select class="input" id="voice-select" aria-label="voice channel"></select>
+        <button class="btn" id="btn-join" data-i18n="player.join">加入频道</button>
+        <button class="btn danger" id="btn-leave" data-i18n="player.leave">离开频道</button>
+      </div>
+    </div>
+    <div class="player-layout">
+      <div class="grid">
+        <div class="card now-card" id="now-card"></div>
+        <div class="card">
+          <h2 data-i18n="player.add">添加音频</h2>
+          <form class="row" id="add-form">
+            <input class="input grow" id="add-url" data-i18n-placeholder="player.add_placeholder" placeholder="粘贴哔哩哔哩 / YouTube / 网易云等链接">
+            <button class="btn primary" type="submit" data-i18n="player.add_btn">添加到队列</button>
+          </form>
+        </div>
+        <div class="card">
+          <h2><span data-i18n="player.queue">播放队列</span><span class="row"><span class="faint" id="queue-summary"></span><button class="btn small danger" id="btn-clear" data-i18n="player.clear">清空</button></span></h2>
+          <div class="list" id="queue-list"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2 data-i18n="player.history">播放历史</h2>
+        <div class="list" id="history-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 搜索 -->
+  <section id="view-search" class="view" hidden>
+    <div class="view-title"><h1 data-i18n="nav.search">搜索</h1></div>
+    <form class="toolbar" id="search-form">
+      <input class="input grow" id="search-input" data-i18n-placeholder="search.placeholder" placeholder="搜索哔哩哔哩与YouTube…">
+      <select class="input" id="search-source">
+        <option value="all" data-i18n="search.all">全部平台</option>
+        <option value="bilibili">哔哩哔哩</option>
+        <option value="youtube">YouTube</option>
+        <option value="netease" data-i18n="src.netease_full">网易云音乐</option>
+        <option value="qq" data-i18n="src.qq_full">QQ音乐</option>
+      </select>
+      <button class="btn primary" type="submit" data-i18n="search.btn">搜索</button>
+    </form>
+    <div class="list" id="search-results"><div class="empty" data-i18n="search.hint">输入关键词开始搜索</div></div>
+  </section>
+
+  <!-- 音频库 -->
+  <section id="view-library" class="view" hidden>
+    <div class="view-title"><h1 data-i18n="nav.library">音频库</h1><span class="faint" id="library-summary"></span></div>
+    <div class="toolbar">
+      <input class="input grow" id="library-filter" data-i18n-placeholder="library.filter" placeholder="筛选标题…">
+      <form class="row" id="fetch-form">
+        <input class="input" id="fetch-url" style="width:280px" data-i18n-placeholder="library.fetch_placeholder" placeholder="链接（仅缓存，不播放）">
+        <button class="btn" type="submit" data-i18n="library.fetch">缓存</button>
+      </form>
+    </div>
+    <div class="list" id="library-list"></div>
+  </section>
+
+  <!-- 收藏夹 -->
+  <section id="view-favorites" class="view" hidden>
+    <div class="view-title"><h1 data-i18n="nav.favorites">收藏夹</h1></div>
+    <div class="fav-layout">
+      <div class="card">
+        <form class="row" id="folder-form" style="margin-bottom:10px">
+          <input class="input grow" id="folder-name" maxlength="40" data-i18n-placeholder="fav.new" placeholder="新建收藏夹…">
+          <button class="btn icon-only" type="submit" title="+">+</button>
+        </form>
+        <div id="folder-list"></div>
+      </div>
+      <div class="card" id="folder-detail"><div class="empty" data-i18n="fav.select">选择或新建一个收藏夹</div></div>
+    </div>
+  </section>
+
+  <!-- 日志 -->
+  <section id="view-logs" class="view" hidden>
+    <div class="view-title"><h1 data-i18n="nav.logs">日志</h1></div>
+    <div class="toolbar">
+      <select class="input" id="log-level">
+        <option value="" data-i18n="logs.all">全部级别</option>
+        <option value="warning" data-i18n="logs.warn">警告及以上</option>
+        <option value="error" data-i18n="logs.error">仅错误</option>
+      </select>
+      <input class="input grow" id="log-filter" data-i18n-placeholder="logs.filter" placeholder="筛选内容…">
+      <label class="row muted"><input type="checkbox" id="log-follow" checked> <span data-i18n="logs.follow">自动滚动</span></label>
+    </div>
+    <div class="logs" id="log-box"></div>
+  </section>
+</main>
+
+<!-- 底部播放栏 -->
+<footer class="playerbar">
+  <div class="pb-now">
+    <img id="pb-cover" alt="" referrerpolicy="no-referrer">
+    <div style="min-width:0">
+      <div class="title" id="pb-title">—</div>
+      <div class="sub" id="pb-sub"></div>
+    </div>
+  </div>
+  <div class="pb-center">
+    <div class="pb-controls">
+      <button class="round" id="pb-prev" data-i18n-title="pb.prev" title="上一首"></button>
+      <button class="round main" id="pb-play" data-i18n-title="pb.play" title="播放/暂停"></button>
+      <button class="round" id="pb-next" data-i18n-title="pb.next" title="下一首"></button>
+    </div>
+    <div class="pb-progress">
+      <span id="pb-pos">0:00</span>
+      <div class="seek disabled" id="pb-seek"><div class="rail"><div class="fill" id="pb-fill"></div></div><div class="knob" id="pb-knob"></div></div>
+      <span id="pb-dur">0:00</span>
+    </div>
+  </div>
+  <div class="pb-right">
+    <select class="input mode-select" id="pb-mode" aria-label="play mode"></select>
+    <span class="vol row"><input type="range" id="pb-volume" min="0" max="200" step="5" aria-label="volume"><span class="vol-label" id="pb-volume-label">100%</span></span>
+  </div>
+</footer>
+
+<div class="toasts" id="toasts"></div>
+<script src="static/app.js"></script>
+</body>
+</html>

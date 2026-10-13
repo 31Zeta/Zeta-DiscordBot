@@ -38,7 +38,11 @@ class HelpMenu(View):
             f"查看当前机器人的相关信息（版本与更新日期等）\n\n"
             f"**/help**\n"
             f"本地化名称：**/帮助**\n"
-            f"显示帮助菜单",
+            f"显示帮助菜单\n\n"
+            f"**/webauth <days>**\n"
+            f"本地化名称：**/网页控制面板**\n"
+            f"获取Web控制面板的登录验证码（仅自己可见），在网页中可以查看运行状态、控制播放、搜索与管理收藏夹\n"
+            f"说明：<days>为登录后保持登录的天数，默认为3天",
 
             f"在输入指令时，直接打出原指令名称更简单，Discord菜单会自动调出对应的本地化名称\n\n"
             f">>> **/join <channel>**\n"
@@ -51,7 +55,7 @@ class HelpMenu(View):
             f"**/play <link>**\n"
             f"本地化名称：**/播放**\n"
             f"让机器人在语音频道中播放音频\n"
-            f"说明：<link>可为Youtube或Bilibili的视频链接，如果<link>不为链接则会搜索<link>\n\n"
+            f"说明：<link>可为哔哩哔哩、YouTube的视频链接，或网易云音乐、QQ音乐的单曲/歌单/专辑链接，如果<link>不为链接则会搜索<link>\n\n"
             f"**/search_audio <query> <site>**\n"
             f"本地化名称：**/搜索音频**\n"
             f"在指定的网站中搜索音频，选择一个进行播放\n"
@@ -108,7 +112,7 @@ class HelpMenu(View):
         button.disabled = False
         msg = interaction.response
         self.set_embed(0, "目录")
-        await msg.edit_message(embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+        await msg.edit_message(embed=self.embed, view=self)
 
     @discord.ui.button(label="基础操作", style=discord.ButtonStyle.grey,
                        custom_id="button_page_1", row=2)
@@ -116,7 +120,7 @@ class HelpMenu(View):
         button.disabled = False
         msg = interaction.response
         self.set_embed(1, "基础操作相关指令")
-        await msg.edit_message(embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+        await msg.edit_message(embed=self.embed, view=self)
 
     @discord.ui.button(label="音频播放", style=discord.ButtonStyle.grey,
                        custom_id="button_page_2", row=2)
@@ -124,7 +128,7 @@ class HelpMenu(View):
         button.disabled = False
         msg = interaction.response
         self.set_embed(2, "音频播放相关指令")
-        await msg.edit_message(embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+        await msg.edit_message(embed=self.embed, view=self)
 
     @discord.ui.button(label="播放控制", style=discord.ButtonStyle.grey,
                        custom_id="button_page_3", row=2)
@@ -132,13 +136,14 @@ class HelpMenu(View):
         button.disabled = False
         msg = interaction.response
         self.set_embed(3, "播放控制相关指令")
-        await msg.edit_message(embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+        await msg.edit_message(embed=self.embed, view=self)
 
     @discord.ui.button(label="关闭", style=discord.ButtonStyle.grey, custom_id="button_close", row=1)
     async def button_close_callback(self, button, interaction):
         button.disabled = True
-        msg = interaction.response
         self.clear_items()
+        self.stop()
+        await interaction.response.defer()
         await delete_response(self.original_msg)
 
     async def set_original_msg(self, response: Union[discord.Message, discord.Interaction, discord.InteractionMessage, None]):

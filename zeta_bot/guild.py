@@ -1,5 +1,6 @@
 import discord
 import os
+import asyncio
 from typing import Union, Optional
 
 import errors
@@ -12,11 +13,19 @@ from zeta_bot import (
     member,
     audio,
     playlist,
-    icon
+    icon,
+    events,
+    playback,
 )
 
 console = output_console.Console()
 icon_lib = icon.IconLib()
+
+# 历史播放列表上限（由core根据设置修改）
+HISTORY_LIMIT = 50
+# 播放列表菜单刷新的合并等待时间（秒），短时间内的多次刷新请求只会编辑一次消息
+VIEW_REFRESH_DELAY = 0.6
+
 
 class Guild:
     def __init__(self, guild: discord.guild, lib_root: str, audio_file_library: file_management.AudioFileLibrary):
@@ -29,6 +38,14 @@ class Guild:
         self._audio_file_library = audio_file_library
         self._play_mode = 0
         self._active_views = {}
+        self.voice_volume = 100.0
+        self.playback = playback.PlaybackState()
+
+        # 最近一次使用音乐指令的文字频道，用于发送"正在播放"等通知
+        self._text_channel: Optional[discord.abc.Messageable] = None
+
+        self._view_dirty = False
+        self._view_refresh_task: Optional[asyncio.Task] = None
 
         self._playing_message = None
         self._playing_embed: Optional[discord.Embed] = None
@@ -50,8 +67,6 @@ class Guild:
             self.playlist = GuildPlaylist(self, self._audio_file_library)
             self.playedlist = playlist.Playlist(f"{self._name} 历史播放列表")
             self.save()
-
-        self.voice_volume = 100.0
 
     def __str__(self):
         return self._name
@@ -85,8 +100,42 @@ class Guild:
     def get_active_views(self) -> dict:
         return self._active_views
 
+    def get_discord_guild(self) -> discord.Guild:
+        return self._guild
+
+    def get_text_channel(self) -> Optional[discord.abc.Messageable]:
+        return self._text_channel
+
+    def set_text_channel(self, channel: Optional[discord.abc.Messageable]) -> None:
+        if channel is not None:
+            self._text_channel = channel
+
     def set_voice_volume(self, volume: Union[int, float]) -> None:
-        self.voice_volume = float(volume)
+        self.voice_volume = max(0.0, min(200.0, float(volume)))
+        self.save()
+
+    def add_history(self, played_audio: Optional[audio.Audio]) -> None:
+        """
+        将播放完成（或被跳过）的音频记录到历史播放列表
+        """
+        if played_audio is None:
+            return
+        last = self.playedlist.get_audio(len(self.playedlist) - 1) if len(self.playedlist) > 0 else None
+        if last is not None and last.get_uid() == played_audio.get_uid():
+            return
+        self.playedlist.append_audio(played_audio)
+        while len(self.playedlist) > max(1, HISTORY_LIMIT):
+            self.playedlist.remove_audio(0)
+
+    def pop_history(self) -> Optional[audio.Audio]:
+        """
+        取出最近一个文件仍存在的历史音频
+        """
+        while len(self.playedlist) > 0:
+            last = self.playedlist.pop_audio(len(self.playedlist) - 1)
+            if last is not None and os.path.exists(last.get_path()):
+                return last
+        return None
 
     def set_play_mode(self, mode_code: int) -> bool:
         """
@@ -100,32 +149,90 @@ class Guild:
         if mode_code not in [0, 1, 2, 3, 4]:
             return False
         self._play_mode = mode_code
+        self.save()
         return True
 
     async def refresh_list_view(self) -> None:
-        if "playlist_menu_view" in self._active_views and self._active_views["playlist_menu_view"] is not None:
-            await self._active_views["playlist_menu_view"].refresh_menu()
+        """
+        请求刷新播放列表菜单
+        短时间内的多次请求会被合并为一次消息编辑，避免频繁编辑消息造成卡顿以及触发Discord速率限制
+        """
+        events.publish("guild", self._id)
+        if self._active_views.get("playlist_menu_view") is None:
+            return
+        self._view_dirty = True
+        if self._view_refresh_task is not None and not self._view_refresh_task.done():
+            return
+        self._view_refresh_task = asyncio.get_running_loop().create_task(self._view_refresh_loop())
+
+    async def _view_refresh_loop(self) -> None:
+        while self._view_dirty:
+            await asyncio.sleep(VIEW_REFRESH_DELAY)
+            self._view_dirty = False
+            view = self._active_views.get("playlist_menu_view")
+            if view is None:
+                return
+            try:
+                await view.refresh_menu()
+            except discord.HTTPException as e:
+                await console.rp(f"播放列表菜单刷新失败：{e}", self._name, message_type=utils.PrintType.WARNING)
 
     async def refresh_playing_message(self, new_message, new_embed: Optional[discord.Embed]) -> None:
+        """
+        将上一条"正在播放"消息标记为"播放完成"（在后台执行，不阻塞播放流程）
+        """
         playing_message = self._playing_message
         playing_embed = self._playing_embed
-        if playing_embed is not None and playing_message is not None:
-            finished_icon_filename = "check_in_box_in_reveal_animated_0ms_100px.gif"
-            playing_embed.set_author(name="播放完成" + playing_embed.author.name[4:], icon_url=icon.url(finished_icon_filename))
+        self._playing_message = new_message
+        self._playing_embed = new_embed
 
+        if playing_embed is not None and playing_message is not None:
+            asyncio.get_running_loop().create_task(self._mark_playing_message_finished(playing_message, playing_embed))
+
+    async def finish_playing_message(self) -> None:
+        """
+        立即将当前"正在播放"消息标记为"播放完成"（关闭或重启前调用）
+        """
+        playing_message, playing_embed = self._playing_message, self._playing_embed
+        self._playing_message = None
+        self._playing_embed = None
+        if playing_embed is not None and playing_message is not None:
+            await self._mark_playing_message_finished(playing_message, playing_embed)
+
+    async def _mark_playing_message_finished(self, playing_message, playing_embed: discord.Embed) -> None:
+        finished_icon_filename = "check_in_box_in_reveal_animated_0ms_100px.gif"
+        author_name = playing_embed.author.name or ""
+        if author_name.startswith("正在播放"):
+            author_name = "播放完成" + author_name[4:]
+        playing_embed.set_author(name=author_name, icon_url=icon.url(finished_icon_filename))
+        try:
             if isinstance(playing_message, discord.Interaction):
                 await playing_message.edit_original_response(content=None, embed=playing_embed, files=icon_lib.files(finished_icon_filename))
             else:
                 await playing_message.edit(content=None, embed=playing_embed, files=icon_lib.files(finished_icon_filename))
-
-        self._playing_message = new_message
-        self._playing_embed = new_embed
+        except discord.NotFound:
+            pass
+        except discord.HTTPException:
+            # 交互令牌在15分钟后失效，改为通过频道编辑消息
+            channel = getattr(playing_message, "channel", None)
+            if channel is not None and hasattr(channel, "get_partial_message"):
+                try:
+                    await channel.get_partial_message(playing_message.id).edit(content=None, embed=playing_embed, files=icon_lib.files(finished_icon_filename))
+                except discord.HTTPException:
+                    pass
 
     def save(self) -> None:
         utils.json_save(self._path, self)
+        events.publish("guild", self._id)
 
     def load(self) -> None:
         loaded_dict = utils.json_load(self._path)
+        try:
+            self.voice_volume = max(0.0, min(200.0, float(loaded_dict.get("voice_volume", 100.0))))
+        except (TypeError, ValueError):
+            self.voice_volume = 100.0
+        if loaded_dict.get("play_mode") in [0, 1, 2, 3, 4]:
+            self._play_mode = loaded_dict["play_mode"]
         self.playedlist = playlist.playlist_decoder(loaded_dict["playedlist"])
         self.playlist = GuildPlaylist(self, self._audio_file_library)
         guild_playlist_loader(self.playlist, loaded_dict["playlist"])
@@ -134,6 +241,8 @@ class Guild:
         return {
             "id": self._id,
             "name": self._name,
+            "voice_volume": self.voice_volume,
+            "play_mode": self._play_mode,
             "playlist": self.playlist,
             "playedlist": self.playedlist
         }
@@ -190,11 +299,19 @@ class GuildLibrary:
                     ctx.interaction.guild.name
                 )
 
+        # 记录使用指令的文字频道
+        if isinstance(ctx, discord.ApplicationContext) and ctx.channel is not None:
+            self._guild_dict[guild_id].set_text_channel(ctx.channel)
+
         # 更新#Guilds文件
-        self.load_hashtag_file()
+        self.update_hashtag_file(guild_id, guild_name)
+
+    def update_hashtag_file(self, guild_id: int, guild_name: str) -> None:
         if guild_id not in self.hashtag_file or guild_name != self.hashtag_file[guild_id]:
-            self.hashtag_file[guild_id] = guild_name
-            self.save_hashtag_file()
+            self.load_hashtag_file()
+            if guild_id not in self.hashtag_file or guild_name != self.hashtag_file[guild_id]:
+                self.hashtag_file[guild_id] = guild_name
+                self.save_hashtag_file()
 
     async def check_by_guild_obj(self, guild: discord.Guild, audio_file_library: file_management.AudioFileLibrary) -> None:
         guild_id = guild.id
@@ -206,10 +323,13 @@ class GuildLibrary:
             await console.rp(f"服务器相关信息初始化完成：{guild.name}", guild.name)
 
         # 更新#Guilds文件
-        self.load_hashtag_file()
-        if guild_id not in self.hashtag_file or guild_name != self.hashtag_file[guild_id]:
-            self.hashtag_file[guild_id] = guild_name
-            self.save_hashtag_file()
+        self.update_hashtag_file(guild_id, guild_name)
+
+    def get_guild_by_id(self, guild_id: int) -> Optional[Guild]:
+        return self._guild_dict.get(int(guild_id))
+
+    def get_all(self) -> list:
+        return list(self._guild_dict.values())
 
     def get_guild(self, ctx: Union[discord.ApplicationContext, discord.AutocompleteContext]) -> Union[Guild, None]:
         if isinstance(ctx, discord.ApplicationContext):
@@ -227,7 +347,7 @@ class GuildLibrary:
         await console.rp("开始保存各Discord服务器数据", "[Discord服务器库]")
         for key in self._guild_dict:
             self._guild_dict[key].save()
-            await self._guild_dict[key].refresh_playing_message(None, None)
+            await self._guild_dict[key].finish_playing_message()
         await console.rp("各Discord服务器数据保存完毕", "[Discord服务器库]")
 
 
@@ -307,6 +427,16 @@ class GuildPlaylist(playlist.Playlist):
             del self._playlist[index]
             self._file_library.unlock_audio(str(self._guild.get_id()), target_audio)
             self._guild.save()
+
+    def move_audio(self, from_index: int, to_index: int) -> None:
+        """
+        将<from_index>索引的音频移动到<to_index>的索引位置
+        """
+        if not (0 <= from_index < len(self._playlist)):
+            return
+        to_index = max(0, min(to_index, len(self._playlist) - 1))
+        super().move_audio(from_index, to_index)
+        self._guild.save()
 
 
 def guild_playlist_loader(guild_playlist: GuildPlaylist, info_dict: dict) -> None:

@@ -2,9 +2,9 @@ py-cord[voice, speed]>=2.8.0rc1
 PyNaCl
 aiohttp
 aiodns
-brotlipy
 msgspec
 bilibili-api-python
+pycryptodomex
 curl_cffi
 brotli>=1.2.0
 yt-dlp[default]
@@ -13,4 +13,4 @@ packaging
 APScheduler
 requests
 qrcode[pil]
-flask
+psutil

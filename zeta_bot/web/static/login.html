@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zeta-Bot 登录</title>
+  <link rel="icon" href="static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="static/app.css">
+  <style>
+    body { display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .login { width: 100%; max-width: 380px; text-align: center; padding: 36px 28px; }
+    .login h1 { font-size: 22px; margin-bottom: 6px; }
+    .login h1 span { color: var(--accent); }
+    .login p { color: var(--text-dim); font-size: 13px; margin-bottom: 24px; }
+    .login .input { width: 100%; font-family: var(--mono); font-size: 20px; letter-spacing: 6px; text-align: center; text-transform: uppercase; padding: 12px; margin-bottom: 14px; }
+    .login .input::placeholder { letter-spacing: 1px; font-size: 14px; text-transform: none; font-family: var(--font); }
+    .login .btn { width: 100%; padding: 12px; font-size: 15px; }
+    .msg { min-height: 20px; margin-top: 14px; font-size: 13px; }
+    .msg.err { color: var(--err); }
+    .msg.ok { color: var(--ok); }
+    .hint { margin-top: 18px; font-size: 12px; color: var(--text-faint); line-height: 1.6; }
+    code { font-family: var(--mono); color: var(--text); background: var(--bg-hover); padding: 1px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <form class="card login" id="login-form">
+    <h1><span>Zeta</span>-Bot</h1>
+    <p>在 Discord 中使用 <code>/webauth</code> 获取验证码<br>Use <code>/webauth</code> in Discord to get a code</p>
+    <input class="input" id="code" maxlength="12" autocomplete="one-time-code" placeholder="验证码 / Code" autofocus required>
+    <button class="btn primary" type="submit" id="submit">登录 / Log in</button>
+    <div class="msg" id="msg" role="status"></div>
+    <div class="hint">验证码10分钟内有效且只能使用一次<br>Codes expire after 10 minutes and work once</div>
+  </form>
+  <script>
+    const form = document.getElementById("login-form");
+    const msg = document.getElementById("msg");
+    const button = document.getElementById("submit");
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      const code = document.getElementById("code").value.trim();
+      if (!code) return;
+      button.disabled = true;
+      msg.className = "msg";
+      msg.textContent = "…";
+      try {
+        const response = await fetch("api/login", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({code}), credentials: "same-origin"});
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data.ok) {
+          msg.className = "msg ok";
+          msg.textContent = `✓ ${data.username}`;
+          location.href = "./";
+        } else {
+          msg.className = "msg err";
+          msg.textContent = data.error || `${response.status}`;
+        }
+      } catch (e) {
+        msg.className = "msg err";
+        msg.textContent = String(e);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

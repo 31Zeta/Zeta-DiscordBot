@@ -47,6 +47,7 @@ class DownloadHandler(Enum):
     BILIBILI_API_PYTHON = "bilibili-api"
     GO_MUSIC_API = "go-music-api"
     YT_DLP = "yt-dlp"
+    NATIVE = "内置接口"
 
     def encode(self) -> str:
         return str(self.name)
@@ -148,11 +149,20 @@ class LinkType(Enum):
             raise ValueError("不支持的下载类") from e
 
 
+# 默认全部使用内置下载器，不依赖外部服务；如需使用go-music-api，可在configs/resource_handler.json中改为GO_MUSIC_API
 DEFAULT_DOWNLOAD_HANDLER: Dict[MediaPlatform, DownloadHandler] = {
-    MediaPlatform.BILIBILI: DownloadHandler.GO_MUSIC_API,
-    MediaPlatform.QQ: DownloadHandler.GO_MUSIC_API,
-    MediaPlatform.NETEASE: DownloadHandler.GO_MUSIC_API,
+    MediaPlatform.BILIBILI: DownloadHandler.BILIBILI_API_PYTHON,
+    MediaPlatform.QQ: DownloadHandler.NATIVE,
+    MediaPlatform.NETEASE: DownloadHandler.NATIVE,
     MediaPlatform.YOUTUBE: DownloadHandler.YT_DLP,
+}
+
+
+# 配置为go-music-api但该服务不可用时，改用的内置下载器
+BUILTIN_FALLBACK_HANDLER: Dict[MediaPlatform, DownloadHandler] = {
+    MediaPlatform.BILIBILI: DownloadHandler.BILIBILI_API_PYTHON,
+    MediaPlatform.QQ: DownloadHandler.NATIVE,
+    MediaPlatform.NETEASE: DownloadHandler.NATIVE,
 }
 
 
@@ -185,6 +195,32 @@ class ResourceClassifier:
                         continue
                     else:
                         self.handler_map[platform] = download_handler
+
+    def apply_fallbacks(self, go_music_available: bool) -> Dict[MediaPlatform, DownloadHandler]:
+        """
+        go-music-api不可用时，将存在内置替代下载器的平台临时切换至内置下载器（不写入配置文件）
+        返回发生切换的平台与新下载器
+        """
+        changed = {}
+        if go_music_available:
+            return changed
+        for platform, fallback in BUILTIN_FALLBACK_HANDLER.items():
+            if self.handler_map.get(platform) is DownloadHandler.GO_MUSIC_API:
+                self.handler_map[platform] = fallback
+                changed[platform] = fallback
+        return changed
+
+    def uses(self, handler: DownloadHandler) -> bool:
+        """
+        是否有平台使用该下载器
+        """
+        return handler in self.handler_map.values()
+
+    def describe(self) -> Dict[str, str]:
+        """
+        返回各平台当前使用的下载器（用于Web监控面板）
+        """
+        return {platform.value: handler.value for platform, handler in self.handler_map.items()}
 
     def handler(self, query: Union[str, MediaPlatform, DownloadType, LinkType]) -> Optional[DownloadHandler]:
         """

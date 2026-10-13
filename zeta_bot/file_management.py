@@ -1,5 +1,8 @@
 from typing import *
 import os
+import time
+import asyncio
+import collections
 
 import errors
 import utils
@@ -12,6 +15,7 @@ from zeta_bot import (
     bilibili,
     ytdlp,
     go_music,
+    native_music,
 )
 from zeta_bot.resource import MediaPlatform, LinkType, DownloadHandler, DownloadType, ResourceClassifier
 
@@ -35,6 +39,13 @@ class AudioFileLibrary:
         self._storage_capacity = storage_capacity
         self._name = name
         self._go_music_api_url = None
+        # 同一资源同时只允许一个下载任务，防止并发下载写入同一文件
+        self._download_locks: Dict[str, asyncio.Lock] = {}
+        # 下载活动记录（用于Web监控面板）
+        self._active_downloads: Dict[int, dict] = {}
+        self._recent_downloads: Deque[dict] = collections.deque(maxlen=30)
+        self._download_counter = 0
+        self._download_stats = {"success": 0, "failed": 0}
 
     async def initialize(self) -> None:
         if os.path.exists(self._path):
@@ -170,6 +181,65 @@ class AudioFileLibrary:
 
     def storage_will_full(self, new_file_size: int):
         return self._used_storage_size + new_file_size > self._storage_capacity
+
+    def get_locked_count(self) -> int:
+        return len(self._using)
+
+    def list_audios(self) -> List[audio.Audio]:
+        """
+        返回库中所有音频，最近使用的在前
+        """
+        return [node["item"] for node in reversed(self._dl_list.encode())]
+
+    def get_audio_by_uid(self, uid: str) -> Optional[audio.Audio]:
+        if uid in self._dl_list:
+            return self._dl_list.key_get(uid)
+        return None
+
+    def get_download_activity(self) -> dict:
+        """
+        返回当前与最近的下载任务（用于Web监控面板）
+        """
+        now = time.time()
+        active = []
+        for record in self._active_downloads.values():
+            item = dict(record)
+            item["elapsed"] = round(now - record["started"], 1)
+            active.append(item)
+        return {
+            "active": active,
+            "recent": list(reversed(self._recent_downloads)),
+            "stats": dict(self._download_stats),
+        }
+
+    async def _tracked_download(self, key: str, title: str, source: str, download_coro: Awaitable[Result]) -> Result:
+        """
+        为下载任务加锁并记录下载活动
+        """
+        lock = self._download_locks.setdefault(key, asyncio.Lock())
+        self._download_counter += 1
+        task_id = self._download_counter
+        record = {"id": task_id, "title": str(title), "source": source, "started": time.time()}
+        self._active_downloads[task_id] = record
+        result = failed_result(exception=None, message="下载被取消", retryable=False)
+        try:
+            async with lock:
+                result = await download_coro
+            return result
+        finally:
+            self._active_downloads.pop(task_id, None)
+            if not lock.locked() and not getattr(lock, "_waiters", None):
+                self._download_locks.pop(key, None)
+            ok = bool(result)
+            self._download_stats["success" if ok else "failed"] += 1
+            self._recent_downloads.append({
+                "title": str(title),
+                "source": source,
+                "ok": ok,
+                "message": "" if ok else result.message,
+                "seconds": round(time.time() - record["started"], 1),
+                "time": utils.ctime_str(),
+            })
 
     def get_go_music_api_url(self):
         return self._go_music_api_url
@@ -417,6 +487,16 @@ class AudioFileLibrary:
             raise ValueError(f"错误下载类型：{download_type.name}")
 
         if download_type is DownloadType.BILIBILI_COLLECTION:
+            episode = info_dict["ugc_season"]["sections"][0]["episodes"][num_option]
+            key, title = f"bilibili_{episode['bvid']}", episode["title"]
+        else:
+            key = bilibili.construct_uid(bvid=info_dict["bvid"], download_type=download_type, num_p=num_option)
+            title = info_dict["pages"][num_option]["part"] if download_type is DownloadType.BILIBILI_P else info_dict["title"]
+        return await self._tracked_download(key, title, "bilibili", self._download_bilibili(info_dict, download_type, num_option))
+
+    async def _download_bilibili(self, info_dict, download_type: DownloadType, num_option: int = 0) -> Result:
+
+        if download_type is DownloadType.BILIBILI_COLLECTION:
             bvid = info_dict["ugc_season"]["sections"][0]["episodes"][num_option]["bvid"]
             info_result = await bilibili.get_info(bvid)
             info_dict = info_result.result
@@ -453,6 +533,12 @@ class AudioFileLibrary:
         if resource_classifier.handler(download_type) is not DownloadHandler.YT_DLP:
             raise ValueError(f"错误下载类型：{download_type.name}")
 
+        key = ytdlp.construct_uid(video_id=info_dict["id"], download_type=download_type)
+        title = info_dict.get("title") or info_dict["id"]
+        return await self._tracked_download(key, title, key.split("_")[0], self._download_ytdlp(url, info_dict, download_type))
+
+    async def _download_ytdlp(self, url, info_dict, download_type: DownloadType) -> Result:
+
         video_id = info_dict["id"]
 
         target_filesize_result = await ytdlp.get_filesize(info_dict)
@@ -478,9 +564,56 @@ class AudioFileLibrary:
             return success_result(result=new_audio)
 
     @decorator.check_initialized
+    async def download_native(self, song: dict, download_type: DownloadType) -> Result:
+        """
+        使用内置音乐接口（网易云音乐、QQ音乐）下载
+        """
+        if resource_classifier.handler(download_type) is not DownloadHandler.NATIVE:
+            raise ValueError(f"错误下载类型：{download_type.name}")
+
+        key = native_music.get_music_uid(song)
+        title = f"{song.get('artist') or ''} - {song.get('name') or key}".strip(" -")
+        return await self._tracked_download(key, title, str(song.get("source")), self._download_native(song, download_type))
+
+    async def _download_native(self, song: dict, download_type: DownloadType) -> Result:
+        uid = native_music.get_music_uid(song)
+
+        # 已在库中的音频直接复用，不需要再次请求音频地址
+        exists_audio = self.get_audio_by_uid(uid)
+        if exists_audio is not None and os.path.exists(exists_audio.get_path()):
+            target_filesize = os.path.getsize(exists_audio.get_path())
+        else:
+            target_filesize_result = await native_music.get_filesize(song)
+            target_filesize = target_filesize_result.result
+            if target_filesize is None:
+                return failed_result(exception=target_filesize_result.exception, message=target_filesize_result.message, retryable=target_filesize_result.retryable)
+
+        exists_audio = await self._download_file_exist_check(uid, target_filesize)
+        if exists_audio is not None:
+            return success_result(result=exists_audio, message="音频已在库中，获取已存在文件成功")
+
+        try:
+            await self._download_space_check(target_filesize)
+        except errors.StorageFull as e:
+            return failed_result(exception=e, message="当前机器人处理音频过多", retryable=False)
+
+        new_audio_result = await native_music.audio_download(song, self._root, download_type)
+        new_audio = new_audio_result.result
+        if new_audio is None:
+            return failed_result(exception=new_audio_result.exception, message=new_audio_result.message, retryable=new_audio_result.retryable)
+        await self._append_audio(new_audio, repeat_file=False)
+        return success_result(result=new_audio)
+
+    @decorator.check_initialized
     async def download_go_music(self, info_dict: dict, download_type: DownloadType) -> Result:
         if resource_classifier.handler(download_type) is not DownloadHandler.GO_MUSIC_API:
             raise ValueError(f"错误下载类型：{download_type.name}")
+
+        key = go_music.get_music_uid(info_dict)
+        title = info_dict.get("name") or key
+        return await self._tracked_download(key, title, str(info_dict.get("source") or "go-music"), self._download_go_music(info_dict, download_type))
+
+    async def _download_go_music(self, info_dict: dict, download_type: DownloadType) -> Result:
 
         target_filesize_result = await go_music.get_filesize(api_url=self.get_go_music_api_url(), info_dict=info_dict)
         target_filesize = target_filesize_result.result

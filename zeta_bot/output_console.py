@@ -46,6 +46,8 @@ class Console:
         self._debug_log_path = f"{log_directory_path}/#DEBUG.log"
         self._current_line = None
         self._spinner_task = None
+        # 日志监听器（例如Web控制面板的实时日志），接收 (时间, 位置, 信息类型, 内容)
+        self._listeners: List[Callable[[str, str, utils.PrintType, str], None]] = []
 
         with open(self._error_log_path, "a", encoding="UTF-8") as log:
             log.write(f"文件生成时间：{utils.ctime_str()}\n")
@@ -66,6 +68,19 @@ class Console:
         logging.basicConfig(
             filename=self._error_log_path, level=logging.WARNING, encoding="UTF-8"
         )
+
+    def add_listener(self, listener: Callable[[str, str, utils.PrintType, str], None]) -> None:
+        """
+        注册日志监听器，每条通过rp/debug/on_error输出的信息都会被传递给监听器
+        """
+        self._listeners.append(listener)
+
+    def _notify(self, time_str: str, level, message_type: utils.PrintType, content: str) -> None:
+        for listener in self._listeners:
+            try:
+                listener(time_str, str(level), message_type, str(content))
+            except Exception:
+                pass
 
     async def print(self, message: str, end: str = "\n"):
         """
@@ -145,6 +160,7 @@ class Console:
         记录运行日志，并打印到控制台
         """
         current_time = utils.ctime_str()
+        self._notify(current_time, level, message_type, content)
         await self.print_log(content, level, message_type=message_type, print_head=print_head)
         if self._running_log:
             await self.write_log(self._log_path, current_time, content, level)
@@ -154,6 +170,7 @@ class Console:
         记录调试信息，并打印到控制台
         """
         current_time = utils.ctime_str()
+        self._notify(current_time, "[DEBUG]", utils.PrintType.DEBUG, content)
         await self.print_log(content, level="[DEBUG]", message_type=utils.PrintType.DEBUG, print_head=True)
         if self._running_log:
             await self.debug_log(self._debug_log_path, current_time, content)
@@ -290,6 +307,7 @@ class Console:
         message = f"发生错误"
         logger = logging.getLogger()
         logger.error(f"{current_time}\n{message}\n{full_exception}")
+        self._notify(current_time, "[系统]", utils.PrintType.ERROR, f"{type(exception).__name__}: {exception}")
 
         # 控制台输出错误信息
         await self.print_log(
@@ -322,6 +340,7 @@ class Console:
         message = f"用户发送指令：{ctx.command} 造成错误"
         logger = logging.getLogger()
         logger.error(f"{current_time}\n{message}\n{full_exception}")
+        self._notify(current_time, f"{ctx.guild}", utils.PrintType.ERROR, f"{message}：{type(exception).__name__}: {exception}")
 
         # 控制台输出错误信息
         await self.print_log(

@@ -60,15 +60,20 @@ class Setting:
         # 读取loaded_dict
         loaded_name = loaded_dict["config_name"]
         loaded_version = loaded_dict["version"]
+        # 先读取文件中所有已有的设置，再询问新增的设置
+        # （change_setting会立即保存，如果边读取边询问，尚未读取的设置会被默认值覆盖）
+        missing_keys = []
         for key in self._setting:
             if key in loaded_dict:
                 self._setting[key] = loaded_dict[key]
             else:
-                print("发现新增设置")
-                try:
-                    self.change_setting(self.find_index(key))
-                except errors.UserCancelled:
-                    raise errors.UserCancelled
+                missing_keys.append(key)
+        for key in missing_keys:
+            print("发现新增设置")
+            try:
+                self.change_setting(self.find_index(key))
+            except errors.UserCancelled:
+                raise errors.UserCancelled
 
         if loaded_version != self._version:
             print("版本变更导致以前已有的设置内容可能发生变动，请问您是否要重新检查所有的设置选项？")
@@ -274,7 +279,7 @@ bot_setting_configs = [
         "description": "本机器人的所有者（最高管理员）的纯数字ID，将获得全部权限，纯数字ID可以通过打开Discord开发者模式（位于 用户设置 → 高级设置 → 开发者模式）后，右键用户选择\"复制ID\"获得",
         "input_description": "请输入给予本机器人最高管理权限的Discord用户的用户ID（纯数字ID）",
         "dependent": None,
-        "regex": "\d+",
+        "regex": r"\d+",
         "options": None,
         "value": "000000000000000000"
     },
@@ -298,7 +303,7 @@ bot_setting_configs = [
         "dependent": None,
         "regex": None,
         "options": None,
-        "value": "2048"
+        "value": 2048
     },
     {
         "id": "guild_past_list_size",
@@ -309,7 +314,7 @@ bot_setting_configs = [
         "dependent": None,
         "regex": None,
         "options": None,
-        "value": "50"
+        "value": 50
     },
     {
         "id": "bot_name",
@@ -351,7 +356,7 @@ bot_setting_configs = [
         "description": "每日自动重启的时间",
         "input_description": "请设置自动重启时间（输入格式为\"小时:分钟:秒\"，示例：04:30:00）",
         "dependent": "auto_reboot",
-        "regex": "([01]\d|2[0123]|\d):([012345]\d|\d):([012345]\d|\d)",
+        "regex": r"([01]\d|2[0123]|\d):([012345]\d|\d):([012345]\d|\d)",
         "options": None,
         "value": "00:00:00"
     },
@@ -384,7 +389,7 @@ bot_setting_configs = [
         "description": "每日自动重启前通知的时间",
         "input_description": "请设置自动重启提前通知时间（输入格式为\"小时:分钟:秒\"，示例：04:25:00）",
         "dependent": "ar_reminder",
-        "regex": "([01]\d|2[0123]|\d):([012345]\d|\d):([012345]\d|\d)",
+        "regex": r"([01]\d|2[0123]|\d):([012345]\d|\d):([012345]\d|\d)",
         "options": None,
         "value": "23:55:00"
     },
