@@ -1,4 +1,5 @@
 from typing import *
+from os.path import exists
 import sys
 import os
 import time
@@ -7,18 +8,14 @@ from enum import Enum
 import json
 import re
 import requests
+from pathlib import Path
 import getpass
 import shutil
+import platform
+import importlib.metadata
+import packaging.requirements
 
-from zeta_bot import (
-    errors,
-    language
-)
-
-# 多语言模块
-lang = language.Lang()
-_ = lang.get_string
-printl = lang.printl
+import errors
 
 
 def ctime_str() -> str:
@@ -35,14 +32,6 @@ def ctime_datetime() -> datetime.datetime:
     :return: 当前时间的datetime
     """
     return datetime.datetime.now()
-
-
-def create_folder(path: str) -> None:
-    """
-    检测在指定目录是否存在文件夹，如果不存在则创建
-    """
-    if not os.path.exists(path):
-        os.mkdir(path)
 
 
 def json_save(json_path: str, saving_item) -> None:
@@ -62,7 +51,7 @@ def json_save(json_path: str, saving_item) -> None:
         )
 
 
-def json_load(json_path: str) -> Union[dict, list]:
+def json_load(json_path: str):
     """
     读取<json_path>的json文件
     **警告**：json格式的键值必须为字符串，否则会被转换为字符串
@@ -75,51 +64,143 @@ def json_load(json_path: str) -> Union[dict, list]:
         raise errors.JSONFileError(json_path)
 
 
-def path_slash_formatting(string: str) -> str:
-    """
-    将字符串内的所有反斜杠统一替换为正斜杠
-    """
-    result = ""
-    for char in string:
-        if char == "\\":
-            result += "/"
-        else:
-            result += char
-
-    return result
-
-
-def path_end_formatting(string: str) -> str:
-    """
-    如果字符串内最后一个字符为正斜杠或反斜杠则将之删除
-    """
-    if string.endswith("/"):
-        string = string.rstrip("/")
-    elif string.endswith("\\"):
-        string = string.rstrip("\\")
-
-    return string
-
-
 def legal_name(name_str: str) -> str:
     """
-    将字符串转换为合法的文件名
+    将字符串转换为同时兼容 Windows 和 Linux 的普通文件名
 
     :param name_str: 原文件名
     :return: 转换后文件名
     """
+    name_str = str(name_str or "").strip()
+    name_str = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f]', "_", name_str)
+    name_str = re.sub(r"\s+", " ", name_str).rstrip(". ")
 
-    name_str = name_str.replace("\\", "_")
-    name_str = name_str.replace("/", "_")
-    name_str = name_str.replace(":", "_")
-    name_str = name_str.replace("*", "_")
-    name_str = name_str.replace("?", "_")
-    name_str = name_str.replace("\"", "_")
-    name_str = name_str.replace("<", "_")
-    name_str = name_str.replace(">", "_")
-    name_str = name_str.replace("|", "_")
+    if name_str == "":
+        name_str = "_"
 
-    return name_str
+    return name_str.rstrip(". ") or "_"
+
+
+def markdown_escape(text: str) -> str:
+    """
+    转义 Discord Markdown 特殊字符，保证渲染后的可见文本与原文本一致。
+    """
+    if text is None:
+        return ""
+
+    text = str(text)
+    # 先转义反斜杠，避免后续新增转义被二次处理
+    text = text.replace("\\", "\\\\")
+
+    # Discord 常见 Markdown 控制字符
+    markdown_special_chars = r"_*`~|>#+-=()[]{}!"
+    pattern = f"([{re.escape(markdown_special_chars)}])"
+    return re.sub(pattern, r"\\\1", text)
+
+
+class Result:
+    def __init__(self, success: bool = False, result: Any = None, extra: Optional[dict] = None, exception: Optional[Exception] = None, message: Optional[str] = None, retryable: bool = False):
+        self.success: bool = success
+        self.result: Any = result
+        self.extra = extra
+        self.exception: Optional[Exception] = exception
+        if message is None:
+            message = ""
+        self.message: str = message
+        self.retryable: bool = retryable
+
+    def __bool__(self) -> bool:
+        return self.success
+
+    def get_extra(self) -> dict:
+        if self.extra is None:
+            self.extra = dict()
+        return self.extra
+
+
+def success_result(result: Any, exception: Optional[Exception] = None, message: str = "获取成功", retryable: bool = False) -> Result:
+    """
+    构造成功情况的结果
+    """
+    return Result(success=True, result=result, extra=None, exception=exception, message=message, retryable=retryable)
+
+
+def failed_result(exception: Any, message: Optional[str], retryable: bool) -> Result:
+    """
+    构造失败情况的结果
+    """
+    return Result(success=False, result=None, extra=None, exception=exception, message=message, retryable=retryable)
+
+
+def check_requirements(requirements_path: str, false_only: bool = False) -> Dict[str, dict]:
+    """
+    检查<requirements_path>中的包是否已安装且满足版本需求
+
+    :param requirements_path: 要检查的requirements文件的路径
+    :param false_only: 是否只将不符合要求的包放入返回的字典中
+    """
+    result = {}
+    with open(requirements_path, "r", encoding="utf-8") as file:
+        for i, raw_line in enumerate(file, start=1):
+            line = raw_line.strip()
+
+            # 跳过注释
+            if not line or line.startswith("#"):
+                continue
+            # 处理行尾注释
+            if " #" in line:
+                line = line.split(" #", 1)[0].strip()
+            if not line:
+                continue
+
+            try:
+                req = packaging.requirements.Requirement(line)
+            except packaging.requirements.InvalidRequirement:
+                print(f"{requirements_path} 第 {i} 行解析错误，跳过")
+                continue
+
+            package_name = req.name
+            extras = set(req.extras)
+
+            # 重复包情况
+            if package_name in result:
+                if req.extras:
+                    result[package_name]["extras"] = result[package_name]["extras"].union(extras)
+                continue
+
+            # 检查是否安装
+            try:
+                installed_version = importlib.metadata.version(package_name)
+            except importlib.metadata.PackageNotFoundError:
+                installed_version = None
+                is_installed = False
+            else:
+                is_installed = True
+
+            # 检查版本是否符合范围
+            if not is_installed:
+                version_ok = False
+            else:
+                # req.specifier 为空时，表示没有版本约束
+                if str(req.specifier):
+                    version_ok = req.specifier.contains(installed_version, installed=True)
+                else:
+                    version_ok = True
+
+            # 如果启用false_only以及包符合条件则跳过
+            if false_only and is_installed and version_ok:
+                continue
+
+            result[package_name] = {
+                "package_name": package_name,
+                "extras": extras,
+                "is_installed": is_installed,
+                "installed_version": installed_version,
+                "required_version": str(req.specifier),
+                "version_matches": version_ok,
+            }
+
+    return result
 
 
 class SGR(Enum):
@@ -367,6 +448,7 @@ def cp(
     message: str,
     extra_message: Optional[str] = None,
     message_type: Union[PrintType, SGR, int, str, List[Union[SGR, int, str]], Tuple[Union[SGR, int, str]]] = PrintType.NORMAL,
+    end: str = "\n",
     gap: bool = False,
     indent: int = 0,
     print_time: bool = False,
@@ -382,6 +464,7 @@ def cp(
     :param message: 信息
     :param extra_message: 额外信息，显示在信息之前，如果message_newline为True则额外信息显示在信息的上一行
     :param message_type: 信息的字符串输出类型枚举类
+    :param end: 显示在信息之后，默认为新一行
     :param gap: 是否与上方信息间隔一行（输出前额外输出一个换行符）
     :param indent: 缩进空格数
     :param print_time: 是否打印当前时间
@@ -404,7 +487,7 @@ def cp(
         print_head=print_head,
     )
     # 打印输出
-    print(final_msg)
+    print(final_msg, end=end)
     # 暂停
     if sleep != 0:
         time.sleep(sleep)
@@ -588,7 +671,7 @@ def ci_select(
             item = item.lower()
         options_formated.add(item)
     while True:
-        input_line = ci(prompt, prompt_type=prompt_type, gap=gap, indent=indent, print_head=print_head, prompt_end=prompt_end)
+        input_line = str(ci(prompt, prompt_type=prompt_type, gap=gap, indent=indent, print_head=print_head, prompt_end=prompt_end))
         if ignore_case:
             input_line = input_line.lower()
         if input_line not in options_formated:
@@ -771,33 +854,6 @@ def convert_byte(byte: int) -> Tuple[float, str]:
         return byte, "字节"
 
 
-def check_url_source(url) -> Union[str, None]:
-
-    if re.search("bilibili\.com", url) is not None:
-        return "bilibili_url"
-
-    elif re.search("b23\.tv", url) is not None:
-        return "bilibili_short_url"
-
-    elif re.search("BV(\d|[a-zA-Z]){10}", url) is not None:
-        return "bilibili_bvid"
-
-    elif re.search("youtube\.com", url) is not None:
-        return "youtube_url"
-
-    elif re.search("youtu\.be", url) is not None:
-        return "youtube_short_url"
-
-    elif re.search("music.163\.com", url) is not None:
-        return "netease_url"
-
-    elif re.search("163cn\.tv", url) is not None:
-        return "netease_short_url"
-
-    else:
-        return None
-
-
 def get_url_from_str(input_str, url_type) -> Union[str, None]:
 
     if url_type == "bilibili_url":
@@ -841,9 +897,9 @@ def get_url_from_str(input_str, url_type) -> Union[str, None]:
 
 def get_legal_netease_url(input_str) -> Union[str, None]:
     if "song?id=" in input_str:
-        id_position = re.search("song\?id=\d+", input_str).span()
+        id_position = re.search(r"song\?id=\d+", input_str).span()
     elif "playlist?id=" in input_str:
-        id_position = re.search("playlist\?id=\d+", input_str).span()
+        id_position = re.search(r"playlist\?id=\d+", input_str).span()
     else:
         return None
     return "https://music.163.com/#/" + input_str[id_position[0]:id_position[1]]
@@ -871,7 +927,7 @@ def get_bvid_from_url(url):
     :param url: 目标地址
     :return:
     """
-    re_result = re.search("BV(\d|[a-zA-Z]){10}", url)
+    re_result = re.search(r"BV(\d|[a-zA-Z]){10}", url)
 
     if re_result is None:
         return None
@@ -883,16 +939,16 @@ def get_bvid_from_url(url):
     return result
 
 
-def make_playlist_page(
-        info_list: list, num_per_page: int, starts_with: dict, ends_with: dict, fill_lines=False) -> list:
+def make_playlist_page(info_list: list, num_per_page: int, starts_with: dict, ends_with: dict, fill_lines=False, title_markdown_bold: bool = True, escape_markdown: bool = False) -> list:
     """
     将<info_list>中的信息分割成每<num_per_page>一页
-    <info_list>需为一个列表，每个元素是一个元组，元组包含两个元素，第一个将直接显示，第二个将在中括号内显示（如元组只包含一个元素则不显示括号）
-    <starts_with>为一个字典，保存了每行开头添加的字符串，键为行数（从0开始），值为要添加的字符串
-    键None保存添加到每一行前的字符串，如某行前不想添加字符则将对应行号键的值设为一个空字符串，如不添加任何字符串则向<starts_with>传入空字典{}
-    <ends_with>为一个字典，保存了每行结尾添加的字符串，键为行数（从0开始），值为要添加的字符串
-    键None保存添加到每一行后的字符串，如某行后不想添加字符则将对应行号键的值设为一个空字符串，如不添加任何字符串则向<starts_with>传入空字典{}
-    如果<fill_lines>为True，则将最后一页用空行填齐
+    :param info_list: 需为一个列表，每个元素是一个元组，元组包含两个元素，第一个将直接显示，第二个将在中括号内显示（如元组只包含一个元素则不显示括号）
+    :param num_per_page: 一页多少条目
+    :param starts_with: 为一个字典，保存了每行开头添加的字符串，键为行数（从0开始），值为要添加的字符串键None保存添加到每一行前的字符串，如某行前不想添加字符则将对应行号键的值设为一个空字符串，如不添加任何字符串则向<starts_with>传入空字典{}
+    :param ends_with: 为一个字典，保存了每行结尾添加的字符串，键为行数（从0开始），值为要添加的字符串键None保存添加到每一行后的字符串，如某行后不想添加字符则将对应行号键的值设为一个空字符串，如不添加任何字符串则向<starts_with>传入空字典{}
+    :param fill_lines: 如果为True，则将最后一页用空行填齐
+    :param title_markdown_bold: 为第一个元素添加Markdown粗体字符
+    :param escape_markdown: 是否要将内容进行Markdown转义，确保内容本身的符号不会被识别成特殊符号，不会影响<starts_with>, <ends_with>, <title_markdown_bold>
     """
     result = []
     counter = 0
@@ -918,12 +974,20 @@ def make_playlist_page(
             else:
                 current_ends_with = ""
 
+            title = str(current_tuple[0])
+            if escape_markdown:
+                title = markdown_escape(title)
+            if title_markdown_bold:
+                title = f"**{title}**"
+
             if len(current_tuple) <= 1:
-                current_page += \
-                    f"{current_starts_with}[{counter + 1}] {current_tuple[0]}{current_ends_with}\n"
+                current_page += f"{current_starts_with}[{counter + 1}] {title}{current_ends_with}\n"
             else:
-                current_page += \
-                    f"{current_starts_with}[{counter + 1}] {current_tuple[0]} [{current_tuple[1]}]{current_ends_with}\n"
+                duration = str(current_tuple[1])
+                if escape_markdown:
+                    duration = markdown_escape(duration)
+                current_page += f"{current_starts_with}[{counter + 1}] {title} [{duration}]{current_ends_with}\n"
+
             counter += 1
         result.append(current_page)
 

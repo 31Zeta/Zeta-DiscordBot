@@ -1,20 +1,22 @@
 import discord
 import os
-from typing import Union
+from typing import Union, Optional
+
+import errors
+import utils
 
 from zeta_bot import (
-    errors,
-    language,
     decorator,
-    utils,
-    console,
+    output_console,
     file_management,
     member,
     audio,
-    playlist
+    playlist,
+    icon
 )
 
-console = console.Console()
+console = output_console.Console()
+icon_lib = icon.IconLib()
 
 class Guild:
     def __init__(self, guild: discord.guild, lib_root: str, audio_file_library: file_management.AudioFileLibrary):
@@ -28,8 +30,11 @@ class Guild:
         self._play_mode = 0
         self._active_views = {}
 
+        self._playing_message = None
+        self._playing_embed: Optional[discord.Embed] = None
+
         if not os.path.exists(self._root):
-            utils.create_folder(self._root)
+            os.makedirs(self._root, exist_ok=True)
 
         try:
             self.load()
@@ -101,6 +106,21 @@ class Guild:
         if "playlist_menu_view" in self._active_views and self._active_views["playlist_menu_view"] is not None:
             await self._active_views["playlist_menu_view"].refresh_menu()
 
+    async def refresh_playing_message(self, new_message, new_embed: Optional[discord.Embed]) -> None:
+        playing_message = self._playing_message
+        playing_embed = self._playing_embed
+        if playing_embed is not None and playing_message is not None:
+            finished_icon_filename = "check_in_box_in_reveal_animated_0ms_100px.gif"
+            playing_embed.set_author(name="播放完成" + playing_embed.author.name[4:], icon_url=icon.url(finished_icon_filename))
+
+            if isinstance(playing_message, discord.Interaction):
+                await playing_message.edit_original_response(content=None, embed=playing_embed, files=icon_lib.files(finished_icon_filename))
+            else:
+                await playing_message.edit(content=None, embed=playing_embed, files=icon_lib.files(finished_icon_filename))
+
+        self._playing_message = new_message
+        self._playing_embed = new_embed
+
     def save(self) -> None:
         utils.json_save(self._path, self)
 
@@ -123,7 +143,7 @@ class Guild:
 class GuildLibrary:
     def __init__(self):
         self._root = "./data/guilds"
-        utils.create_folder(self._root)
+        os.makedirs(self._root, exist_ok=True)
         self._guild_dict = {}
         self._hashtag_file_path = f"{self._root}/#Guilds.json"
 
@@ -207,13 +227,14 @@ class GuildLibrary:
         await console.rp("开始保存各Discord服务器数据", "[Discord服务器库]")
         for key in self._guild_dict:
             self._guild_dict[key].save()
+            await self._guild_dict[key].refresh_playing_message(None, None)
         await console.rp("各Discord服务器数据保存完毕", "[Discord服务器库]")
 
 
 class GuildPlaylist(playlist.Playlist):
     def __init__(self, guild: Guild, file_library: file_management.AudioFileLibrary,
                  limitation: Union[int, None] = None):
-        super().__init__(f"{guild.get_name()} 主播放列表", limitation, None)
+        super().__init__(f"{guild.get_name()} [主播放列表]", limitation, None)
         self._guild = guild
         self._file_library = file_library
 

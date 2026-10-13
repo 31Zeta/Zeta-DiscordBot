@@ -19,7 +19,9 @@ from flask import Flask, render_template_string, request, jsonify, send_from_dir
 from yt_dlp import YoutubeDL
 from bilibili_api import search as bilibili_search
 
-from zeta_bot import utils, audio as audio_module
+import utils
+from zeta_bot import audio as audio_module
+from zeta_bot.resource import DownloadType
 
 DOWNLOAD_PATH = "./downloads"
 COOKIE_FILE = "./configs/cookies.txt"
@@ -780,7 +782,7 @@ def api_add_local_to_queue(guild_id):
             title = os.path.splitext(filename)[0]
             duration = get_audio_duration(filepath)
 
-            new_audio = audio_module.Audio(title, "local_file", filename, filepath, duration)
+            new_audio = audio_module.Audio(title, f"local_{filename}", "local", filename, DownloadType.UNKNOWN, filepath, duration)
             pl.append_audio(new_audio)
 
             if vc and not vc.is_playing() and not vc.is_paused() and len(pl) == 1:
@@ -812,7 +814,7 @@ def api_add_to_queue(guild_id):
     try:
         async def _add():
             import discord as _discord
-            from zeta_bot import youtube as yt_mod, bilibili as bl_mod
+            from zeta_bot import ytdlp as yt_mod, bilibili as bl_mod
 
             discord_guild = bot.get_guild(int(guild_id))
             if not discord_guild:
@@ -831,15 +833,20 @@ def api_add_to_queue(guild_id):
                 if not bvid_match:
                     return {"error": "invalid bilibili url"}
                 bvid = bvid_match.group(1)
-                info = await bl_mod.get_info(bvid)
-                title = info["title"]
-                # Check file size & download
-                new_audio = await bl_mod.audio_download(info, DOWNLOAD_PATH)
+                info_result = await bl_mod.get_info(bvid)
+                if not info_result:
+                    return {"error": info_result.message}
+                new_result = await audio_lib_main.download_bilibili(info_result.result, DownloadType.BILIBILI_SINGLE, 0)
             else:
                 # YouTube / other yt-dlp sources
-                info = await yt_mod.get_info(url)
-                title = info.get("title", "Unknown")
-                new_audio = await yt_mod.audio_download(url, info, DOWNLOAD_PATH)
+                info_result = await yt_mod.get_info(url)
+                if not info_result:
+                    return {"error": info_result.message}
+                new_result = await audio_lib_main.download_ytdlp(url, info_result.result, DownloadType.YOUTUBE_SINGLE)
+            if not new_result:
+                return {"error": new_result.message}
+            new_audio = new_result.result
+            title = new_audio.get_title()
 
             # Add to guild playlist
             pl.append_audio(new_audio)

@@ -1,11 +1,10 @@
-from typing import Any, Union, List
+from typing import Union, List
+
+import errors
+import utils
 
 from zeta_bot import (
-    errors,
-    language,
-    utils,
-    console,
-    audio,
+    audio
 )
 
 # TODO 完成自建歌单

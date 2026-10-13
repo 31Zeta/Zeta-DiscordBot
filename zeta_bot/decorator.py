@@ -1,5 +1,6 @@
 from typing import *
-from zeta_bot import errors
+
+import errors
 
 
 class Singleton(object):
@@ -18,9 +19,9 @@ def check_initialized(method, name: Optional[str] = None):
         if not self._initialized:
             # 判断self._name是否存在
             if hasattr(self, '_name') and self._name is not None:
-                raise errors.UninitializedError(self._name)
+                raise errors.NotInitializedError(self._name)
             # 如果self._name不存在，使用name
             else:
-                raise errors.UninitializedError(name)
+                raise errors.NotInitializedError(name)
         return method(self, *args, **kwargs)
     return wrapper

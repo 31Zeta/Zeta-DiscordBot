@@ -1,10 +1,11 @@
 import discord
 import os
 
+import errors
+import utils
+
 from zeta_bot import (
-    errors,
     language,
-    utils,
     decorator
 )
 
@@ -25,9 +26,12 @@ permissions = {
     "pause": False,
     "resume": False,
     "list": False,
+    "playlist": True,
     "skip": False,
     "move": False,
+    "clear": False,
     "volume": False,
+    "radio": False,
     "login_webui": False,
     "reboot": False,
     "shutdown": False,
@@ -60,9 +64,12 @@ default_permission_config = {
         "pause": True,
         "resume": True,
         "list": True,
+        "playlist": True,
         "skip": True,
         "move": True,
+        "clear": True,
         "volume": True,
+        "radio": True,
         "login_webui": True,
         "reboot": True,
         "shutdown": False,
@@ -93,9 +100,12 @@ default_permission_config = {
         "pause": True,
         "resume": True,
         "list": True,
+        "playlist": True,
         "skip": True,
         "move": True,
+        "clear": True,
         "volume": True,
+        "radio": False,
         "login_webui": True,
         "reboot": False,
         "shutdown": False,
@@ -126,9 +136,12 @@ default_permission_config = {
         "pause": False,
         "resume": False,
         "list": True,
+        "playlist": False,
         "skip": False,
         "move": False,
+        "clear": False,
         "volume": False,
+        "radio": False,
         "login_webui": False,
         "reboot": False,
         "shutdown": False,
@@ -156,12 +169,15 @@ default_permission_config = {
         "leave": False,
         "search_audio": False,
         "play": False,
+        "playlist": False,
         "pause": False,
         "resume": False,
         "list": False,
         "skip": False,
         "move": False,
+        "clear": False,
         "volume": False,
+        "radio": False,
         "login_webui": False,
         "reboot": False,
         "shutdown": False,
@@ -191,7 +207,7 @@ class MemberLibrary:
     """
     def __init__(self):
         self.root = "./data/members"
-        utils.create_folder(self.root)
+        os.makedirs(self.root, exist_ok=True)
 
         self.group_config_path = "./configs/group_permission_config.json"
         # 如组权限文件不存在则创建默认文件

@@ -5,11 +5,12 @@ import asyncio
 import traceback
 import logging
 
+import errors
+import utils
+
 from zeta_bot import (
-    errors,
     decorator,
-    language,
-    utils
+    language
 )
 
 # 多语言模块
@@ -63,7 +64,7 @@ class Console:
             print(f"生成初始日志文件：{self._log_path}")
 
         logging.basicConfig(
-            filename=self._error_log_path, level=logging.WARNING
+            filename=self._error_log_path, level=logging.WARNING, encoding="UTF-8"
         )
 
     async def print(self, message: str, end: str = "\n"):
@@ -273,7 +274,7 @@ class Console:
         with open(path, "a", encoding="UTF-8") as log:
             log.write(f"{time} {content}\n")
 
-    async def on_error(self, exception) -> None:
+    async def on_error(self, exception: Exception) -> None:
         """
         发生程序错误时调用
         """
