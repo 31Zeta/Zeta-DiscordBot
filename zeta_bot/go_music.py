@@ -5,6 +5,7 @@ import base64
 import json
 import os
 import re
+from urllib.parse import urlencode
 from io import BytesIO
 from pathlib import Path
 from enum import Enum
@@ -893,6 +894,33 @@ def get_music_uid(info_dict: Dict[str, Any]) -> str:
             else:
                 quality = extra.get("format_type")
     return construct_uid(source, params["id"], quality)
+
+
+def create_stream_audio(info_dict: Dict[str, Any], download_type: DownloadType) -> audio.Audio:
+    uid = get_music_uid(info_dict)
+    new_audio = audio.Audio(
+        title=f"{info_dict.get('artist') or '未知歌手'} - {info_dict.get('name') or '未知歌曲'}",
+        uid=uid,
+        source=info_dict["source"],
+        source_id=info_dict["id"],
+        download_type=download_type,
+        path=f"stream://{uid}",
+        duration=int(info_dict.get("duration") or 0),
+        stream=True,
+        stream_data=dict(info_dict),
+    )
+    if info_dict.get("cover"):
+        new_audio.set_cover_url(info_dict["cover"])
+    return new_audio
+
+
+async def get_stream_url(api_url: str, info_dict: Dict[str, Any]) -> str:
+    """同步登录状态后返回由本机go-music-api持续代理的音频流地址。"""
+    timeout = aiohttp.ClientTimeout(total=10, connect=5)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        await use_local_cookie(api_url, session, info_dict.get("source"))
+    query = urlencode(build_music_params(info_dict))
+    return f"{api_url_format(api_url)}/api/v1/music/stream?{query}"
 
 
 def extension_format(value: Any) -> str:
