@@ -13,10 +13,12 @@ Table of contents
 - [Configuring Cookies for go-music-api](#configuring-cookies-for-go-music-api)
 
 ## Core Features
-- Uses [go-music-api](https://github.com/guohuiyuan/go-music-api) as the backend to download and play music or audio from multiple platforms (Bilibili, NetEase Cloud Music, QQ Music, etc.) in Discord voice channels
+- Uses [go-music-api](https://github.com/guohuiyuan/go-music-api) as the backend to stream music or audio from multiple platforms (Bilibili, NetEase Cloud Music, QQ Music, etc.) in Discord voice channels
 - Plays audio from YouTube in Discord voice channels
 - Supports searching for and playing content from Bilibili or YouTube directly within Discord channels
 - Interactive playlists
+
+New requests stream by default. Existing local cache entries are still reused, and playback automatically falls back to a full download when streaming fails.
 
 ![Demo_Play](Demo_Play.gif)
 

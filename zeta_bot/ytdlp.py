@@ -1,6 +1,9 @@
 from __future__ import unicode_literals
 from typing import *
 from enum import Enum
+import asyncio
+import time
+from urllib.parse import urlsplit, urlunsplit
 
 import yt_dlp
 from yt_dlp import YoutubeDL
@@ -22,11 +25,45 @@ console = output_console.Console()
 resource_classifier = ResourceClassifier()
 
 level = "YT-DLP模块"
+BILIBILI_UNRELIABLE_CDN_HOSTS = {"upos-sz-mirrorcosov.bilivideo.com"}
+BILIBILI_FALLBACK_CDN_HOSTS = (
+    "upos-sz-mirrorcos.bilivideo.com",
+    "upos-sz-mirror08c.bilivideo.com",
+)
 SOURCE_MAP = {
     "youtube": "YouTube",
+    "bilibili": "哔哩哔哩",
     "netease": "网易云音乐",
     "unknown": "未知来源",
 }
+
+
+def source_from_download_type(download_type: DownloadType) -> str:
+    if download_type.name.startswith("YOUTUBE"):
+        return "youtube"
+    if download_type.name.startswith("BILIBILI"):
+        return "bilibili"
+    if download_type.name.startswith("NETEASE"):
+        return "netease"
+    return "unknown"
+
+
+def bilibili_audio_url_candidates(info_dict: dict, url: str) -> list[str]:
+    """为不稳定的B站音频地址生成保持路径和签名不变的备用CDN地址。"""
+    primary_url = str(info_dict.get("url") or "")
+    if "bilibili.com" not in str(url) or not primary_url:
+        return [primary_url] if primary_url else []
+
+    parts = urlsplit(primary_url)
+    if parts.hostname not in BILIBILI_UNRELIABLE_CDN_HOSTS:
+        return [primary_url]
+
+    candidates = []
+    for host in (*BILIBILI_FALLBACK_CDN_HOSTS, parts.hostname):
+        candidate = urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+        if candidate not in candidates:
+            candidates.append(candidate)
+    return candidates
 
 async def get_info(url, cookie_file_path=None) -> Result:
     ydl_opts = {
@@ -40,8 +77,12 @@ async def get_info(url, cookie_file_path=None) -> Result:
     await console.rp(f"开始提取信息：{url}", f"[{level}]")
 
     try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
+        def extract_info():
+            with YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(url, download=False)
+
+        # yt-dlp是同步网络库，移出Discord事件循环避免所有指令一起卡住。
+        info_dict = await asyncio.to_thread(extract_info)
 
         video_id = info_dict["id"]
         video_title = info_dict["title"]
@@ -86,8 +127,9 @@ async def get_info(url, cookie_file_path=None) -> Result:
 
 
 async def get_filesize(info_dict: dict) -> Result:
-    if "filesize" in info_dict:
-        return success_result(result=info_dict["filesize"])
+    filesize = info_dict.get("filesize") or info_dict.get("filesize_approx")
+    if filesize is not None:
+        return success_result(result=int(filesize))
     else:
         await console.rp(
             f"文件大小获取失败",
@@ -102,14 +144,38 @@ def construct_uid(video_id: str, download_type: DownloadType) -> str:
     if resource_classifier.handler(download_type) is not DownloadHandler.YT_DLP:
         raise ValueError(f"错误下载类型：{download_type.name}")
 
-    if download_type.name.startswith("YOUTUBE"):
-        source = "youtube"
-    elif download_type.name.startswith("NETEASE"):
-        source = "netease"
-    else:
-        source = "unknown"
+    source = source_from_download_type(download_type)
     uid = f"{source}_{video_id}"
     return uid
+
+
+def compact_stream_info(info_dict: dict) -> dict:
+    """保存下载回退所需字段，避免把完整formats和临时签名写进服务器队列。"""
+    keys = (
+        "id", "title", "ext", "duration", "filesize", "filesize_approx", "url",
+        "format_id", "protocol", "acodec", "thumbnail", "http_headers",
+    )
+    return {key: info_dict.get(key) for key in keys if info_dict.get(key) is not None}
+
+
+def create_stream_audio(url: str, info_dict: dict, download_type: DownloadType) -> audio.Audio:
+    video_id = info_dict["id"]
+    uid = construct_uid(video_id, download_type)
+    new_audio = audio.Audio(
+        title=info_dict["title"],
+        uid=uid,
+        source=source_from_download_type(download_type),
+        source_id=video_id,
+        download_type=download_type,
+        path=f"stream://{uid}",
+        duration=int(info_dict.get("duration") or 0),
+        stream=True,
+        stream_origin=url,
+        stream_data={"info": compact_stream_info(info_dict), "resolved_at": time.time()},
+    )
+    if info_dict.get("thumbnail"):
+        new_audio.set_cover_url(info_dict["thumbnail"])
+    return new_audio
 
 
 async def audio_download(youtube_url, info_dict: dict, download_dir: str, download_type: DownloadType = DownloadType.YOUTUBE_SINGLE, cookie_file_path=None) -> Result:
@@ -123,7 +189,10 @@ async def audio_download(youtube_url, info_dict: dict, download_dir: str, downlo
     video_title = info_dict["title"]
     file_extension = info_dict["ext"]
     video_duration = info_dict["duration"]
-    size = utils.convert_byte(int(info_dict["filesize"]))
+    target_filesize = info_dict.get("filesize") or info_dict.get("filesize_approx")
+    if target_filesize is None:
+        return failed_result(exception=None, message="结果为空，未知错误", retryable=False)
+    size = utils.convert_byte(int(target_filesize))
 
     uid = construct_uid(video_id=video_id, download_type=download_type)
     file_title = utils.legal_name(f"{uid} - {video_title}")
@@ -145,12 +214,7 @@ async def audio_download(youtube_url, info_dict: dict, download_dir: str, downlo
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([youtube_url])
 
-        if download_type.name.startswith("YOUTUBE"):
-            source = "youtube"
-        elif download_type.name.startswith("NETEASE"):
-            source = "netease"
-        else:
-            source = "unknown"
+        source = source_from_download_type(download_type)
 
         new_audio = audio.Audio(
             title=video_title,

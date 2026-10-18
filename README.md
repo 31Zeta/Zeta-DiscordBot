@@ -13,10 +13,12 @@
 - [为 go-music-api 配置 Cookie](#为-go-music-api-配置-Cookie)
 
 ## 核心功能
-- 在Discord音频频道中使用 [go-music-api](https://github.com/guohuiyuan/go-music-api) 作为后端下载并播放来自多个平台的音乐或音频（哔哩哔哩、网易云音乐、QQ音乐 等等）
+- 在Discord音频频道中使用 [go-music-api](https://github.com/guohuiyuan/go-music-api) 作为后端流式播放来自多个平台的音乐或音频（哔哩哔哩、网易云音乐、QQ音乐 等等）
 - 在Discord音频频道中播放来自YouTube的音频
 - 直接在Discord频道内进行哔哩哔哩或YouTube搜索并播放
 - 可交互的播放列表
+
+新点播默认直接读取网络音频流；已有本地缓存仍会复用，流式播放失败时会自动回退到完整下载。
 
 ![Demo_Play](docs/Demo_Play.gif)
 

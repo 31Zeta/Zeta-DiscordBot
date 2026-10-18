@@ -3,7 +3,9 @@ from zeta_bot.resource import DownloadType
 
 
 class Audio:
-    def __init__(self, title: str, uid: str, source: str, source_id: str, download_type: DownloadType, path: str, duration: int) -> None:
+    def __init__(self, title: str, uid: str, source: str, source_id: str, download_type: DownloadType,
+                 path: str, duration: int, stream: bool = False, stream_origin: str = None,
+                 stream_data: dict = None) -> None:
         self._title = title
         self._uid = uid
         self._source = source
@@ -14,6 +16,9 @@ class Audio:
         self._duration_str = utils.convert_duration_to_str(duration)
         self._cover_path = None
         self._cover_url = None
+        self._stream = bool(stream)
+        self._stream_origin = stream_origin
+        self._stream_data = stream_data or {}
 
     def __str__(self) -> str:
         return f"{self._title} [{self._duration_str}]"
@@ -45,6 +50,34 @@ class Audio:
     def get_duration_str(self) -> str:
         return self._duration_str
 
+    def is_stream(self) -> bool:
+        return self._stream
+
+    def get_stream_origin(self) -> str:
+        return self._stream_origin
+
+    def get_stream_data(self) -> dict:
+        return self._stream_data
+
+    def set_stream_data(self, stream_data: dict) -> None:
+        self._stream_data = stream_data or {}
+
+    def replace_with_local(self, local_audio: "Audio") -> None:
+        """流式失败回退下载后，让队列中原对象指向已下载文件。"""
+        self._title = local_audio.get_title()
+        self._uid = local_audio.get_uid()
+        self._source = local_audio.get_source()
+        self._source_id = local_audio.get_source_id()
+        self._download_type = local_audio.get_download_type()
+        self._path = local_audio.get_path()
+        self._duration = local_audio.get_duration()
+        self._duration_str = local_audio.get_duration_str()
+        self._cover_path = local_audio.get_cover_path()
+        self._cover_url = local_audio.get_cover_url()
+        self._stream = False
+        self._stream_origin = None
+        self._stream_data = {}
+
     def get_cover_path(self) -> str:
         return self._cover_path
 
@@ -68,7 +101,10 @@ class Audio:
             "duration": self._duration,
             "duration_str": self._duration_str,
             "cover_path": self._cover_path,
-            "cover_url": self._cover_url
+            "cover_url": self._cover_url,
+            "stream": self._stream,
+            "stream_origin": self._stream_origin,
+            "stream_data": self._stream_data,
         }
 
 
@@ -86,6 +122,9 @@ def audio_decoder(info_dict: dict) -> Audio:
         download_type=download_type,
         path=info_dict["path"],
         duration=info_dict["duration"],
+        stream=info_dict.get("stream", False),
+        stream_origin=info_dict.get("stream_origin"),
+        stream_data=info_dict.get("stream_data"),
     )
 
     if info_dict["cover_path"] is not None:

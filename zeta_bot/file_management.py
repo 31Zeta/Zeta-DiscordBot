@@ -412,6 +412,19 @@ class AudioFileLibrary:
             return exists_audio
 
     @decorator.check_initialized
+    async def _cached_audio_by_uid(self, target_file_uid: str) -> Optional[audio.Audio]:
+        """流式模式无需先请求文件大小；存在完整本地缓存时直接复用。"""
+        if target_file_uid not in self._dl_list:
+            return None
+        exists_audio = self._dl_list.key_get(target_file_uid)
+        if not os.path.isfile(exists_audio.get_path()) or os.path.getsize(exists_audio.get_path()) <= 0:
+            self._dl_list.key_remove(target_file_uid)
+            await self.save()
+            return None
+        await self._append_audio(exists_audio, repeat_file=True)
+        return exists_audio
+
+    @decorator.check_initialized
     async def download_bilibili(self, info_dict, download_type: DownloadType, num_option: int = 0) -> Result:
         if resource_classifier.handler(download_type) is not DownloadHandler.BILIBILI_API_PYTHON:
             raise ValueError(f"错误下载类型：{download_type.name}")
@@ -449,20 +462,28 @@ class AudioFileLibrary:
             return success_result(result=new_audio)
 
     @decorator.check_initialized
-    async def download_ytdlp(self, url, info_dict, download_type: DownloadType) -> Result:
+    async def download_ytdlp(self, url, info_dict, download_type: DownloadType,
+                             force_download: bool = False) -> Result:
         if resource_classifier.handler(download_type) is not DownloadHandler.YT_DLP:
             raise ValueError(f"错误下载类型：{download_type.name}")
 
         video_id = info_dict["id"]
+        uid = ytdlp.construct_uid(video_id=video_id, download_type=download_type)
+
+        exists_audio = await self._cached_audio_by_uid(uid)
+        if exists_audio is not None:
+            return success_result(result=exists_audio, message="获取已存在的本地缓存成功")
+
+        if not force_download:
+            return success_result(
+                result=ytdlp.create_stream_audio(url, info_dict, download_type),
+                message="已创建流式音频",
+            )
 
         target_filesize_result = await ytdlp.get_filesize(info_dict)
         target_filesize = target_filesize_result.result
         if target_filesize is None:
             return failed_result(exception=target_filesize_result.exception, message=f"{target_filesize_result.message}", retryable=target_filesize_result.retryable)
-
-        exists_audio = await self._download_file_exist_check(ytdlp.construct_uid(video_id=video_id, download_type=download_type), target_filesize)
-        if exists_audio is not None:
-            return success_result(result=exists_audio, message="音频已在库中，获取已存在文件成功")
 
         try:
             await self._download_space_check(target_filesize)
@@ -478,18 +499,26 @@ class AudioFileLibrary:
             return success_result(result=new_audio)
 
     @decorator.check_initialized
-    async def download_go_music(self, info_dict: dict, download_type: DownloadType) -> Result:
+    async def download_go_music(self, info_dict: dict, download_type: DownloadType,
+                                force_download: bool = False) -> Result:
         if resource_classifier.handler(download_type) is not DownloadHandler.GO_MUSIC_API:
             raise ValueError(f"错误下载类型：{download_type.name}")
+
+        uid = go_music.get_music_uid(info_dict)
+        exists_audio = await self._cached_audio_by_uid(uid)
+        if exists_audio is not None:
+            return success_result(result=exists_audio, message="获取已存在的本地缓存成功")
+
+        if not force_download:
+            return success_result(
+                result=go_music.create_stream_audio(info_dict, download_type),
+                message="已创建流式音频",
+            )
 
         target_filesize_result = await go_music.get_filesize(api_url=self.get_go_music_api_url(), info_dict=info_dict)
         target_filesize = target_filesize_result.result
         if target_filesize is None:
             return failed_result(exception=target_filesize_result.exception, message=f"{target_filesize_result.message}", retryable=target_filesize_result.retryable)
-
-        exists_audio = await self._download_file_exist_check(go_music.get_music_uid(info_dict), target_filesize)
-        if exists_audio is not None:
-            return success_result(result=exists_audio, message="音频已在库中，获取已存在文件成功")
 
         try:
             await self._download_space_check(target_filesize)

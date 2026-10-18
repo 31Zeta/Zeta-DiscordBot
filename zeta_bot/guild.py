@@ -294,6 +294,19 @@ class GuildPlaylist(playlist.Playlist):
         else:
             return False
 
+    def replace_audio(self, index: int, new_audio: audio.Audio) -> bool:
+        """保留队列位置，将流式项目替换为下载回退得到的本地音频。"""
+        old_audio = self.get_audio(index)
+        if old_audio is None:
+            return False
+        self._file_library.unlock_audio(str(self._guild.get_id()), old_audio)
+        self._duration -= old_audio.get_duration()
+        self._playlist[index] = new_audio
+        self._duration += new_audio.get_duration()
+        self._file_library.lock_audio(str(self._guild.get_id()), new_audio)
+        self._guild.save()
+        return True
+
     def remove_audio(self, index) -> None:
         """
         将一个音频移出播放列表

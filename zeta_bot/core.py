@@ -7,6 +7,8 @@ import httpx
 import requests
 import platform
 import random
+import shlex
+import time
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -1295,7 +1297,136 @@ async def play_callback(ctx: discord.ApplicationContext, link, response: Union[d
     await current_guild.refresh_list_view()
 
 
-async def play_audio(ctx: discord.ApplicationContext, target_audio: audio.Audio, response: Union[discord.Interaction, discord.InteractionMessage, None] = None, function_call: bool = False) -> None:
+def _ffmpeg_stream_before_options(headers: Optional[dict] = None) -> str:
+    """构造FFmpeg网络流参数，只转发不含凭据的必要请求头。"""
+    arguments = [
+        "-nostdin",
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_delay_max", "5",
+        "-rw_timeout", "15000000",
+    ]
+    allowed_headers = {"user-agent", "referer", "origin", "accept", "accept-language"}
+    safe_headers = []
+    for key, value in (headers or {}).items():
+        key = str(key).strip()
+        value = str(value).replace("\r", "").replace("\n", "").strip()
+        if key.lower() in allowed_headers and value:
+            safe_headers.append(f"{key}: {value}")
+    if safe_headers:
+        arguments.extend(("-headers", "\r\n".join(safe_headers) + "\r\n"))
+    return shlex.join(arguments)
+
+
+async def _resolve_stream_source(target_audio: audio.Audio) -> Tuple[str, str]:
+    """把可持久化的流式Audio解析为当前有效的临时播放地址。"""
+    handler = resource_classifier.handler(target_audio.get_download_type())
+    if handler is DownloadHandler.YT_DLP:
+        stream_data = target_audio.get_stream_data()
+        info_dict = stream_data.get("info")
+        resolved_at = float(stream_data.get("resolved_at") or 0)
+        # 刚完成搜索/解析时直接使用已有签名地址；排队较久后再刷新，避免链接过期。
+        if not info_dict or not info_dict.get("url") or time.time() - resolved_at > 120:
+            info_result = await result_check(await ytdlp.get_info(target_audio.get_stream_origin()))
+            if not info_result or info_result.result is None:
+                raise RuntimeError(info_result.message or "无法刷新媒体流地址")
+            info_dict = info_result.result
+        if info_dict.get("_type") == "playlist":
+            raise RuntimeError("流式播放只支持已选定的单个音频")
+        target_audio.set_stream_data({
+            "info": ytdlp.compact_stream_info(info_dict),
+            "resolved_at": time.time(),
+        })
+        candidates = ytdlp.bilibili_audio_url_candidates(info_dict, target_audio.get_stream_origin())
+        source = candidates[0] if candidates else info_dict.get("url")
+        if not source:
+            raise RuntimeError("媒体没有返回可播放的音频地址")
+        return source, _ffmpeg_stream_before_options(info_dict.get("http_headers"))
+
+    if handler is DownloadHandler.GO_MUSIC_API:
+        info_dict = target_audio.get_stream_data()
+        if not info_dict:
+            raise RuntimeError("缺少音乐流信息")
+        source = await go_music.get_stream_url(go_music_url, info_dict)
+        return source, _ffmpeg_stream_before_options()
+
+    raise RuntimeError(f"{target_audio.get_download_type().label}不支持流式播放")
+
+
+async def _download_stream_fallback(target_audio: audio.Audio) -> Result:
+    """流式地址失效时，沿用原下载器下载完整文件作为兼容回退。"""
+    handler = resource_classifier.handler(target_audio.get_download_type())
+    if handler is DownloadHandler.YT_DLP:
+        info_result = await ytdlp.get_info(target_audio.get_stream_origin())
+        info_dict = info_result.result if info_result else None
+        if info_dict is None:
+            info_dict = target_audio.get_stream_data().get("info")
+        if not info_dict:
+            return failed_result(
+                exception=info_result.exception,
+                message=info_result.message or "无法获取下载信息",
+                retryable=False,
+            )
+        return await audio_lib_main.download_ytdlp(
+            target_audio.get_stream_origin(), info_dict,
+            target_audio.get_download_type(), force_download=True,
+        )
+
+    if handler is DownloadHandler.GO_MUSIC_API:
+        return await audio_lib_main.download_go_music(
+            target_audio.get_stream_data(), target_audio.get_download_type(),
+            force_download=True,
+        )
+
+    return failed_result(exception=None, message="该来源不支持下载回退", retryable=False)
+
+
+def _replace_stream_with_local(ctx: discord.ApplicationContext, target_audio: audio.Audio,
+                               local_audio: audio.Audio) -> audio.Audio:
+    """替换队列中的流式占位对象；尚未入队时则原地更新。"""
+    current_playlist = guild_lib.get_guild(ctx).get_playlist()
+    if len(current_playlist) > 0 and current_playlist.get_audio(0) is target_audio:
+        current_playlist.replace_audio(0, local_audio)
+        return local_audio
+    target_audio.replace_with_local(local_audio)
+    return target_audio
+
+
+async def _fallback_and_replay(ctx: discord.ApplicationContext, target_audio: audio.Audio,
+                               response=None, function_call: bool = False,
+                               unlock_now_playing: bool = False) -> bool:
+    """下载流式播放失败的单曲并立即从本地文件重新播放。"""
+    if unlock_now_playing:
+        audio_lib_main.unlock_audio(f"{ctx.guild.id}_NOW_PLAYING", target_audio)
+    await console.rp(
+        f"流式播放失败，开始下载回退：{target_audio.get_title()}",
+        ctx.guild, message_type=utils.PrintType.WARNING, print_head=True,
+    )
+    download_result = await result_check(await _download_stream_fallback(target_audio))
+    if not download_result or download_result.result is None:
+        await console.rp(
+            f"流式与下载均失败：{target_audio.get_title()} - {download_result.message}",
+            ctx.guild, message_type=utils.PrintType.ERROR, print_head=True,
+        )
+        return False
+    replacement = _replace_stream_with_local(ctx, target_audio, download_result.result)
+    await play_audio(
+        ctx, replacement, response=response, function_call=function_call,
+        allow_stream_fallback=False,
+    )
+    return True
+
+
+async def _handle_playback_after(ctx: discord.ApplicationContext, target_audio: audio.Audio,
+                                 returncode: Optional[int]) -> None:
+    """区分正常结束、主动停止和FFmpeg网络流故障。"""
+    if target_audio.is_stream() and returncode not in (None, 0):
+        if await _fallback_and_replay(ctx, target_audio, unlock_now_playing=True):
+            return
+    await play_next(ctx)
+
+
+async def play_audio(ctx: discord.ApplicationContext, target_audio: audio.Audio, response: Union[discord.Interaction, discord.InteractionMessage, None] = None, function_call: bool = False, allow_stream_fallback: bool = True) -> None:
     """
     在<ctx>中的音频端播放音频<target_audio>，如果<single>为True则发送单曲加入成功通知
     <response>为用来编辑的加载信息，如果为None则发送新的通知
@@ -1307,19 +1438,49 @@ async def play_audio(ctx: discord.ApplicationContext, target_audio: audio.Audio,
     """
     voice_client = ctx.guild.voice_client
     current_guild = guild_lib.get_guild(ctx)
-    audio_lib_main.lock_audio(f"{ctx.guild.id}_NOW_PLAYING", target_audio)
+    source = target_audio.get_path()
+    before_options = None
+    if target_audio.is_stream():
+        try:
+            source, before_options = await _resolve_stream_source(target_audio)
+        except Exception as exception:
+            await console.on_error(exception)
+            if allow_stream_fallback and await _fallback_and_replay(
+                    ctx, target_audio, response=response, function_call=function_call):
+                return
+            raise
 
-    voice_client.play(
-        discord.PCMVolumeTransformer(
-            discord.FFmpegPCMAudio(
-                executable=ffmpeg_path, source=target_audio.get_path()
+    audio_lib_main.lock_audio(f"{ctx.guild.id}_NOW_PLAYING", target_audio)
+    ffmpeg_source = None
+    try:
+        ffmpeg_source = discord.FFmpegPCMAudio(
+            executable=ffmpeg_path,
+            source=source,
+            before_options=before_options,
+            options="-vn" if target_audio.is_stream() else None,
+        )
+
+        def after_playback(_error):
+            process = getattr(ffmpeg_source, "_process", None)
+            returncode = process.poll() if process is not None else None
+            asyncio.run_coroutine_threadsafe(
+                _handle_playback_after(ctx, target_audio, returncode), bot.loop
             )
-        ),
-        after=lambda e: asyncio.run_coroutine_threadsafe(play_next(ctx), bot.loop)
-    )
+
+        voice_client.play(discord.PCMVolumeTransformer(ffmpeg_source), after=after_playback)
+    except Exception as exception:
+        audio_lib_main.unlock_audio(f"{ctx.guild.id}_NOW_PLAYING", target_audio)
+        if ffmpeg_source is not None:
+            ffmpeg_source.cleanup()
+        await console.on_error(exception)
+        if target_audio.is_stream() and allow_stream_fallback and await _fallback_and_replay(
+                ctx, target_audio, response=response, function_call=function_call):
+            return
+        raise
     voice_client.source.volume = current_guild.get_voice_volume() / 100.0
 
-    await console.rp(f"开始播放：{target_audio.get_path()} 时长：{target_audio.get_duration_str()}", ctx.guild)
+    play_mode = "流式播放" if target_audio.is_stream() else "播放"
+    await console.rp(f"开始{play_mode}：{target_audio.get_title()} 时长：{target_audio.get_duration_str()}", ctx.guild)
     playing_icon_filename = "vinyl_loop_playing_animated_infinite_100px.gif"
     if function_call:
         message, embed = await embed_respond(ctx, description=f"**{target_audio.get_title()}**", author_name=f"正在播放\u2003[{target_audio.get_duration_str()}]", author_icon_url=icon.url(playing_icon_filename), thumbnail=target_audio.get_cover_url(), files=icon_lib.files(playing_icon_filename), silent=True)
@@ -1345,15 +1506,25 @@ async def play_next(ctx: discord.ApplicationContext) -> None:
     # 移除上一个音频
     finished_audio = current_playlist.pop_audio(0)
     # 解锁上一个音频
-    audio_lib_main.unlock_audio(f"{ctx.guild.id}_NOW_PLAYING", finished_audio)
+    if finished_audio is not None:
+        audio_lib_main.unlock_audio(f"{ctx.guild.id}_NOW_PLAYING", finished_audio)
 
     # TODO 制作文件丢失处理方法，当前流程为文件丢失会触发播放Invalid argument，直接触发play_next进入下一个音频
-    if len(current_playlist) > 0:
-        # 获取下一个音频
+    while len(current_playlist) > 0:
         next_audio = current_playlist.get_audio(0)
-        await play_audio(ctx, next_audio, response=None)
+        try:
+            await play_audio(ctx, next_audio, response=None)
+        except Exception as exception:
+            await console.on_error(exception)
+            await console.rp(
+                f"跳过无法播放的音频：{next_audio.get_title()}",
+                ctx.guild, message_type=utils.PrintType.ERROR, print_head=True,
+            )
+            current_playlist.pop_audio(0)
+            continue
+        break
 
-    else:
+    if len(current_playlist) == 0:
         await console.rp("播放队列已结束", ctx.guild)
         finished_icon_filename = "record_button_in_reveal_animated_0ms_100px.gif"
         await embed_send(ctx, author_name="播放队列已结束", author_icon_url=icon.url(finished_icon_filename), files=icon_lib.files(finished_icon_filename))
