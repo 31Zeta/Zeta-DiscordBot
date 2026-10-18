@@ -911,13 +911,9 @@ def get_redirect_url(url) -> str:
     }
 
     # 请求网页
-    response = requests.get(url, headers=headers)
-
-    # print(response.status_code)  # 打印响应的状态码
-    # print(response.url)  # 打印重定向后的网址
-
-    # 返回重定向后的网址
-    return str(response.url)
+    with requests.get(url, headers=headers, timeout=(5, 10), stream=True) as response:
+        response.raise_for_status()
+        return str(response.url)
 
 
 def get_bvid_from_url(url):

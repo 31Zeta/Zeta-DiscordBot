@@ -109,17 +109,23 @@ class Guild:
     async def refresh_playing_message(self, new_message, new_embed: Optional[discord.Embed]) -> None:
         playing_message = self._playing_message
         playing_embed = self._playing_embed
+        # 先更新引用，旧消息失效不能让当前歌曲入队或下一首播放中断。
+        self._playing_message = new_message
+        self._playing_embed = new_embed
         if playing_embed is not None and playing_message is not None:
             finished_icon_filename = "check_in_box_in_reveal_animated_0ms_100px.gif"
             playing_embed.set_author(name="播放完成" + playing_embed.author.name[4:], icon_url=icon.url(finished_icon_filename))
 
-            if isinstance(playing_message, discord.Interaction):
-                await playing_message.edit_original_response(content=None, embed=playing_embed, files=icon_lib.files(finished_icon_filename))
-            else:
-                await playing_message.edit(content=None, embed=playing_embed, files=icon_lib.files(finished_icon_filename))
-
-        self._playing_message = new_message
-        self._playing_embed = new_embed
+            try:
+                if isinstance(playing_message, discord.Interaction):
+                    await playing_message.edit_original_response(content=None, embed=playing_embed, files=icon_lib.files(finished_icon_filename))
+                else:
+                    await playing_message.edit(content=None, embed=playing_embed, files=icon_lib.files(finished_icon_filename))
+            except discord.HTTPException as exception:
+                await console.rp(
+                    f"旧播放消息更新失败（HTTP {exception.status}，代码 {exception.code}），继续播放及队列处理",
+                    self._guild,
+                )
 
     def save(self) -> None:
         utils.json_save(self._path, self)

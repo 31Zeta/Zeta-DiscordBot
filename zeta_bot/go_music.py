@@ -830,11 +830,13 @@ async def get_info(api_url: str, music_url: str, sources: Optional[str] = None) 
     return result
 
 
-async def get_filesize(api_url: str, info_dict: dict) -> Result:
+async def get_filesize(api_url: str, info_dict: dict, timeout_seconds: float = 10) -> Result:
     """按info_dict中的source同步本地Cookie后探测大小，source为None时跳过同步。"""
     request_url = f"{api_url_format(api_url)}/api/v1/music/stream"
     try:
-        timeout = aiohttp.ClientTimeout(total=10, connect=5)
+        # 批量添加默认只等10秒；单曲调用方可适当放宽，兼容网易云偶发的直链生成延迟。
+        timeout_seconds = max(1.0, float(timeout_seconds))
+        timeout = aiohttp.ClientTimeout(total=timeout_seconds, connect=min(5, timeout_seconds))
         async with aiohttp.ClientSession(timeout=timeout) as session:
             await use_local_cookie(api_url, session, info_dict.get("source"))
             async with session.get(request_url, params=build_music_params(info_dict), headers={"Range": "bytes=0-0"}) as response:

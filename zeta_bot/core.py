@@ -36,15 +36,33 @@ from zeta_bot import (
 )
 from zeta_bot.resource import MediaPlatform, LinkType, DownloadHandler, DownloadType, ResourceClassifier
 
+
+def _safe_voice_remove_ssrc(voice_client, *, user_id: int) -> None:
+    """兼容Pycord 2.8.1：未启用语音接收时，成员离开不能访问缺失的reader。"""
+    ssrc = voice_client._id_to_ssrc.pop(user_id, None)
+    if ssrc is None:
+        return
+
+    reader = getattr(voice_client, "_reader", None)
+    speaking_timer = getattr(reader, "speaking_timer", None)
+    if speaking_timer is not None:
+        speaking_timer.drop_ssrc(ssrc)
+    voice_client._ssrc_to_id.pop(ssrc, None)
+
+
+# Pycord原实现只判断ssrc是否存在，却无条件访问_reader.speaking_timer；
+# 播放机器人没有启动语音接收器时，普通成员离开会让voice websocket轮询任务崩溃。
+discord.VoiceClient._remove_ssrc = _safe_voice_remove_ssrc
+
 startup_time = utils.ctime_str()
 
-version = "0.15.1"
+version = "0.15.0"
 author = "炤融 (31Zeta)"
 python_path = sys.executable
 pycord_version = discord.__version__
 bilibili_api_version = BILIBILI_API_VERSION
 yt_dlp_version = yt_dlp_version.__version__
-update_time = "2026.09.14"
+update_time = "2026.08.16"
 
 supported_search_sites = ["哔哩哔哩", "YouTube"]
 
@@ -811,17 +829,29 @@ async def search_audio(ctx: discord.ApplicationContext, query, site) -> None:
     await search_audio_callback(ctx, query, site)
 
 
-@bot.slash_command(name_localizations=lang.get_command_name("play"), description="播放来自哔哩哔哩，Youtube，网易云音乐的音频")
+@bot.slash_command(
+    name_localizations=lang.get_command_name("play"),
+    description="Play audio from a supported link or search text",
+    description_localizations={
+        "zh-CN": "输入支持平台的链接或歌曲名称，自动搜索并播放",
+        "en-US": "Play audio from a supported link or search text",
+    },
+)
 @option(
-    "link",
-    description="要播放的音频（视频）的链接或者哔哩哔哩BV号",
+    "query",
+    description="YouTube、哔哩哔哩、网易云链接，或要搜索的名称",
+    name_localizations={"zh-CN": "搜索或链接", "en-US": "search-or-link"},
+    description_localizations={
+        "zh-CN": "粘贴支持平台的链接、BV号，或直接输入歌曲名称",
+        "en-US": "Paste a supported link/BV ID or enter a song name",
+    },
     required=True
 )
-async def play(ctx: discord.ApplicationContext, link=None) -> None:
+async def play(ctx: discord.ApplicationContext, query=None) -> None:
     await ctx.defer()
     if not await command_check(ctx):
         return
-    await play_callback(ctx, link)
+    await play_callback(ctx, query)
 
 
 @bot.slash_command(name_localizations=lang.get_command_name("pause"), description="暂停正在播放的音频")
@@ -846,22 +876,6 @@ async def list(ctx: discord.ApplicationContext):
     if not await command_check(ctx):
         return
     await list_callback(ctx)
-
-
-playlist_operation = ["create", "add", "remove", "delete"]
-
-@bot.slash_command(name_localizations=lang.get_command_name("playlist"), description="自定播放列表操作")
-@option(
-    "operation",
-    description="要进行的播放列表操作",
-    required=True,
-    choices=playlist_operation
-)
-async def playlist(ctx: discord.ApplicationContext):
-    await ctx.defer()
-    if not await command_check(ctx):
-        return
-    await playlist_callback(ctx)
 
 
 @bot.slash_command(name_localizations=lang.get_command_name("skip"), description="跳过正在播放或播放列表中的音频")
@@ -1005,14 +1019,6 @@ async def volume(ctx: discord.ApplicationContext, volume_number=None) -> None:
     await volume_callback(ctx, volume_number)
 
 
-@bot.slash_command(name_localizations=lang.get_command_name("radio"), description="电台模式")
-async def radio(ctx: discord.ApplicationContext):
-    await ctx.defer()
-    if not await command_check(ctx):
-        return
-    await radio_callback(ctx)
-
-
 @bot.slash_command(name_localizations=lang.get_command_name("reboot"), description="[管理员] 重启机器人")
 async def reboot(ctx):
     await ctx.defer()
@@ -1140,6 +1146,16 @@ async def leave_callback(ctx: discord.ApplicationContext) -> None:
     icon_filename = "logout_hover_pinch_animated_0ms_100px.gif"
 
     if voice_client is not None:
+        # /leave 的含义是让机器人退出。播放中拒绝该命令，避免普通成员或
+        # 发起者误操作导致所有听众断流；需要强制退出时先 /clear 再 /leave。
+        if voice_client.is_playing() or voice_client.is_paused():
+            await embed_respond(
+                ctx,
+                "机器人正在播放，不会离开语音频道。如需强制退出，请先使用 /clear，再使用 /leave。",
+                silent=True,
+            )
+            return
+
         # 防止因退出频道自动删除正在播放的音频
         if len(current_playlist) > 0:
             current_audio = current_playlist.get_audio(0)
@@ -1260,12 +1276,16 @@ async def play_callback(ctx: discord.ApplicationContext, link, response: Union[d
     # 如果是短链，则重定向后继续处理
     if link_type.need_redirect:
         try:
-            formatted_url = utils.get_redirect_url(formatted_url)
-        except requests.exceptions.InvalidSchema:
+            formatted_url = await asyncio.to_thread(utils.get_redirect_url, formatted_url)
+        except requests.exceptions.RequestException:
             await embed_eos(ctx, response, author_name="短链接重定向失败", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
             await console.rp(f"短链接重定向失败", ctx.guild, message_type=utils.PrintType.ERROR, print_head=True)
             return
         else:
+            formatted_url, link_type, handler = resource_classifier.check(formatted_url)
+            if link_type is LinkType.UNKNOWN or link_type.need_redirect:
+                await embed_eos(ctx, response, author_name="短链接未能跳转到可播放页面，请复制歌曲或歌单的完整链接", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
+                return
             await console.rp(f"获取的重定向链接为 {formatted_url}", ctx.guild)
 
     if link_type is not LinkType.UNKNOWN:
@@ -1284,7 +1304,10 @@ async def play_callback(ctx: discord.ApplicationContext, link, response: Union[d
 
         # 交由YT-DLP处理
         elif handler is DownloadHandler.YT_DLP:
-            await play_ytdlp(ctx, formatted_url, response=loading_msg)
+            # yt-dlp 不会把裸 BV 号识别为 URL，交给它之前补成完整链接。
+            if link_type is LinkType.BILIBILI_BVID:
+                formatted_url = f"https://www.bilibili.com/video/{formatted_url}"
+            await play_ytdlp(ctx, formatted_url, response=loading_msg, platform=link_type.platform)
 
         # 链接不由任何处理器处理
         else:
@@ -1375,7 +1398,7 @@ async def _download_stream_fallback(target_audio: audio.Audio) -> Result:
     if handler is DownloadHandler.GO_MUSIC_API:
         return await audio_lib_main.download_go_music(
             target_audio.get_stream_data(), target_audio.get_download_type(),
-            force_download=True,
+            filesize_timeout=20, force_download=True,
         )
 
     return failed_result(exception=None, message="该来源不支持下载回退", retryable=False)
@@ -1653,7 +1676,7 @@ async def play_bilibili(ctx: discord.ApplicationContext, link_type: LinkType, ur
         return
 
 
-async def play_go_music(ctx: discord.ApplicationContext, link_type: LinkType, url, response = None, maximum_retry: int = 4):
+async def play_go_music(ctx: discord.ApplicationContext, link_type: LinkType, url, response = None, maximum_retry: int = 0):
     """
     使用go-music-api下载并播放音频
 
@@ -1694,7 +1717,12 @@ async def play_go_music(ctx: discord.ApplicationContext, link_type: LinkType, ur
         except KeyError as e:
             await embed_eos(ctx, response, author_name="不支持此下载类型", colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
             return
-        new_result = await result_check(await audio_lib_main.download_go_music(info_dict["songs"][0], download_type))
+        # 单曲允许网易云上游有更长的直链生成时间；不叠加多轮重试。
+        new_result = await result_check(
+            await audio_lib_main.download_go_music(
+                info_dict["songs"][0], download_type, filesize_timeout=20
+            )
+        )
         new_audio = new_result.result
 
         if new_audio is not None:
@@ -1726,7 +1754,14 @@ async def play_go_music(ctx: discord.ApplicationContext, link_type: LinkType, ur
 
                         await embed_eos(ctx, response, author_name=f"错误：音频获取失败 " + new_result.message + f"：第 {retry_counter} 次重试中", colour=orange, author_icon_url=icon.url(icon_loading_filename), files=icon_lib.files(icon_loading_filename))
 
-                        new_result = await result_check(await audio_lib_main.download_go_music(info_dict["songs"][0], download_type))
+                        # go-music-api 的临时故障应继续使用原平台与原下载器重试。
+                        # 旧代码误将网易云歌曲字典交给 YT-DLP，既不可能成功，
+                        # 还会额外制造多次“YT-DLP 文件大小获取失败”的误导日志。
+                        new_result = await result_check(
+                            await audio_lib_main.download_go_music(
+                                info_dict["songs"][0], download_type, filesize_timeout=20
+                            )
+                        )
                         new_audio = new_result.result
 
                         # 如果音频加载成功
@@ -1764,7 +1799,7 @@ async def play_go_music(ctx: discord.ApplicationContext, link_type: LinkType, ur
         if info_result.extra["playlist_info_dict"] is not None:
             playlist_info_dict = info_result.extra["playlist_info_dict"]
             playlist_title = playlist_info_dict["playlists"][0]["name"]
-            cover_url = playlist_info_dict["playlists"][0].get("cover")
+            cover_url = playlist_info_dict["playlists"][0]["cover"]
             if link_type.platform is MediaPlatform.BILIBILI:
                 download_type = DownloadType[f"BILIBILI_COLLECTION"]
             else:
@@ -1772,7 +1807,7 @@ async def play_go_music(ctx: discord.ApplicationContext, link_type: LinkType, ur
         elif info_result.extra["album_info_dict"] is not None:
             album_info_dict = info_result.extra["album_info_dict"]
             playlist_title = album_info_dict["albums"][0]["name"]
-            cover_url = album_info_dict["albums"][0].get("cover")
+            cover_url = album_info_dict["playlists"][0]["cover"]
             if link_type.platform is MediaPlatform.BILIBILI:
                 download_type = DownloadType[f"BILIBILI_COLLECTION"]
             else:
@@ -1786,7 +1821,13 @@ async def play_go_music(ctx: discord.ApplicationContext, link_type: LinkType, ur
         await menu.init_eos(response=response, silent=True)
 
 
-async def play_ytdlp(ctx: discord.ApplicationContext, url, response=None, maximum_retry: int = 4) -> None:
+async def play_ytdlp(
+    ctx: discord.ApplicationContext,
+    url,
+    response=None,
+    maximum_retry: int = 4,
+    platform: MediaPlatform = MediaPlatform.YOUTUBE,
+) -> None:
     """
     下载并播放来自YouTube的视频的音频
 
@@ -1804,6 +1845,12 @@ async def play_ytdlp(ctx: discord.ApplicationContext, url, response=None, maximu
     icon_loading_filename = "hourglass_hover_rotation_animated_1000ms_infinite_30px.gif"
     icon_error_filename = "error_cross_hover_pinch_orange_animated_0ms_100px.gif"
 
+    single_download_type = (
+        DownloadType.BILIBILI_SINGLE
+        if platform is MediaPlatform.BILIBILI
+        else DownloadType.YOUTUBE_SINGLE
+    )
+
     # 提取信息
     info_result = await result_check(await ytdlp.get_info(url))
     info_dict = info_result.result
@@ -1812,6 +1859,22 @@ async def play_ytdlp(ctx: discord.ApplicationContext, url, response=None, maximu
         if info_result.retryable:
             warning_description += "，请稍后再试"
         await embed_eos(ctx, response, author_name=warning_description, colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
+        return
+
+    # B站分P目录必须先选集，不能按YouTube播放列表拼接下载链接。
+    if platform is MediaPlatform.BILIBILI and info_dict.get("_type") == "playlist":
+        entries = info_dict["entries"]
+        menu_list = utils.make_playlist_page([
+            (item["title"][:100], utils.convert_duration_to_str(item["duration"])
+             if item.get("duration") is not None else "时长未知")
+            for item in entries
+        ], 10, {None: "> "}, {}, escape_markdown=True)
+        menu = EpisodeSelectMenu(
+            ctx, DownloadType.BILIBILI_P, info_dict, menu_list,
+            f"哔哩哔哩分P视频 · 共 {len(entries)} P", info_dict["title"], timeout=180,
+        )
+        await menu.init_eos(response=response, silent=True)
+        await console.rp(f"检测到B站分P视频：{info_dict['id']}，共 {len(entries)} P，等待用户选择", ctx.guild)
         return
 
     # 带播放列表信息的独立视频
@@ -1837,7 +1900,7 @@ async def play_ytdlp(ctx: discord.ApplicationContext, url, response=None, maximu
             await embed_eos(ctx, response, author_name=warning_description, colour=orange, author_icon_url=icon.url(icon_error_filename), files=icon_lib.files(icon_error_filename), silent=True)
             return
 
-        link_type = DownloadType.YOUTUBE_SINGLE
+        link_type = single_download_type
 
         # 询问是否查看播放列表
         if info_dict_playlist is not None:
@@ -1850,11 +1913,11 @@ async def play_ytdlp(ctx: discord.ApplicationContext, url, response=None, maximu
 
     # 独立视频
     else:
-        link_type = DownloadType.YOUTUBE_SINGLE
+        link_type = single_download_type
 
-    # 独立视频 youtube_single
-    if link_type is DownloadType.YOUTUBE_SINGLE:
-        new_result = await result_check(await audio_lib_main.download_ytdlp(url, info_dict, DownloadType.YOUTUBE_SINGLE))
+    # 独立视频
+    if link_type is single_download_type:
+        new_result = await result_check(await audio_lib_main.download_ytdlp(url, info_dict, single_download_type))
         new_audio = new_result.result
 
         if new_audio is not None:
@@ -1886,7 +1949,7 @@ async def play_ytdlp(ctx: discord.ApplicationContext, url, response=None, maximu
 
                         await embed_eos(ctx, response, author_name=f"错误：音频获取失败 " + new_result.message + f"：第 {retry_counter} 次重试中", colour=orange, author_icon_url=icon.url(icon_loading_filename), files=icon_lib.files(icon_loading_filename))
 
-                        new_result = await result_check(await audio_lib_main.download_ytdlp(url, info_dict, DownloadType.YOUTUBE_SINGLE))
+                        new_result = await result_check(await audio_lib_main.download_ytdlp(url, info_dict, single_download_type))
                         new_audio = new_result.result
 
                         # 如果音频加载成功
@@ -2169,19 +2232,6 @@ async def list_callback(ctx: discord.ApplicationContext):
     # 让先前的View执行被覆盖程序
     if previous_menu is not None:
         await previous_menu.on_override()
-
-
-async def playlist_callback(ctx: discord.ApplicationContext):
-    """
-    进行自定播放列表的相关的操作
-    """
-    await guild_lib.check(ctx, audio_lib_main)
-
-    voice_client = ctx.guild.voice_client
-    current_guild = guild_lib.get_guild(ctx)
-    current_playlist = current_guild.get_playlist()
-
-    await ctx.respond("指令已注册")
 
 
 async def skip_callback(ctx, first_index: Union[int, str, None] = None, second_index: Union[int, None] = None, command_call: bool = False, refresh_view: bool = True):
@@ -2479,19 +2529,6 @@ async def volume_callback(ctx: discord.ApplicationContext, volume_num=None) -> N
                 await embed_respond(ctx, author_name=f"将音量设置为：{current_volume}%", author_icon_url=icon.url(icon_mute_filename), files=icon_lib.files(icon_mute_filename))
             else:
                 await embed_respond(ctx, author_name=f"将音量设置为：{current_volume}%", author_icon_url=icon.url(icon_filename), files=icon_lib.files(icon_filename))
-
-
-async def radio_callback(ctx: discord.ApplicationContext):
-    """
-    电台模式
-    """
-    await guild_lib.check(ctx, audio_lib_main)
-
-    voice_client = ctx.guild.voice_client
-    current_guild = guild_lib.get_guild(ctx)
-    current_playlist = current_guild.get_playlist()
-
-    await ctx.respond("指令已注册")
 
 
 async def reboot_callback(ctx):
@@ -2836,6 +2873,8 @@ class PlaylistMenu(View):
 
 
 class EpisodeSelectMenu(View):
+    MAX_BULK_SELECTION = 10
+
     def __init__(self, ctx, download_type: DownloadType, info_dict, menu_list, list_type=None, list_title=None, cover_url: Optional[str] = None, timeout=60):
         """
         初始化分集选择菜单
@@ -2859,9 +2898,12 @@ class EpisodeSelectMenu(View):
 
         self.list_title = list_title
         self.download_type = download_type
-        self.handler = resource_classifier.handler(download_type)
         self.info_dict = info_dict
         self.menu_list = menu_list
+        self.ytdlp_bilibili_parts = (
+            download_type is DownloadType.BILIBILI_P
+            and resource_classifier.handler(download_type) is DownloadHandler.YT_DLP
+        )
         self.page_num = 0
         self.result = []
         self.dash_finish = True
@@ -2875,6 +2917,8 @@ class EpisodeSelectMenu(View):
 
         # 标记是否已经操作完选择页面
         self.finish = False
+        self.processing = False
+        self.cancel_requested = False
 
         # 封面设置
         self.cover_path = None
@@ -3038,27 +3082,41 @@ class EpisodeSelectMenu(View):
 
     @discord.ui.button(label="全部", style=discord.ButtonStyle.grey, custom_id="button_all", row=1)
     async def button_all_callback(self, button, interaction):
+        if self.finish:
+            await interaction.response.defer()
+            return
         button.disabled = False
-        self.finish = True
         msg = interaction.response
 
         total_num = 0
         final_result = []
-
-        if self.handler is DownloadHandler.GO_MUSIC_API:
+        if self.download_type is DownloadType.BILIBILI_P:
+            total_num = len(self.info_dict["pages"])
+        elif self.download_type is DownloadType.BILIBILI_COLLECTION:
+            total_num = len(self.info_dict["ugc_season"]["sections"][0]["episodes"])
+        elif resource_classifier.handler(self.download_type) is DownloadHandler.GO_MUSIC_API:
             total_num = len(self.info_dict["songs"])
-        elif self.handler is DownloadHandler.BILIBILI_API_PYTHON:
-            if self.download_type is DownloadType.BILIBILI_P:
-                total_num = len(self.info_dict["pages"])
-            elif self.download_type is DownloadType.BILIBILI_COLLECTION:
-                total_num = len(self.info_dict["ugc_season"]["sections"][0]["episodes"])
-        elif self.handler is DownloadHandler.YT_DLP:
+        elif self.download_type is DownloadType.YOUTUBE_PLAYLIST or self.download_type is DownloadType.NETEASE_PLAYLIST:
             total_num = len(self.info_dict["entries"])
+
+        if total_num > self.MAX_BULK_SELECTION:
+            self.refresh_pages()
+            self.embed.add_field(
+                name="一次选择的歌曲过多",
+                value=f"歌单共有 {total_num} 首；为避免长时间阻塞，一次最多添加 {self.MAX_BULK_SELECTION} 首。请用数字、逗号或范围选择。",
+                inline=False,
+            )
+            await msg.edit_message(content=None, embed=self.embed, view=self)
+            return
 
         for num in range(1, total_num + 1):
             final_result.append(num)
 
-        self.clear_items()
+        self.finish = True
+        self.processing = True
+        for item in tuple(self.children):
+            if not isinstance(item, discord.ui.Button) or item.custom_id != "button_cancel":
+                self.remove_item(item)
         self.embed.description = f"已选择全部[{total_num}]首"
         self.embed.timestamp = utils.ctime_datetime()
         await msg.edit_message(content=None, embed=self.embed, view=self)
@@ -3070,17 +3128,16 @@ class EpisodeSelectMenu(View):
         msg = interaction.response
 
         max_num = 1
-
-        if self.handler is DownloadHandler.GO_MUSIC_API:
+        if self.download_type is DownloadType.BILIBILI_P:
+            max_num = len(self.info_dict["pages"])
+        elif self.download_type is DownloadType.BILIBILI_COLLECTION:
+            max_num = len(self.info_dict["ugc_season"]["sections"][0]["episodes"])
+        elif resource_classifier.handler(self.download_type) is DownloadHandler.GO_MUSIC_API:
             max_num = len(self.info_dict["songs"])
-        elif self.handler is DownloadHandler.BILIBILI_API_PYTHON:
-            if self.download_type is DownloadType.BILIBILI_P:
-                max_num = len(self.info_dict["pages"])
-            elif self.download_type is DownloadType.BILIBILI_COLLECTION:
-                max_num = len(self.info_dict["ugc_season"]["sections"][0]["episodes"])
-        elif self.handler is DownloadHandler.YT_DLP:
+        elif self.download_type is DownloadType.YOUTUBE_PLAYLIST:
             max_num = len(self.info_dict["entries"])
-
+        elif self.download_type is DownloadType.NETEASE_PLAYLIST:
+            max_num = len(self.info_dict["entries"])
         if max_num < 1: max_num = 1
         self.result = [str(random.randint(1, max_num))]
 
@@ -3117,8 +3174,14 @@ class EpisodeSelectMenu(View):
     @discord.ui.button(label="取消", style=discord.ButtonStyle.red, custom_id="button_cancel", row=2)
     async def button_cancel_callback(self, button, interaction):
         button.disabled = True
-        self.finish = True
         msg = interaction.response
+        if self.processing:
+            self.cancel_requested = True
+            self.embed.add_field(name="", value="正在停止，将在当前请求结束后终止剩余歌曲。", inline=False)
+            await msg.edit_message(content=None, embed=self.embed, view=self)
+            return
+
+        self.finish = True
         self.clear_items()
         await msg.edit_message(content=f"已取消", view=self)
         await delete_response(self.original_msg)
@@ -3180,11 +3243,16 @@ class EpisodeSelectMenu(View):
     async def button_confirm_callback(self, button, interaction):
         msg = interaction.response
 
+        if self.finish:
+            await msg.defer()
+            return
+
         message = "已选择：第 "
         button.disabled = False
         self.refresh_pages()
 
-        if len(self.result) == 0 or self.result[len(self.result) - 1] == "-":
+        if len(self.result) == 0 or not self.result[-1].isdigit():
+            await msg.edit_message(content=None, embed=self.embed, view=self)
             return
 
         num = ""
@@ -3253,35 +3321,57 @@ class EpisodeSelectMenu(View):
                 final_result.append(int(num))
                 message += f"{int(num)}，"
 
-        if self.handler is DownloadHandler.GO_MUSIC_API:
+        if self.download_type is DownloadType.BILIBILI_P:
+            for num in final_result:
+                if num > len(self.info_dict["pages"]):
+                    self.embed.add_field(name="", value="选择中含有无效分p号", inline=False)
+                    await msg.edit_message(content=None, embed=self.embed, view=self)
+                    return
+        elif self.download_type is DownloadType.BILIBILI_COLLECTION:
+            for num in final_result:
+                if num > len(self.info_dict["ugc_season"]["sections"][0]["episodes"]):
+                    self.embed.add_field(name="", value="选择中含有无效集数", inline=False)
+                    await msg.edit_message(content=None, embed=self.embed, view=self)
+                    return
+        elif resource_classifier.handler(self.download_type) is DownloadHandler.GO_MUSIC_API:
             for num in final_result:
                 if num > len(self.info_dict["songs"]):
                     self.embed.add_field(name="", value="选择中含有无效序号", inline=False)
                     await msg.edit_message(content=None, embed=self.embed, view=self)
                     return
-        elif self.handler is DownloadHandler.BILIBILI_API_PYTHON:
-            if self.download_type is DownloadType.BILIBILI_P:
-                for num in final_result:
-                    if num > len(self.info_dict["pages"]):
-                        self.embed.add_field(name="", value="选择中含有无效分p号", inline=False)
-                        await msg.edit_message(content=None, embed=self.embed, view=self)
-                        return
-            elif self.download_type is DownloadType.BILIBILI_COLLECTION:
-                for num in final_result:
-                    if num > len(self.info_dict["ugc_season"]["sections"][0]["episodes"]):
-                        self.embed.add_field(name="", value="选择中含有无效集数", inline=False)
-                        await msg.edit_message(content=None, embed=self.embed, view=self)
-                        return
-        elif self.handler is DownloadHandler.YT_DLP:
+        elif self.download_type is DownloadType.YOUTUBE_PLAYLIST:
             for num in final_result:
                 if num > len(self.info_dict["entries"]):
                     self.embed.add_field(name="", value="选择中含有无效集数", inline=False)
                     await msg.edit_message(content=None, embed=self.embed, view=self)
                     return
+        elif self.download_type is DownloadType.NETEASE_PLAYLIST:
+            for num in final_result:
+                if num > len(self.info_dict["entries"]):
+                    self.embed.add_field(name="", value="选择中含有无效序号", inline=False)
+                    await msg.edit_message(content=None, embed=self.embed, view=self)
+                    return
+
+        if not final_result:
+            self.embed.add_field(name="请选择分集", value="请输入从1开始的分集编号。", inline=False)
+            await msg.edit_message(content=None, embed=self.embed, view=self)
+            return
+
+        if len(final_result) > self.MAX_BULK_SELECTION:
+            self.embed.add_field(
+                name="一次选择的歌曲过多",
+                value=f"一次最多添加 {self.MAX_BULK_SELECTION} 首，本次选择了 {len(final_result)} 首。",
+                inline=False,
+            )
+            await msg.edit_message(content=None, embed=self.embed, view=self)
+            return
 
         message = message[:-1] + " 首"
         self.finish = True
-        self.clear_items()
+        self.processing = True
+        for item in tuple(self.children):
+            if not isinstance(item, discord.ui.Button) or item.custom_id != "button_cancel":
+                self.remove_item(item)
         self.embed.description = message
         # 删除“已输入：”的输入框
         if len(self.embed.fields) > 0:
@@ -3304,7 +3394,7 @@ class EpisodeSelectMenu(View):
         self.refresh_pages()
         await msg.edit_message(content=None, embed=self.embed, view=self)
 
-    async def play_select(self, final_result, maximum_retry: int = 4):
+    async def play_select(self, final_result, maximum_retry: int = 0):
         voice_client = self.ctx.guild.voice_client
         current_guild = guild_lib.get_guild(self.ctx)
         current_playlist = current_guild.get_playlist()
@@ -3323,73 +3413,59 @@ class EpisodeSelectMenu(View):
         embed_append_description(self.embed, f"正在将 {total_num} 个音频添加入播放列表：")
         await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
-        if self.handler is DownloadHandler.GO_MUSIC_API:
-            # 总时长显示
+        # 原生Bilibili下载器的分P流程；yt-dlp分P使用下面的逐集URL流程。
+        if self.download_type is DownloadType.BILIBILI_P and not self.ytdlp_bilibili_parts:
             counter = 1
-            valid_counter = 0
-            for item in self.info_dict["songs"]:
+            for item in self.info_dict["pages"]:
                 if counter in final_result:
                     total_duration += item["duration"]
-                    valid_counter += 1
                 counter += 1
             total_duration = utils.convert_duration_to_str(total_duration)
             self.embed.set_footer(text=f"总时长 -> [{total_duration}]")
-            await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                      files=icon_lib.files(self.icon_filename))
+            await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
-            # 循环添加
-            for num in final_result:
-                title = self.info_dict['songs'][num - 1]['name']
-
-                # 每个音频单独添加
-                new_result = await result_check(
-                    await audio_lib_main.download_go_music(self.info_dict["songs"][num - 1], self.download_type))
+            for num_p in final_result:
+                new_result = await result_check(await audio_lib_main.download_bilibili(self.info_dict, DownloadType.BILIBILI_P, num_p - 1))
                 new_audio = new_result.result
 
+                # 如果音频加载成功
                 if new_audio is not None:
+
+                    # 如果当前播放列表为空
                     if current_playlist.is_empty() and not voice_client.is_playing():
                         await play_audio(self.ctx, new_audio, response=self.original_msg)
 
-                    # 添加至服务器播放列表
                     current_playlist.append_audio(new_audio)
-                    await console.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表",
-                                     self.ctx.guild)
+                    await console.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表", self.ctx.guild)
 
                     await current_guild.refresh_list_view()
 
-                    embed_append_description(self.embed,
-                                             f"> [{num}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]")
-                    await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                              files=icon_lib.files(self.icon_filename))
+                    embed_append_description(self.embed, f"> [{num_p}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]")
+                    await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
                     success_num += 1
 
                 else:
                     if isinstance(new_result.exception, errors.StorageFull):
-                        embed_append_description(self.embed, f"**机器人当前处理音频过多，无法完成播放列表添加**")
-                        await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                  files=icon_lib.files(self.icon_filename))
+                        embed_append_description(self.embed, f"**机器人当前处理音频过多，请稍后再试**")
+                        await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
                         return
+                    # 如果错误类型可以重试
                     elif new_result.retryable:
-                        # 如果不重试直接发送错误与稍后再试
+                        # 如果不重试则直接发送错误与稍后再试
                         if maximum_retry < 1:
-                            embed_append_description(self.embed,
-                                                     f"**错误：[{num}] {title} 获取失败** " + new_result.message + "，请稍后再试")
-                            await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                      files=icon_lib.files(self.icon_filename))
+                            embed_append_description(self.embed, f"**错误：[{num_p}] 获取失败** " + new_result.message + "，请稍后再试")
+                            await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+
                         # 如果重试
                         else:
                             retry_counter = 0
                             while retry_counter < maximum_retry:
                                 retry_counter += 1
 
-                                embed_replace_description_last_line(self.embed,
-                                                                    f"**错误：[{num}] {title} 获取失败** " + new_result.message + f"：第 {retry_counter} 次重试中")
-                                await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                          files=icon_lib.files(self.icon_filename))
+                                embed_replace_description_last_line(self.embed, f"**错误：[{num_p}] 获取失败** " + new_result.message + f"：第 {retry_counter} 次重试中")
+                                await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
-                                new_result = await result_check(
-                                    await audio_lib_main.download_go_music(self.info_dict["songs"][num - 1],
-                                                                           self.download_type))
+                                new_result = await result_check(await audio_lib_main.download_bilibili(self.info_dict, DownloadType.BILIBILI_P, num_p - 1))
                                 new_audio = new_result.result
 
                                 # 如果音频加载成功
@@ -3400,251 +3476,206 @@ class EpisodeSelectMenu(View):
                                         await play_audio(self.ctx, new_audio, response=self.original_msg)
 
                                     current_playlist.append_audio(new_audio)
-                                    await console.rp(
-                                        f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表",
-                                        self.ctx.guild)
+                                    await console.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表", self.ctx.guild)
 
                                     await current_guild.refresh_list_view()
-                                    embed_replace_description_last_line(self.embed,
-                                                                        f"> [{num}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]")
-                                    await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                              files=icon_lib.files(self.icon_filename))
+
+                                    embed_replace_description_last_line(self.embed, f"> [{num_p}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]")
+                                    await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
                                     success_num += 1
                                     break
 
                             # 如果重试最终没有成功
                             if new_audio is None:
-                                embed_replace_description_last_line(self.embed,
-                                                                    f"**错误：[{num}] {title} 获取失败** " + new_result.message + "，请稍后再试")
-                                await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                          files=icon_lib.files(self.icon_filename))
+                                embed_replace_description_last_line(self.embed, f"**错误：[{num_p}] 获取失败** " + new_result.message + "，请稍后再试")
+                                await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+
+                    else:
+                        embed_append_description(self.embed, f"**错误：[{num_p}] 获取失败** " + new_result.message)
+                        await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+
+        # 如果为Bilibili合集音频
+        elif self.download_type is DownloadType.BILIBILI_COLLECTION:
+            counter = 1
+            for item in self.info_dict["ugc_season"]["sections"][0]["episodes"]:
+                if counter in final_result:
+                    total_duration += item["arc"]["duration"]
+                counter += 1
+            total_duration = utils.convert_duration_to_str(total_duration)
+            self.embed.set_footer(text=f"总时长 -> [{total_duration}]")
+            await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+
+            for num in final_result:
+                title = self.info_dict["ugc_season"]["sections"][0]["episodes"][num - 1]["title"]
+                new_result = await result_check(await audio_lib_main.download_bilibili(self.info_dict, DownloadType.BILIBILI_COLLECTION, num_option=num - 1))
+                new_audio = new_result.result
+
+                # 如果音频加载成功
+                if new_audio is not None:
+
+                    # 如果当前播放列表为空
+                    if current_playlist.is_empty() and not voice_client.is_playing():
+                        await play_audio(self.ctx, new_audio, response=self.original_msg)
+
+                    current_playlist.append_audio(new_audio)
+                    await console.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表", self.ctx.guild)
+
+                    await current_guild.refresh_list_view()
+
+                    embed_append_description(self.embed, f"> [{num}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]")
+                    await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+                    success_num += 1
+
+                else:
+                    if isinstance(new_result.exception, errors.StorageFull):
+                        embed_append_description(self.embed, f"**机器人当前处理音频过多，请稍后再试**")
+                        await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+                        return
+                    # 如果错误类型可以重试
+                    elif new_result.retryable:
+                        # 如果不重试直接发送错误与稍后再试
+                        if maximum_retry < 1:
+                            embed_append_description(self.embed, f"**错误：[{num}] {title} 获取失败** " + new_result.message + "，请稍后再试")
+                            await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+
+                        # 如果重试
+                        else:
+                            retry_counter = 0
+                            while retry_counter < maximum_retry:
+                                retry_counter += 1
+
+                                embed_replace_description_last_line(self.embed, f"**错误：[{num}] {title} 获取失败** " + new_result.message + f"：第 {retry_counter} 次重试中")
+                                await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+
+                                new_result = await result_check(await audio_lib_main.download_bilibili(self.info_dict, DownloadType.BILIBILI_COLLECTION, num_option=num - 1))
+                                new_audio = new_result.result
+
+                                # 如果音频加载成功
+                                if new_audio is not None:
+
+                                    # 如果当前播放列表为空
+                                    if current_playlist.is_empty() and not voice_client.is_playing():
+                                        await play_audio(self.ctx, new_audio, response=self.original_msg)
+
+                                    current_playlist.append_audio(new_audio)
+                                    await console.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表", self.ctx.guild)
+
+                                    await current_guild.refresh_list_view()
+
+                                    embed_replace_description_last_line(self.embed, f"> [{num}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]")
+                                    await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+                                    success_num += 1
+                                    break
+
+                            # 如果最终最终没有成功
+                            if new_audio is None:
+                                embed_replace_description_last_line(self.embed, f"**错误：[{num}] {title} 获取失败** " + new_result.message + "，请稍后再试")
+                                await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
                     else:
                         embed_append_description(self.embed, f"**错误：[{num}] {title} 获取失败** " + new_result.message)
-                        await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                  files=icon_lib.files(self.icon_filename))
+                        await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
-        elif self.handler is DownloadHandler.BILIBILI_API_PYTHON:
-            # 如果为Bilibili分p音频
-            if self.download_type is DownloadType.BILIBILI_P:
-                counter = 1
-                for item in self.info_dict["pages"]:
-                    if counter in final_result:
-                        total_duration += item["duration"]
-                    counter += 1
-                total_duration = utils.convert_duration_to_str(total_duration)
-                self.embed.set_footer(text=f"总时长 -> [{total_duration}]")
-                await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                          files=icon_lib.files(self.icon_filename))
+        elif resource_classifier.handler(self.download_type) is DownloadHandler.GO_MUSIC_API:
+            # 总时长显示
+            counter = 1
+            valid_counter = 0
+            for item in self.info_dict["songs"]:
+                if counter in final_result:
+                    total_duration += item["duration"]
+                    valid_counter += 1
+                counter += 1
+            total_duration = utils.convert_duration_to_str(total_duration)
+            self.embed.set_footer(text=f"总时长 -> [{total_duration}]")
+            await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
-                for num_p in final_result:
-                    new_result = await result_check(
-                        await audio_lib_main.download_bilibili(self.info_dict, DownloadType.BILIBILI_P, num_p - 1))
-                    new_audio = new_result.result
+            # 循环添加
+            for num in final_result:
+                if self.cancel_requested:
+                    break
+                title = self.info_dict['songs'][num - 1]['name']
 
-                    # 如果音频加载成功
-                    if new_audio is not None:
+                # 每个音频单独添加
+                new_result = await result_check(await audio_lib_main.download_go_music(self.info_dict["songs"][num - 1], self.download_type))
+                new_audio = new_result.result
 
-                        # 如果当前播放列表为空
-                        if current_playlist.is_empty() and not voice_client.is_playing():
-                            await play_audio(self.ctx, new_audio, response=self.original_msg)
+                if new_audio is not None:
+                    if current_playlist.is_empty() and not voice_client.is_playing():
+                        await play_audio(self.ctx, new_audio, response=self.original_msg)
 
-                        current_playlist.append_audio(new_audio)
-                        await console.rp(
-                            f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表",
-                            self.ctx.guild)
+                    # 添加至服务器播放列表
+                    current_playlist.append_audio(new_audio)
+                    await console.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表", self.ctx.guild)
 
-                        await current_guild.refresh_list_view()
+                    await current_guild.refresh_list_view()
 
-                        embed_append_description(self.embed,
-                                                 f"> [{num_p}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]")
-                        await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                  files=icon_lib.files(self.icon_filename))
-                        success_num += 1
+                    embed_append_description(self.embed, f"> [{num}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]")
+                    await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+                    success_num += 1
+
+                else:
+                    if isinstance(new_result.exception, errors.StorageFull):
+                        embed_append_description(self.embed, f"**机器人当前处理音频过多，无法完成播放列表添加**")
+                        await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+                        return
+                    elif new_result.retryable:
+                        # 如果不重试直接发送错误与稍后再试
+                        if maximum_retry < 1:
+                            embed_append_description(self.embed, f"**错误：[{num}] {title} 获取失败** " + new_result.message + "，请稍后再试")
+                            await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+                        # 如果重试
+                        else:
+                            retry_counter = 0
+                            while retry_counter < maximum_retry:
+                                retry_counter += 1
+
+                                embed_replace_description_last_line(self.embed, f"**错误：[{num}] {title} 获取失败** " + new_result.message + f"：第 {retry_counter} 次重试中")
+                                await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+
+                                new_result = await result_check(await audio_lib_main.download_go_music(self.info_dict["songs"][num - 1], self.download_type))
+                                new_audio = new_result.result
+
+                                # 如果音频加载成功
+                                if new_audio is not None:
+
+                                    # 如果当前播放列表为空
+                                    if current_playlist.is_empty() and not voice_client.is_playing():
+                                        await play_audio(self.ctx, new_audio, response=self.original_msg)
+
+                                    current_playlist.append_audio(new_audio)
+                                    await console.rp(f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表", self.ctx.guild)
+
+                                    await current_guild.refresh_list_view()
+                                    embed_replace_description_last_line(self.embed, f"> [{num}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]")
+                                    await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+                                    success_num += 1
+                                    break
+
+                            # 如果重试最终没有成功
+                            if new_audio is None:
+                                embed_replace_description_last_line(self.embed, f"**错误：[{num}] {title} 获取失败** " + new_result.message + "，请稍后再试")
+                                await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
                     else:
-                        if isinstance(new_result.exception, errors.StorageFull):
-                            embed_append_description(self.embed, f"**机器人当前处理音频过多，请稍后再试**")
-                            await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                      files=icon_lib.files(self.icon_filename))
-                            return
-                        # 如果错误类型可以重试
-                        elif new_result.retryable:
-                            # 如果不重试则直接发送错误与稍后再试
-                            if maximum_retry < 1:
-                                embed_append_description(self.embed,
-                                                         f"**错误：[{num_p}] 获取失败** " + new_result.message + "，请稍后再试")
-                                await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                          files=icon_lib.files(self.icon_filename))
+                        embed_append_description(self.embed, f"**错误：[{num}] {title} 获取失败** " + new_result.message)
+                        await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
-                            # 如果重试
-                            else:
-                                retry_counter = 0
-                                while retry_counter < maximum_retry:
-                                    retry_counter += 1
+        # yt-dlp播放列表及B站分P；只解析用户实际选中的分集。
+        elif self.download_type in (DownloadType.YOUTUBE_PLAYLIST, DownloadType.NETEASE_PLAYLIST) or self.ytdlp_bilibili_parts:
+            if self.download_type is DownloadType.YOUTUBE_PLAYLIST or self.ytdlp_bilibili_parts:
 
-                                    embed_replace_description_last_line(self.embed,
-                                                                        f"**错误：[{num_p}] 获取失败** " + new_result.message + f"：第 {retry_counter} 次重试中")
-                                    await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                              files=icon_lib.files(self.icon_filename))
-
-                                    new_result = await result_check(
-                                        await audio_lib_main.download_bilibili(self.info_dict, DownloadType.BILIBILI_P,
-                                                                               num_p - 1))
-                                    new_audio = new_result.result
-
-                                    # 如果音频加载成功
-                                    if new_audio is not None:
-
-                                        # 如果当前播放列表为空
-                                        if current_playlist.is_empty() and not voice_client.is_playing():
-                                            await play_audio(self.ctx, new_audio, response=self.original_msg)
-
-                                        current_playlist.append_audio(new_audio)
-                                        await console.rp(
-                                            f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表",
-                                            self.ctx.guild)
-
-                                        await current_guild.refresh_list_view()
-
-                                        embed_replace_description_last_line(self.embed,
-                                                                            f"> [{num_p}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]")
-                                        await eos(self.ctx, self.original_msg, content=None, embed=self.embed,
-                                                  view=self, files=icon_lib.files(self.icon_filename))
-                                        success_num += 1
-                                        break
-
-                                # 如果重试最终没有成功
-                                if new_audio is None:
-                                    embed_replace_description_last_line(self.embed,
-                                                                        f"**错误：[{num_p}] 获取失败** " + new_result.message + "，请稍后再试")
-                                    await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                              files=icon_lib.files(self.icon_filename))
-
-                        else:
-                            embed_append_description(self.embed, f"**错误：[{num_p}] 获取失败** " + new_result.message)
-                            await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                      files=icon_lib.files(self.icon_filename))
-
-            # 如果为Bilibili合集音频
-            elif self.download_type is DownloadType.BILIBILI_COLLECTION:
-                counter = 1
-                for item in self.info_dict["ugc_season"]["sections"][0]["episodes"]:
-                    if counter in final_result:
-                        total_duration += item["arc"]["duration"]
-                    counter += 1
-                total_duration = utils.convert_duration_to_str(total_duration)
-                self.embed.set_footer(text=f"总时长 -> [{total_duration}]")
-                await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                          files=icon_lib.files(self.icon_filename))
-
-                for num in final_result:
-                    title = self.info_dict["ugc_season"]["sections"][0]["episodes"][num - 1]["title"]
-                    new_result = await result_check(
-                        await audio_lib_main.download_bilibili(self.info_dict, DownloadType.BILIBILI_COLLECTION,
-                                                               num_option=num - 1))
-                    new_audio = new_result.result
-
-                    # 如果音频加载成功
-                    if new_audio is not None:
-
-                        # 如果当前播放列表为空
-                        if current_playlist.is_empty() and not voice_client.is_playing():
-                            await play_audio(self.ctx, new_audio, response=self.original_msg)
-
-                        current_playlist.append_audio(new_audio)
-                        await console.rp(
-                            f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表",
-                            self.ctx.guild)
-
-                        await current_guild.refresh_list_view()
-
-                        embed_append_description(self.embed,
-                                                 f"> [{num}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]")
-                        await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                  files=icon_lib.files(self.icon_filename))
-                        success_num += 1
-
-                    else:
-                        if isinstance(new_result.exception, errors.StorageFull):
-                            embed_append_description(self.embed, f"**机器人当前处理音频过多，请稍后再试**")
-                            await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                      files=icon_lib.files(self.icon_filename))
-                            return
-                        # 如果错误类型可以重试
-                        elif new_result.retryable:
-                            # 如果不重试直接发送错误与稍后再试
-                            if maximum_retry < 1:
-                                embed_append_description(self.embed,
-                                                         f"**错误：[{num}] {title} 获取失败** " + new_result.message + "，请稍后再试")
-                                await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                          files=icon_lib.files(self.icon_filename))
-
-                            # 如果重试
-                            else:
-                                retry_counter = 0
-                                while retry_counter < maximum_retry:
-                                    retry_counter += 1
-
-                                    embed_replace_description_last_line(self.embed,
-                                                                        f"**错误：[{num}] {title} 获取失败** " + new_result.message + f"：第 {retry_counter} 次重试中")
-                                    await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                              files=icon_lib.files(self.icon_filename))
-
-                                    new_result = await result_check(
-                                        await audio_lib_main.download_bilibili(self.info_dict,
-                                                                               DownloadType.BILIBILI_COLLECTION,
-                                                                               num_option=num - 1))
-                                    new_audio = new_result.result
-
-                                    # 如果音频加载成功
-                                    if new_audio is not None:
-
-                                        # 如果当前播放列表为空
-                                        if current_playlist.is_empty() and not voice_client.is_playing():
-                                            await play_audio(self.ctx, new_audio, response=self.original_msg)
-
-                                        current_playlist.append_audio(new_audio)
-                                        await console.rp(
-                                            f"音频 {new_audio.get_title()} [{new_audio.get_duration_str()}] 已加入播放列表",
-                                            self.ctx.guild)
-
-                                        await current_guild.refresh_list_view()
-
-                                        embed_replace_description_last_line(self.embed,
-                                                                            f"> [{num}] **{new_audio.get_title()}** [{new_audio.get_duration_str()}]")
-                                        await eos(self.ctx, self.original_msg, content=None, embed=self.embed,
-                                                  view=self, files=icon_lib.files(self.icon_filename))
-                                        success_num += 1
-                                        break
-
-                                # 如果最终最终没有成功
-                                if new_audio is None:
-                                    embed_replace_description_last_line(self.embed,
-                                                                        f"**错误：[{num}] {title} 获取失败** " + new_result.message + "，请稍后再试")
-                                    await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                              files=icon_lib.files(self.icon_filename))
-
-                        else:
-                            embed_append_description(self.embed,
-                                                     f"**错误：[{num}] {title} 获取失败** " + new_result.message)
-                            await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self,
-                                      files=icon_lib.files(self.icon_filename))
-
-        elif self.handler is DownloadHandler.YT_DLP:
-            if self.download_type is DownloadType.YOUTUBE_PLAYLIST:
                 # 总时长显示
                 # 仅限YouTube，yt-dlp下载的网易云播放列表不提供单曲时长信息
                 counter = 1
                 valid_counter = 0
                 for item in self.info_dict["entries"]:
                     # item["duration"] is not None 检测如果列表中含有已被删除的视频
-                    if counter in final_result and item["duration"] is not None:
+                    if counter in final_result and item.get("duration") is not None:
                         total_duration += item["duration"]
                         valid_counter += 1
                     counter += 1
                 total_duration = utils.convert_duration_to_str(total_duration)
-                self.embed.set_footer(text=f"总时长 -> [{total_duration}]")
+                self.embed.set_footer(text=f"已知总时长 -> [{total_duration}]")
                 await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
             else:
@@ -3652,9 +3683,13 @@ class EpisodeSelectMenu(View):
 
             # 循环添加
             for num in final_result:
+                if self.cancel_requested:
+                    break
                 title = self.info_dict['entries'][num - 1]['title']
 
-                if self.download_type is DownloadType.YOUTUBE_PLAYLIST:
+                if self.ytdlp_bilibili_parts:
+                    url = self.info_dict['entries'][num - 1]['url']
+                elif self.download_type is DownloadType.YOUTUBE_PLAYLIST:
                     # 跳过已被删除或失效的视频
                     if self.info_dict['entries'][num - 1]['duration'] is None:
                         continue
@@ -3665,6 +3700,7 @@ class EpisodeSelectMenu(View):
                     return
 
                 # 单独提取信息
+                await console.rp(f"准备获取分集 [{num}] {title}：{url}", self.ctx.guild)
                 current_info_result = await result_check(await ytdlp.get_info(url))
                 current_info_dict = current_info_result.result
                 if current_info_dict is None:
@@ -3673,6 +3709,13 @@ class EpisodeSelectMenu(View):
                         warning_description += "，请稍后再试"
                     embed_append_description(self.embed, warning_description)
                     await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+                    continue
+
+                if self.cancel_requested:
+                    break
+                if current_info_dict.get("_type") == "playlist":
+                    embed_append_description(self.embed, f"**[{num}] 获取失败：未能解析为单个分集，请使用带 ?p=数字 的链接。**")
+                    await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self)
                     continue
 
                 # 每个音频单独添加
@@ -3751,7 +3794,13 @@ class EpisodeSelectMenu(View):
             else:
                 self.embed.description = None
 
-        if success_num == 0:
+        if self.cancel_requested:
+            self.icon_filename = icon_failed_filename
+            self.embed.set_author(name=f"{self.list_type}：已停止", icon_url=icon.url(self.icon_filename))
+            self.embed.add_field(name="", value=f"已停止批量添加；成功加入 {success_num} 首，剩余歌曲未处理。", inline=False)
+            self.embed.timestamp = utils.ctime_datetime()
+            await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
+        elif success_num == 0:
             self.icon_filename = icon_failed_filename
             self.embed.set_author(name=f"{self.list_type}：添加失败", icon_url=icon.url(self.icon_filename))
             self.embed.add_field(name="", value="添加失败", inline=False)
@@ -3764,7 +3813,15 @@ class EpisodeSelectMenu(View):
             self.embed.timestamp = utils.ctime_datetime()
             await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
 
+        self.processing = False
+        self.clear_items()
+        self.stop()
+        await eos(self.ctx, self.original_msg, content=None, embed=self.embed, view=self)
+
     async def on_timeout(self):
+        if self.processing:
+            self.cancel_requested = True
+            return
         self.clear_items()
         if self.finish:
             await self.original_msg.edit(embed=self.embed, view=self, files=icon_lib.files(self.icon_filename))
@@ -3913,10 +3970,15 @@ class SearchedAudioSelectionMenu(View):
         await self.set_original_msg(original_msg)
 
     async def play(self, index: int, msg):
+        if self.finish:
+            await msg.defer()
+            return
         selected_item = self.resource_list[index]
         link = selected_item["id"]
         self.finish = True
         self.clear_items()
+        self.stop()
+        await msg.edit_message(view=self)
 
         # self.embed.description = f"已选择：**{selected_item['title']} [{selected_item['duration_str']}]**"
         # await msg.edit_message(content=None, embed=self.embed, view=self)

@@ -462,8 +462,7 @@ class AudioFileLibrary:
             return success_result(result=new_audio)
 
     @decorator.check_initialized
-    async def download_ytdlp(self, url, info_dict, download_type: DownloadType,
-                             force_download: bool = False) -> Result:
+    async def download_ytdlp(self, url, info_dict, download_type: DownloadType, force_download: bool = False) -> Result:
         if resource_classifier.handler(download_type) is not DownloadHandler.YT_DLP:
             raise ValueError(f"错误下载类型：{download_type.name}")
 
@@ -500,7 +499,7 @@ class AudioFileLibrary:
 
     @decorator.check_initialized
     async def download_go_music(self, info_dict: dict, download_type: DownloadType,
-                                force_download: bool = False) -> Result:
+                                filesize_timeout: float = 10, force_download: bool = False) -> Result:
         if resource_classifier.handler(download_type) is not DownloadHandler.GO_MUSIC_API:
             raise ValueError(f"错误下载类型：{download_type.name}")
 
@@ -515,7 +514,11 @@ class AudioFileLibrary:
                 message="已创建流式音频",
             )
 
-        target_filesize_result = await go_music.get_filesize(api_url=self.get_go_music_api_url(), info_dict=info_dict)
+        target_filesize_result = await go_music.get_filesize(
+            api_url=self.get_go_music_api_url(),
+            info_dict=info_dict,
+            timeout_seconds=filesize_timeout,
+        )
         target_filesize = target_filesize_result.result
         if target_filesize is None:
             return failed_result(exception=target_filesize_result.exception, message=f"{target_filesize_result.message}", retryable=target_filesize_result.retryable)

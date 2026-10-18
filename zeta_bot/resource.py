@@ -97,7 +97,7 @@ class LinkType(Enum):
     """
     BILIBILI_URL = ("哔哩哔哩链接", MediaPlatform.BILIBILI, r"bilibili\.com", r"bilibili\.com[^ ]*", "https://", False)
     BILIBILI_SHORT_URL = ("哔哩哔哩短链", MediaPlatform.BILIBILI, r"b23\.tv", r"b23\.tv[^ ]*", "https://", True)
-    BILIBILI_BVID = ("哔哩哔哩BV号", MediaPlatform.BILIBILI, r"BV(\d|[a-zA-Z]){10}", r"BV(\d|[a-zA-Z]){10}", "", False)
+    BILIBILI_BVID = ("哔哩哔哩BV号", MediaPlatform.BILIBILI, r"BV(\d|[a-zA-Z]){10}", r"BV(\d|[a-zA-Z]){10}(?:\?[^ ]*)?", "", False)
     QQ_URL = ("QQ音乐链接", MediaPlatform.QQ, r"(?<!c6\.)y\.qq\.com", r"(?<!c6\.)y\.qq\.com[^ ]*", "https://", False)  # 只有y前面的子域名不为c6才被判断为正常链接
     QQ_SHORT_URL = ("QQ音乐短链", MediaPlatform.QQ, r"c6\.y\.qq\.com", r"c6\.y\.qq\.com[^ ]*", "https://", True)
     NETEASE_URL = ("网易云音乐链接", MediaPlatform.NETEASE, r"music\.163\.com", r"music\.163\.com[^ ]*", "https://", False)
