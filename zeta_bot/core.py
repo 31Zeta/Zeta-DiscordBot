@@ -1,6 +1,7 @@
 from typing import *
 import sys
 import os
+import io
 import asyncio
 import aiohttp
 import httpx
@@ -1341,6 +1342,86 @@ def _ffmpeg_stream_before_options(headers: Optional[dict] = None) -> str:
     return shlex.join(arguments)
 
 
+STREAM_PREBUFFER_BYTES = 1024 * 1024
+STREAM_CONNECT_TIMEOUT = 10
+STREAM_READ_TIMEOUT = 20
+
+
+def _safe_stream_headers(headers: Optional[dict] = None) -> dict:
+    """只保留媒体CDN需要、且不包含登录凭据的请求头。"""
+    allowed_headers = {"user-agent", "referer", "origin", "accept", "accept-language"}
+    result = {"Accept-Encoding": "identity"}
+    for key, value in (headers or {}).items():
+        key = str(key).strip()
+        value = str(value).replace("\r", "").replace("\n", "").strip()
+        if key.lower() in allowed_headers and value:
+            result[key] = value
+    return result
+
+
+class _PrebufferedHTTPStream(io.RawIOBase):
+    """先消费内存前缀，再从HTTP响应继续读取的FFmpeg管道输入。"""
+
+    def __init__(self, response: requests.Response, prefix: bytes):
+        super().__init__()
+        self._response = response
+        self._prefix = io.BytesIO(prefix)
+
+    def readable(self) -> bool:
+        return True
+
+    def read(self, size: int = -1) -> bytes:
+        if self.closed:
+            return b""
+        if size is None or size < 0:
+            prefix = self._prefix.read()
+            return prefix + self._response.raw.read()
+
+        prefix = self._prefix.read(size)
+        remaining = size - len(prefix)
+        if remaining <= 0:
+            return prefix
+        return prefix + self._response.raw.read(remaining)
+
+    def close(self) -> None:
+        if not self.closed:
+            self._response.close()
+        super().close()
+
+
+async def _open_prebuffered_http_stream(source: str, headers: Optional[dict] = None,
+                                        prebuffer_bytes: int = STREAM_PREBUFFER_BYTES
+                                        ) -> _PrebufferedHTTPStream:
+    """在线程中连接媒体源并预读数据，避免阻塞机器人的事件循环。"""
+    def open_stream() -> _PrebufferedHTTPStream:
+        response = requests.get(
+            source,
+            headers=_safe_stream_headers(headers),
+            stream=True,
+            timeout=(STREAM_CONNECT_TIMEOUT, STREAM_READ_TIMEOUT),
+        )
+        try:
+            response.raise_for_status()
+            prefix = response.raw.read(max(1, int(prebuffer_bytes)))
+            if not prefix:
+                raise RuntimeError("媒体源没有返回音频数据")
+            return _PrebufferedHTTPStream(response, prefix)
+        except Exception:
+            response.close()
+            raise
+
+    return await asyncio.to_thread(open_stream)
+
+
+def _stream_http_headers(target_audio: audio.Audio) -> dict:
+    """读取YT-DLP解析出的公开媒体请求头；本地音乐代理无需额外请求头。"""
+    handler = resource_classifier.handler(target_audio.get_download_type())
+    if handler is not DownloadHandler.YT_DLP:
+        return {}
+    info_dict = target_audio.get_stream_data().get("info") or {}
+    return _safe_stream_headers(info_dict.get("http_headers"))
+
+
 async def _resolve_stream_source(target_audio: audio.Audio) -> Tuple[str, str]:
     """把可持久化的流式Audio解析为当前有效的临时播放地址。"""
     handler = resource_classifier.handler(target_audio.get_download_type())
@@ -1463,10 +1544,18 @@ async def play_audio(ctx: discord.ApplicationContext, target_audio: audio.Audio,
     current_guild = guild_lib.get_guild(ctx)
     source = target_audio.get_path()
     before_options = None
+    buffered_stream = None
     if target_audio.is_stream():
         try:
             source, before_options = await _resolve_stream_source(target_audio)
+            buffered_stream = await _open_prebuffered_http_stream(
+                source, headers=_stream_http_headers(target_audio),
+            )
+            source = buffered_stream
+            before_options = "-nostdin"
         except Exception as exception:
+            if buffered_stream is not None:
+                buffered_stream.close()
             await console.on_error(exception)
             if allow_stream_fallback and await _fallback_and_replay(
                     ctx, target_audio, response=response, function_call=function_call):
@@ -1479,11 +1568,14 @@ async def play_audio(ctx: discord.ApplicationContext, target_audio: audio.Audio,
         ffmpeg_source = discord.FFmpegPCMAudio(
             executable=ffmpeg_path,
             source=source,
+            pipe=buffered_stream is not None,
             before_options=before_options,
             options="-vn" if target_audio.is_stream() else None,
         )
 
         def after_playback(_error):
+            if buffered_stream is not None:
+                buffered_stream.close()
             process = getattr(ffmpeg_source, "_process", None)
             returncode = process.poll() if process is not None else None
             asyncio.run_coroutine_threadsafe(
@@ -1495,6 +1587,8 @@ async def play_audio(ctx: discord.ApplicationContext, target_audio: audio.Audio,
         audio_lib_main.unlock_audio(f"{ctx.guild.id}_NOW_PLAYING", target_audio)
         if ffmpeg_source is not None:
             ffmpeg_source.cleanup()
+        if buffered_stream is not None:
+            buffered_stream.close()
         await console.on_error(exception)
         if target_audio.is_stream() and allow_stream_fallback and await _fallback_and_replay(
                 ctx, target_audio, response=response, function_call=function_call):
