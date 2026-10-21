@@ -78,7 +78,13 @@ class Console:
         spinner_status = self._spinner_task is not None
         # 清除当前状态信息并打印新信息
         await self.current_erase()
-        print(message, end=end, flush=True)
+        try:
+            print(message, end=end, flush=True)
+        except UnicodeEncodeError:
+            # Windows隐藏窗口通常仍使用GBK；标题中的emoji等字符不应让机器人崩溃。
+            output_encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+            safe_message = str(message).encode(output_encoding, errors="replace").decode(output_encoding)
+            print(safe_message, end=end, flush=True)
         # 如果之前有状态信息则重新打印，有加载图标则重新启动
         if reprint is not None:
             await self.current(reprint, loading=spinner_status)
