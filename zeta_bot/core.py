@@ -1436,7 +1436,7 @@ async def _get_ytdlp_info_with_bilibili_fallback(
 
     await console.rp(
         "YT-DLP未能解析B站资源，正在切换B站API回退",
-        f"[{level}]", message_type=utils.PrintType.WARNING, print_head=True,
+        "[主模块]", message_type=utils.PrintType.WARNING, print_head=True,
     )
     fallback_result = await bilibili.get_ytdlp_fallback_info(url)
     if fallback_result.result is not None:

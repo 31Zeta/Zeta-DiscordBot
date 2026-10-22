@@ -1,9 +1,14 @@
 """B站API回退的离线结构测试。"""
+import ast
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Optional
 from unittest.mock import AsyncMock, patch
 
+import utils
 from zeta_bot import output_console
+from zeta_bot.resource import MediaPlatform
 
 with patch.object(output_console, "Console", return_value=SimpleNamespace(rp=AsyncMock())):
     from zeta_bot import bilibili
@@ -47,6 +52,32 @@ class BilibiliApiFallbackTests(unittest.TestCase):
         for value in ("0", "-1", "abc", ""):
             with self.assertRaises(ValueError):
                 bilibili._part_number(f"https://www.bilibili.com/video/BV1234567890?p={value}")
+
+
+class BilibiliCoreFallbackTests(unittest.IsolatedAsyncioTestCase):
+    async def test_ytdlp_failure_reaches_bilibili_api_without_name_error(self):
+        primary = utils.failed_result(RuntimeError("yt-dlp failed"), "解析失败", False)
+        fallback = utils.success_result({"id": "BV1234567890", "url": "https://cdn/audio.m4s"})
+        ytdlp_mock = SimpleNamespace(get_info=AsyncMock(return_value=primary))
+        bilibili_mock = SimpleNamespace(get_ytdlp_fallback_info=AsyncMock(return_value=fallback))
+        console_mock = SimpleNamespace(rp=AsyncMock())
+        namespace = {
+            "Optional": Optional, "MediaPlatform": MediaPlatform, "utils": utils,
+            "Result": utils.Result, "failed_result": utils.failed_result,
+            "ytdlp": ytdlp_mock, "bilibili": bilibili_mock, "console": console_mock,
+        }
+        tree = ast.parse(Path("zeta_bot/core.py").read_text(encoding="utf-8"))
+        node = next(n for n in tree.body
+                    if getattr(n, "name", None) == "_get_ytdlp_info_with_bilibili_fallback")
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "zeta_bot/core.py", "exec"), namespace)
+
+        result = await namespace["_get_ytdlp_info_with_bilibili_fallback"](
+            "https://www.bilibili.com/video/BV1234567890", MediaPlatform.BILIBILI,
+        )
+
+        self.assertIs(result, fallback)
+        bilibili_mock.get_ytdlp_fallback_info.assert_awaited_once()
+        console_mock.rp.assert_awaited_once()
 
 
 if __name__ == "__main__":
