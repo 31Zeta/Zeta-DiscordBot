@@ -33,6 +33,8 @@ class PartsTests(unittest.IsolatedAsyncioTestCase):
         self.ctx = SimpleNamespace(guild=SimpleNamespace(voice_client=Mock()))
         self.audio_lib = SimpleNamespace(download_ytdlp=AsyncMock(), download_bilibili=AsyncMock())
         self.get_info = AsyncMock()
+        async def get_info_with_fallback(url, platform=None):
+            return await self.get_info(url)
         self.ns = {
             "discord": discord, "errors": errors, "View": discord.ui.View, "Optional": Optional, "Union": Union,
             "utils": utils, "random": random, "DownloadType": DownloadType,
@@ -41,6 +43,7 @@ class PartsTests(unittest.IsolatedAsyncioTestCase):
             "guild_lib": SimpleNamespace(get_guild=lambda _: self.guild),
             "console": SimpleNamespace(rp=AsyncMock()), "audio_lib_main": self.audio_lib,
             "ytdlp": SimpleNamespace(get_info=self.get_info), "result_check": AsyncMock(side_effect=lambda r: r),
+            "_get_ytdlp_info_with_bilibili_fallback": get_info_with_fallback,
             "eos": AsyncMock(), "embed_eos": AsyncMock(), "play_audio": AsyncMock(),
             "icon": SimpleNamespace(url=lambda _: "https://example.com/icon.gif"),
             "icon_lib": SimpleNamespace(files=lambda _: []), "delete_response": AsyncMock(),

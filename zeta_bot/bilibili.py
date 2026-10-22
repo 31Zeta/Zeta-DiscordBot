@@ -3,6 +3,7 @@ import aiohttp
 import html
 import httpx
 from enum import Enum
+from urllib.parse import parse_qs, urlsplit
 
 import bilibili_api
 from bilibili_api import video, Credential, sync, select_client
@@ -38,6 +39,165 @@ resource_classifier = ResourceClassifier()
 
 level = "哔哩哔哩模块"
 SOURCE = "bilibili"
+
+
+def _part_number(url: str) -> Optional[int]:
+    """读取B站链接中的?p=分P号；未指定时返回None。"""
+    values = parse_qs(urlsplit(str(url)).query, keep_blank_values=True).get("p")
+    if values is None:
+        return None
+    value = values[-1]
+    if not value.isascii() or not value.isdigit() or int(value) < 1:
+        raise ValueError("B站分P号必须是大于0的整数")
+    return int(value)
+
+
+def _fallback_playlist(info_dict: dict, bvid: str) -> dict:
+    """把B站API的分P目录转换成yt-dlp播放列表兼容结构。"""
+    entries = []
+    for index, page in enumerate(info_dict.get("pages") or [], start=1):
+        page_number = int(page.get("page") or index)
+        entries.append({
+            "id": f"{bvid}_p{page_number}",
+            "title": page.get("part") or f"第 {page_number} P",
+            "duration": page.get("duration"),
+            "page": page_number,
+            "url": f"https://www.bilibili.com/video/{bvid}?p={page_number}",
+        })
+    return {
+        "_type": "playlist",
+        "id": bvid,
+        "title": info_dict.get("title") or bvid,
+        "thumbnail": info_dict.get("pic"),
+        "entries": entries,
+        "pages": entries,
+        "_bilibili_api_fallback": True,
+    }
+
+
+def _fallback_stream_info(info_dict: dict, download_dict: dict, bvid: str,
+                          page_number: int) -> dict:
+    """把B站API播放地址转换成现有流式播放器所需的yt-dlp兼容信息。"""
+    pages = info_dict.get("pages") or []
+    if not 1 <= page_number <= len(pages):
+        raise ValueError(f"该视频没有第 {page_number} P（共 {len(pages)} P）")
+    page = pages[page_number - 1]
+
+    audio_streams = (download_dict.get("dash") or {}).get("audio") or []
+    if audio_streams:
+        selected = max(audio_streams, key=lambda item: int(item.get("bandwidth") or 0))
+        stream_url = selected.get("baseUrl") or selected.get("base_url")
+        bandwidth = int(selected.get("bandwidth") or 0)
+        mime_type = selected.get("mimeType") or selected.get("mime_type") or "audio/mp4"
+        extension = "webm" if "webm" in mime_type else "m4a"
+        format_id = str(selected.get("id") or "bestaudio")
+        acodec = selected.get("codecs") or "mp4a.40.2"
+    else:
+        durl = download_dict.get("durl") or []
+        selected = durl[0] if durl else {}
+        stream_url = selected.get("url")
+        bandwidth = 0
+        extension = "mp4"
+        format_id = "bilibili-api-durl"
+        acodec = "unknown"
+    if not stream_url:
+        raise ValueError("B站API没有返回可播放的音频地址")
+
+    duration = int(page.get("duration") or 0)
+    title = info_dict.get("title") or bvid
+    if len(pages) > 1:
+        title = f"{title} - P{page_number} {page.get('part') or ''}".rstrip()
+    filesize_approx = max(1, int(bandwidth * duration / 8)) if bandwidth and duration else None
+    result = {
+        "id": f"{bvid}_p{page_number}" if len(pages) > 1 else bvid,
+        "title": title,
+        "ext": extension,
+        "duration": duration,
+        "url": stream_url,
+        "format_id": format_id,
+        "protocol": "https",
+        "acodec": acodec,
+        "vcodec": "none",
+        "thumbnail": info_dict.get("pic"),
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": f"https://www.bilibili.com/video/{bvid}",
+        },
+        "_bilibili_api_fallback": True,
+    }
+    if filesize_approx is not None:
+        result["filesize_approx"] = filesize_approx
+    return result
+
+
+async def get_ytdlp_fallback_info(url: str) -> Result:
+    """yt-dlp无法解析B站网页时，直接通过B站API取得分P目录或音频流。"""
+    bvid = utils.get_bvid_from_url(str(url))
+    if bvid is None:
+        return failed_result(exception=None, message="链接中没有有效的BV号", retryable=False)
+    try:
+        requested_part = _part_number(url)
+        # x/web-interface/view目前可能被B站风控直接返回412；pagelist和
+        # player/playurl是播放所需的最小接口，在同一IP上仍可匿名访问。
+        request_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36"
+            ),
+            "Referer": f"https://www.bilibili.com/video/{bvid}",
+            # 避开当前环境brotli解码器与aiohttp的版本冲突。
+            "Accept-Encoding": "gzip, deflate",
+        }
+        timeout = aiohttp.ClientTimeout(total=15, connect=5)
+        async with aiohttp.ClientSession(headers=request_headers, timeout=timeout) as session:
+            async with session.get(
+                "https://api.bilibili.com/x/player/pagelist", params={"bvid": bvid}
+            ) as response:
+                response.raise_for_status()
+                page_payload = await response.json(content_type=None)
+            if page_payload.get("code") != 0:
+                raise ValueError(page_payload.get("message") or "B站分P目录接口失败")
+            pages = page_payload.get("data") or []
+            info_dict = {
+                "title": (pages[0].get("part") if pages else None) or bvid,
+                "pages": pages,
+                "pic": None,
+            }
+            if requested_part is None and len(pages) > 1:
+                result = _fallback_playlist(info_dict, bvid)
+            else:
+                page_number = requested_part or 1
+                if not 1 <= page_number <= len(pages):
+                    raise ValueError(f"该视频没有第 {page_number} P（共 {len(pages)} P）")
+                page = pages[page_number - 1]
+                async with session.get(
+                    "https://api.bilibili.com/x/player/playurl",
+                    params={
+                        "bvid": bvid, "cid": page["cid"],
+                        "fnval": 16, "fnver": 0, "qn": 64,
+                    },
+                ) as response:
+                    response.raise_for_status()
+                    play_payload = await response.json(content_type=None)
+                if play_payload.get("code") != 0:
+                    raise ValueError(play_payload.get("message") or "B站播放地址接口失败")
+                result = _fallback_stream_info(
+                    info_dict, play_payload.get("data") or {}, bvid, page_number,
+                )
+        if not pages:
+            raise ValueError("B站API没有返回视频分P信息")
+        await console.rp(
+            f"B站API回退解析成功：[{result['id']}] {result['title']}", f"[{level}]"
+        )
+        return success_result(result=result, message="已通过B站API获取信息")
+    except (bilibili_api.ResponseCodeException, bilibili_api.ArgsException,
+            bilibili_api.NetworkException, aiohttp.ClientError, httpx.HTTPError,
+            ValueError, KeyError, TypeError) as exception:
+        await console.rp(
+            f"B站API回退解析失败：{exception}", f"[{level}]",
+            message_type=utils.PrintType.ERROR, print_head=True,
+        )
+        return failed_result(exception=exception, message=str(exception) or "B站API解析失败", retryable=False)
 
 async def get_info(bvid) -> Result:
     """

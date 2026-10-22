@@ -1422,6 +1422,32 @@ def _stream_http_headers(target_audio: audio.Audio) -> dict:
     return _safe_stream_headers(info_dict.get("http_headers"))
 
 
+async def _get_ytdlp_info_with_bilibili_fallback(
+    url: str, platform: Optional[MediaPlatform] = None,
+) -> Result:
+    """优先使用yt-dlp；B站网页提取失败时改走稳定的公开API。"""
+    primary_result = await ytdlp.get_info(url)
+    is_bilibili = (
+        platform is MediaPlatform.BILIBILI
+        or utils.get_bvid_from_url(str(url)) is not None
+    )
+    if primary_result.result is not None or not is_bilibili:
+        return primary_result
+
+    await console.rp(
+        "YT-DLP未能解析B站资源，正在切换B站API回退",
+        f"[{level}]", message_type=utils.PrintType.WARNING, print_head=True,
+    )
+    fallback_result = await bilibili.get_ytdlp_fallback_info(url)
+    if fallback_result.result is not None:
+        return fallback_result
+    return failed_result(
+        exception=fallback_result.exception or primary_result.exception,
+        message=f"YT-DLP失败；B站API回退也失败：{fallback_result.message}",
+        retryable=primary_result.retryable or fallback_result.retryable,
+    )
+
+
 async def _resolve_stream_source(target_audio: audio.Audio) -> Tuple[str, str]:
     """把可持久化的流式Audio解析为当前有效的临时播放地址。"""
     handler = resource_classifier.handler(target_audio.get_download_type())
@@ -1431,7 +1457,11 @@ async def _resolve_stream_source(target_audio: audio.Audio) -> Tuple[str, str]:
         resolved_at = float(stream_data.get("resolved_at") or 0)
         # 刚完成搜索/解析时直接使用已有签名地址；排队较久后再刷新，避免链接过期。
         if not info_dict or not info_dict.get("url") or time.time() - resolved_at > 120:
-            info_result = await result_check(await ytdlp.get_info(target_audio.get_stream_origin()))
+            platform = (MediaPlatform.BILIBILI
+                        if target_audio.get_download_type().name.startswith("BILIBILI") else None)
+            info_result = await result_check(await _get_ytdlp_info_with_bilibili_fallback(
+                target_audio.get_stream_origin(), platform,
+            ))
             if not info_result or info_result.result is None:
                 raise RuntimeError(info_result.message or "无法刷新媒体流地址")
             info_dict = info_result.result
@@ -1461,7 +1491,11 @@ async def _download_stream_fallback(target_audio: audio.Audio) -> Result:
     """流式地址失效时，沿用原下载器下载完整文件作为兼容回退。"""
     handler = resource_classifier.handler(target_audio.get_download_type())
     if handler is DownloadHandler.YT_DLP:
-        info_result = await ytdlp.get_info(target_audio.get_stream_origin())
+        platform = (MediaPlatform.BILIBILI
+                    if target_audio.get_download_type().name.startswith("BILIBILI") else None)
+        info_result = await _get_ytdlp_info_with_bilibili_fallback(
+            target_audio.get_stream_origin(), platform,
+        )
         info_dict = info_result.result if info_result else None
         if info_dict is None:
             info_dict = target_audio.get_stream_data().get("info")
@@ -1946,7 +1980,7 @@ async def play_ytdlp(
     )
 
     # 提取信息
-    info_result = await result_check(await ytdlp.get_info(url))
+    info_result = await result_check(await _get_ytdlp_info_with_bilibili_fallback(url, platform))
     info_dict = info_result.result
     if info_dict is None:
         warning_description = f"信息获取失败：{info_result.message}"
@@ -3795,7 +3829,11 @@ class EpisodeSelectMenu(View):
 
                 # 单独提取信息
                 await console.rp(f"准备获取分集 [{num}] {title}：{url}", self.ctx.guild)
-                current_info_result = await result_check(await ytdlp.get_info(url))
+                current_info_result = await result_check(
+                    await _get_ytdlp_info_with_bilibili_fallback(
+                        url, MediaPlatform.BILIBILI if self.ytdlp_bilibili_parts else None,
+                    )
+                )
                 current_info_dict = current_info_result.result
                 if current_info_dict is None:
                     warning_description = f"信息获取失败：{current_info_result.message}"
