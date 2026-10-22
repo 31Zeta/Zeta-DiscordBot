@@ -6,7 +6,7 @@
 
 目前机器人只有中文可用  
 
-目录 Table of contents
+目录
 ------------------------
 - [核心功能](#核心功能)
 - [运行](#运行)
@@ -77,3 +77,14 @@ python main.py --mode=setting
 - 为浏览器安装 Cookie 获取插件，登录对应平台后，从插件处复制JSON格式的 Cookie 粘贴到 ``本项目根目录/data/cookies/对应平台.json`` 文件中（如果没有目录请先启动一次机器人）  
 机器人会将 Cookie 传到 go-music-api 部署根目下的 ``cookies.json`` 中
 - 使用 ``python go_music_qr_login.py``，根据提示扫描登录，登录后的 Cookie会保存在 ``本项目根目录/data/cookies/对应平台.json`` 文件中，并传到 go-music-api 部署根目下的 ``cookies.json`` 中
+
+
+## 素材来源
+
+<a href="https://lordicon.com/">
+  <img
+    src="https://media.lordicon.com/assets/icons/main/lordicon.svg"
+    alt="动态图标来源"
+    width="300"
+  >
+</a>

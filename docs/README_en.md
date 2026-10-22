@@ -77,3 +77,14 @@ Most platforms require you to log in to access much of their content. You can co
 - Install a cookie export extension in your browser and log in to the corresponding platform. Copy the cookies in JSON format from the extension and paste them into ``<project root>/data/cookies/<platform>.json`` (if the directory does not exist, start the bot once first).  
   The bot will transfer the cookies to ``cookies.json`` in the root directory of the go-music-api deployment.
 - Run ``python go_music_qr_login.py`` and follow the prompts to scan the QR code and log in. After login, the cookies will be saved to ``<project root>/data/cookies/<platform>.json`` and transferred to ``cookies.json`` in the root directory of the go-music-api deployment.
+
+
+## Credits
+
+<a href="https://lordicon.com/">
+  <img
+    src="https://media.lordicon.com/assets/icons/main/lordicon.svg"
+    alt="Animated Icon Credits"
+    width="300"
+  >
+</a>
